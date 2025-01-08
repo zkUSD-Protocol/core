@@ -130,6 +130,7 @@ export function ZkUsdEngineContract(
         ...Permissions.default(),
         setVerificationKey:
           Permissions.VerificationKey.impossibleDuringCurrentVersion(),
+
         setPermissions: Permissions.impossible(),
         editState: Permissions.proof(),
         send: Permissions.proof(),

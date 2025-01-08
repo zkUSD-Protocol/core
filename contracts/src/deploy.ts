@@ -20,7 +20,7 @@ import {
 } from 'o1js';
 import { ContractInstance, KeyPair, OracleWhitelist } from './types.js';
 import { transaction } from './utils/transaction.js';
-
+import { FileSystemCache } from './utils/cache.js';
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
@@ -34,6 +34,8 @@ export async function deploy(
   console.log('Deploying contracts on ', currentNetwork.network.chainId);
 
   const fee = currentNetwork.network.chainId !== 'local' ? 1e8 : 0;
+
+  const cache = new FileSystemCache();
 
   const networkKeys = getNetworkKeys(currentNetwork.network.chainId);
 
@@ -62,20 +64,19 @@ export async function deploy(
 
   //We always need to compile these contracts
 
-  const vaultVerification = await ZkUsdVault.compile();
+  const vaultVerification = await ZkUsdVault.compile({ cache });
   const vaultVerificationKeyHash = vaultVerification.verificationKey.hash;
 
-  await ZkUsdMasterOracle.compile();
-
-  await ZkUsdPriceTracker.compile();
+  await ZkUsdMasterOracle.compile({ cache });
+  await ZkUsdPriceTracker.compile({ cache });
 
   if (
     currentNetwork.local?.proofsEnabled ||
     currentNetwork.network.chainId !== 'local'
   ) {
     console.log('Compiling Engine and Token contracts');
-    await ZkUsdEngine.compile();
-    await FungibleToken.compile();
+    await ZkUsdEngine.compile({ cache });
+    await FungibleToken.compile({ cache });
   }
 
   //Check whether we have the protocol admin account created
