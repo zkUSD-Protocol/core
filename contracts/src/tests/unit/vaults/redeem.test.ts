@@ -1,4 +1,4 @@
-import { TestHelper, TestAmounts } from '../unit-test-helper.js';
+import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { AccountUpdate, Field, Mina, UInt64 } from 'o1js';
 import { ZkUsdVaultErrors } from '../../../contracts/zkusd-vault.js';
 import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
@@ -10,9 +10,9 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice', 'bob', 'charlie', 'rewards']);
+    await testHelper.createAgents(['alice', 'bob', 'charlie', 'rewards']);
 
     //deploy alice's vault
     await testHelper.createVaults(['alice', 'bob']);

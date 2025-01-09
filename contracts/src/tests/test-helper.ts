@@ -1,41 +1,13 @@
-import {
-  Mina,
-  PrivateKey,
-  PublicKey,
-  AccountUpdate,
-  UInt8,
-  Bool,
-  Field,
-  UInt64,
-  UInt32,
-  Lightnet,
-} from 'o1js';
-import { ContractInstance, OracleWhitelist } from '../../types.js';
-import {
-  ZkUsdEngineContract,
-  ZkUsdEngineDeployProps,
-} from '../../contracts/zkusd-engine.js';
-import { ZkUsdVault } from '../../contracts/zkusd-vault.js';
-import { FungibleTokenContract } from '@minatokens/token';
-import { ZkUsdMasterOracle } from '../../contracts/zkusd-master-oracle.js';
-import { ZkUsdPriceTracker } from '../../contracts/zkusd-price-tracker.js';
-import { MinaNetworkInstance, initBlockchain } from '../../mina.js';
-import { getNetworkKeys, NetworkKeyPairs } from '../../config/keys.js';
-import { transaction } from '../../utils/transaction.js';
-import { deploy } from '../../deploy.js';
-
-interface ChainOptions {
-  useLightnet?: boolean;
-}
-
-interface Agent {
-  keys: KeyPair;
-  vault?: {
-    contract: ZkUsdVault;
-    publicKey: PublicKey;
-    privateKey: PrivateKey;
-  };
-}
+import { AccountUpdate, Bool, Field, PrivateKey, PublicKey, UInt64 } from "o1js";
+import { ZkUsdVault } from "../contracts/zkusd-vault.js";
+import { ZkUsdEngineContract } from "../contracts/zkusd-engine.js";
+import { ZkUsdMasterOracle } from "../contracts/zkusd-master-oracle.js";
+import { ContractInstance, KeyPair, OracleWhitelist } from "../types.js";
+import { FungibleTokenContract } from "@minatokens/token";
+import { MinaChain} from "../mina.js";
+import { NetworkKeyPairs, getNetworkKeys } from "../config/keys.js";
+import { transaction } from "../utils/transaction.js";
+import { deploy } from "../deploy.js";
 
 export class TestAmounts {
   //ZERO
@@ -76,55 +48,53 @@ export class TestAmounts {
   static PRICE_10_USD = UInt64.from(1e10); // 10 USD
 }
 
-interface KeyPair {
-  privateKey: PrivateKey;
-  publicKey: PublicKey;
+interface Agent {
+  keys: KeyPair;
+  vault?: {
+    contract: ZkUsdVault;
+    publicKey: PublicKey;
+    privateKey: PrivateKey;
+  };
 }
 
 export class TestHelper {
+  chain = MinaChain;
+
   deployer: KeyPair;
   agents: Record<string, Agent> = {};
   oracles: Record<string, KeyPair> = {};
+
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
   masterOracle: ContractInstance<ZkUsdMasterOracle>;
+
   vaultVerificationKeyHash?: Field;
-  whitelist: OracleWhitelist;
+  whitelist: OracleWhitelist = new OracleWhitelist({
+    addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(
+      PublicKey.empty()
+    ),
+  });
+
   whitelistedOracles: Map<string, number> = new Map();
-  currentAccountIndex: number = 0;
-  chain: MinaNetworkInstance;
-  networkKeys: NetworkKeyPairs;
+
+  get networkKeys(): NetworkKeyPairs {
+    return getNetworkKeys(this.chain.network().chainId);
+  }
 
   createVaultKeyPair(): { publicKey: PublicKey; privateKey: PrivateKey } {
     return PrivateKey.randomKeypair();
   }
 
-  async initChain(options: ChainOptions = {}) {
-    this.chain = await initBlockchain('local');
-    this.networkKeys = getNetworkKeys(this.chain.network.chainId);
-
-    this.deployer = this.chain.keys[this.currentAccountIndex];
-    this.currentAccountIndex++;
-
-    this.whitelist = new OracleWhitelist({
-      addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(
-        PublicKey.empty()
-      ),
-    });
+  async initLocalChain(opts?: { proofsEnabled?: boolean | undefined; enforceTransactionLimits?: boolean | undefined; }) {
+    await this.chain.initLocal(opts);
+    this.deployer = await this.chain.newAccount();
   }
 
-  createAgents(names: string[]) {
-    if (this.currentAccountIndex >= 10) {
-      throw new Error('Max number of agents reached');
-    }
-
-    names.forEach((name) => {
-      this.agents[name] = {
-        keys: this.chain.keys[this.currentAccountIndex],
-      };
-      this.currentAccountIndex++;
-    });
+  async initLightnetChain() {
+    await this.chain.initLightnet();
+    this.deployer = await this.chain.newAccount();
   }
+
 
   async deployTokenContracts() {
     const deployedContracts = await deploy(this.chain, this.deployer);
@@ -169,6 +139,13 @@ export class TestHelper {
     });
   }
 
+  async createAgents(names: string[]) {
+    for (const name of names) {
+      const keys = await this.chain.newAccount();
+      this.agents[name] = { keys };
+    }
+  }
+
   async createVaults(names: string[]) {
     for (const name of names) {
       if (!this.agents[name]) {
@@ -201,6 +178,7 @@ export class TestHelper {
     }
   }
 
+
   async updateOracleMinaPrice(price: UInt64) {
     // Use the map to iterate over whitelisted oracles
     for (const [oracleName] of this.whitelistedOracles) {
@@ -209,24 +187,15 @@ export class TestHelper {
       });
     }
 
-    //Move the blockchain forward
-    if (this.chain.local) {
-      this.chain.local.setBlockchainLength(
-        this.chain.local.getNetworkState().blockchainLength.add(1)
-      );
-    }
+    this.chain.moveChainForward();
 
     await transaction(this.deployer, async () => {
       await this.engine.contract.settlePriceUpdate();
     });
 
-    //Move the blockchain forward
-    if (this.chain.local) {
-      this.chain.local.setBlockchainLength(
-        this.chain.local.getNetworkState().blockchainLength.add(1)
-      );
-    }
+    this.chain.moveChainForward();
   }
+
 
   async stopTheProtocol() {
     await transaction(
@@ -251,4 +220,5 @@ export class TestHelper {
       }
     );
   }
+
 }

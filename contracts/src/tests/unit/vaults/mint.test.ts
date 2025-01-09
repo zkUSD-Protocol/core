@@ -1,4 +1,4 @@
-import { TestHelper, TestAmounts } from '../unit-test-helper.js';
+import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { AccountUpdate, Mina, PrivateKey, PublicKey, UInt64 } from 'o1js';
 import {
   ZkUsdVault,
@@ -13,9 +13,9 @@ describe('zkUSD Vault Mint Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice', 'bob']);
+    await testHelper.createAgents(['alice', 'bob']);
 
     //deploy alice's vault
     await testHelper.createVaults(['alice']);

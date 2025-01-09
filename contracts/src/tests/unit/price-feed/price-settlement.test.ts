@@ -1,5 +1,5 @@
 import { Mina, UInt32, UInt64 } from 'o1js';
-import { TestAmounts, TestHelper } from '../unit-test-helper.js';
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { OracleWhitelist } from '../../../types.js';
@@ -9,9 +9,9 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false})
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice']);
+    await testHelper.createAgents(['alice']);
   });
 
   it('should settle the correct price', async () => {
@@ -78,7 +78,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
 
     //Move the block forward
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     await transaction(testHelper.deployer, async () => {
@@ -87,7 +87,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
 
     //Move the block forward
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     const price = await testHelper.engine.contract.getMinaPrice();
@@ -130,7 +130,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
 
     //move the blockchain forward
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     await transaction(testHelper.deployer, async () => {
@@ -138,7 +138,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
     });
 
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     const price = await testHelper.engine.contract.getMinaPrice();
@@ -190,7 +190,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
     );
 
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     await transaction(testHelper.deployer, async () => {
@@ -198,7 +198,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
     });
 
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     const priceBeforeSettlement =
@@ -228,7 +228,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
       const oracleName = Array.from(testHelper.whitelistedOracles.keys())[i];
       const price = UInt64.from((0.48 + i * 0.01) * 1e9); // Prices from 0.48 to 0.57 USD
       const oracle = testHelper.oracles[oracleName];
-      const tx = await Mina.transaction(
+      await Mina.transaction(
         {
           sender: oracle.publicKey,
         },
@@ -245,7 +245,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
     }
 
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     await transaction(testHelper.deployer, async () => {
@@ -253,7 +253,7 @@ describe('zkUSD Price Feed Oracle Price Settlement Test Suite', () => {
     });
 
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     const price = await testHelper.engine.contract.getMinaPrice();

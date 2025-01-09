@@ -5,7 +5,7 @@ interface MinaNetwork {
   archive: string[];
   chainId: blockchain;
   name?: string;
-  accountManager?: string;
+  lightnetAccountManager?: string;
   explorerAccountUrl?: string;
   explorerTransactionUrl?: string;
 }
@@ -19,7 +19,7 @@ const Local: MinaNetwork = {
 const Lightnet: MinaNetwork = {
   mina: ['http://localhost:8080/graphql'],
   archive: ['http://localhost:8282'],
-  accountManager: 'http://localhost:8181',
+  lightnetAccountManager: 'http://localhost:8181',
   chainId: 'lightnet',
   name: 'Lightnet',
 };

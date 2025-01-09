@@ -1,5 +1,5 @@
-import { AccountUpdate, Bool, PrivateKey, VerificationKey, Mina } from 'o1js';
-import { TestAmounts, TestHelper } from '../unit-test-helper.js';
+import { AccountUpdate, Bool, PrivateKey } from 'o1js';
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { ProtocolData } from '../../../types.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
@@ -7,15 +7,13 @@ import { transaction } from '../../../utils/transaction.js';
 
 describe('zkUSD Protocol Vault Administration Test Suite', () => {
   const testHelper = new TestHelper();
-  let newVerificationKey: VerificationKey;
 
   const newAdmin = PrivateKey.randomKeypair();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false})
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice']);
-
+    await testHelper.createAgents(['alice']);
     await testHelper.createVaults(['alice']);
 
     //Alice deposits 100 Mina

@@ -8,7 +8,7 @@ import {
   UInt64,
 } from 'o1js';
 import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
-import { TestHelper, TestAmounts } from '../unit-test-helper.js';
+import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
@@ -17,15 +17,15 @@ describe('zkUSD Deployment Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice', 'bob', 'charlie', 'david', 'eve']);
+    await testHelper.createAgents(['alice', 'bob', 'charlie', 'david', 'eve']);
   });
 
   it('should create vaults', async () => {
     await testHelper.createVaults(['alice']);
 
-    const aliceVault = testHelper.chain.local?.getAccount(
+    const aliceVault = testHelper.chain.getAccount(
       testHelper.agents.alice.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
@@ -86,19 +86,19 @@ describe('zkUSD Deployment Test Suite', () => {
   it('should create multiple vaults', async () => {
     await testHelper.createVaults(['bob', 'charlie', 'david', 'eve']);
 
-    const bobVault = testHelper.chain.local?.getAccount(
+    const bobVault = testHelper.chain.getAccount(
       testHelper.agents.bob.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
-    const charlieVault = testHelper.chain.local?.getAccount(
+    const charlieVault = testHelper.chain.getAccount(
       testHelper.agents.charlie.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
-    const davidVault = testHelper.chain.local?.getAccount(
+    const davidVault = testHelper.chain.getAccount(
       testHelper.agents.david.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
-    const eveVault = testHelper.chain.local?.getAccount(
+    const eveVault = testHelper.chain.getAccount(
       testHelper.agents.eve.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );

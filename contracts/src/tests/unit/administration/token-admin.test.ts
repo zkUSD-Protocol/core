@@ -3,7 +3,6 @@ import {
   Bool,
   PrivateKey,
   VerificationKey,
-  Mina,
   method,
   Provable,
   PublicKey,
@@ -12,8 +11,7 @@ import {
   State,
   Permissions,
 } from 'o1js';
-import { TestAmounts, TestHelper } from '../unit-test-helper.js';
-import { ProtocolData } from '../../../types.js';
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import {
@@ -91,10 +89,10 @@ describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
   const adminContract = new NewFungibleTokenAdmin(newAdminContract.publicKey);
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false})
     await testHelper.deployTokenContracts();
 
-    testHelper.createAgents(['alice']);
+    await testHelper.createAgents(['alice']);
     await testHelper.createVaults(['alice']);
 
     //Alice deposits 100 Mina
@@ -166,7 +164,7 @@ describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
       testHelper.networkKeys.token.publicKey
     );
 
-    const aliceBalance = await testHelper.token.contract.getBalanceOf(
+    await testHelper.token.contract.getBalanceOf(
       testHelper.agents.alice.keys.publicKey
     );
 

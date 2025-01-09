@@ -1,4 +1,4 @@
-import { TestHelper, TestAmounts } from '../unit-test-helper.js';
+import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { Account, AccountUpdate } from 'o1js';
@@ -8,9 +8,9 @@ describe('zkUSD Vault Ownership Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice', 'bob', 'charlie']);
+    await testHelper.createAgents(['alice', 'bob', 'charlie']);
     await testHelper.createVaults(['alice']);
 
     // Alice deposits initial collateral

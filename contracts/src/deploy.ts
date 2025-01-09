@@ -1,4 +1,4 @@
-import { MinaNetworkInstance, initBlockchain } from './mina.js';
+import { MinaChainInstance } from './mina.js';
 import { ZkUsdMasterOracle } from './contracts/zkusd-master-oracle.js';
 import { ZkUsdPriceTracker } from './contracts/zkusd-price-tracker.js';
 import {
@@ -8,17 +8,8 @@ import {
 import { ZkUsdVault } from './contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys } from './config/keys.js';
-import {
-  AccountUpdate,
-  Bool,
-  fetchAccount,
-  Mina,
-  PrivateKey,
-  UInt32,
-  UInt64,
-  UInt8,
-} from 'o1js';
-import { ContractInstance, KeyPair, OracleWhitelist } from './types.js';
+import { AccountUpdate, Bool, fetchAccount, UInt32, UInt64, UInt8 } from 'o1js';
+import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
 import { FileSystemCache } from './utils/cache.js';
 interface DeployedContracts {
@@ -28,16 +19,17 @@ interface DeployedContracts {
 }
 
 export async function deploy(
-  currentNetwork: MinaNetworkInstance,
+  currentNetwork: MinaChainInstance,
   deployer: KeyPair
 ): Promise<DeployedContracts> {
-  console.log('Deploying contracts on ', currentNetwork.network.chainId);
+  const chainId = currentNetwork.network().chainId;
+  console.log('Deploying contracts on ', chainId);
 
-  const fee = currentNetwork.network.chainId !== 'local' ? 1e8 : 0;
+  const fee = chainId !== 'local' ? 1e8 : 0;
 
   const cache = new FileSystemCache();
 
-  const networkKeys = getNetworkKeys(currentNetwork.network.chainId);
+  const networkKeys = getNetworkKeys(chainId);
 
   const ZkUsdEngine = ZkUsdEngineContract(
     networkKeys.token.publicKey,
@@ -70,12 +62,10 @@ export async function deploy(
   await ZkUsdMasterOracle.compile({ cache });
   await ZkUsdPriceTracker.compile({ cache });
 
-  if (
-    currentNetwork.local?.proofsEnabled ||
-    currentNetwork.network.chainId !== 'local'
-  ) {
-    console.log('Compiling Engine and Token contracts');
+  if (currentNetwork.proofsEnabled) {
+    console.log('Compiling Engine contract');
     await ZkUsdEngine.compile({ cache });
+    console.log('Compiling Token contract');
     await FungibleToken.compile({ cache });
   }
 
@@ -112,7 +102,7 @@ export async function deploy(
     vaultVerificationKeyHash: vaultVerificationKeyHash!,
   };
 
-  console.log('Deploying Token contract');
+  console.log('Checking Token contract');
 
   try {
     const tokenAccount = (
@@ -121,6 +111,7 @@ export async function deploy(
     if (!tokenAccount) throw new Error('Token contract not found');
     console.log('Token contract already deployed');
   } catch {
+    console.log('Not found - deploying Token contract');
     await transaction(
       deployer,
       async () => {
@@ -148,9 +139,7 @@ export async function deploy(
     );
   }
 
-  if (currentNetwork.local) {
-    currentNetwork.local.setBlockchainLength(UInt32.from(1000));
-  }
+  currentNetwork.local?.setBlockchainLength(UInt32.from(1000));
 
   console.log('Initializing Engine contract');
 

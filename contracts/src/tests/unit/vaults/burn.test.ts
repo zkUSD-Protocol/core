@@ -1,5 +1,5 @@
-import { TestHelper, TestAmounts } from '../unit-test-helper.js';
-import { AccountUpdate, Field, UInt64 } from 'o1js';
+import { TestHelper, TestAmounts } from '../../test-helper.js';
+import { AccountUpdate, UInt64 } from 'o1js';
 import { ZkUsdVaultErrors } from '../../../contracts/zkusd-vault.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
@@ -9,9 +9,9 @@ describe('zkUSD Vault Burn Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice', 'bob', 'charlie']);
+    await testHelper.createAgents(['alice', 'bob', 'charlie']);
 
     //deploy alice's vault
     await testHelper.createVaults(['alice']);

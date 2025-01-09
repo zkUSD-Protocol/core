@@ -1,17 +1,13 @@
-import { TestHelper, TestAmounts } from '../unit-test-helper.js';
+import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import {
   AccountUpdate,
   AccountUpdateForest,
   Bool,
-  Field,
   Int64,
-  Mina,
-  UInt64,
   UInt8,
 } from 'o1js';
-import { ZkUsdVault } from '../../../contracts/zkusd-vault.js';
 import { FungibleTokenErrors } from '@minatokens/token';
 import { transaction } from '../../../utils/transaction.js';
 
@@ -19,9 +15,9 @@ describe('zkUSD Token Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false})
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice', 'bob']);
+    await testHelper.createAgents(['alice', 'bob']);
     await testHelper.createVaults(['alice', 'bob']);
 
     // First deposit collateral to allow minting
@@ -59,7 +55,7 @@ describe('zkUSD Token Test Suite', () => {
     it('should not allow direct minting via token contract', async () => {
       await assert.rejects(async () => {
         await transaction(testHelper.agents.alice.keys, async () => {
-          const accountUpdate = AccountUpdate.create(
+          AccountUpdate.create(
             testHelper.agents.alice.vault!.publicKey
           );
           await testHelper.token.contract.mint(
@@ -75,7 +71,7 @@ describe('zkUSD Token Test Suite', () => {
         await transaction(
           testHelper.deployer,
           async () => {
-            const accountUpdate = AccountUpdate.create(
+            AccountUpdate.create(
               testHelper.agents.alice.vault!.publicKey
             );
             await testHelper.token.contract.mint(
@@ -91,7 +87,7 @@ describe('zkUSD Token Test Suite', () => {
     });
 
     it('should allow minting via vault with correct interaction flag', async () => {
-      const flag = await testHelper.engine.contract.interactionFlag.fetch();
+      await testHelper.engine.contract.interactionFlag.fetch();
 
       // Then try to mint through the vault
       await transaction(testHelper.agents.alice.keys, async () => {

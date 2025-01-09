@@ -1,13 +1,11 @@
 import {
   AccountUpdate,
   Bool,
-  Field,
   Mina,
-  PrivateKey,
   UInt32,
   UInt64,
 } from 'o1js';
-import { TestAmounts, TestHelper } from '../unit-test-helper.js';
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import {
   OracleWhitelist,
   PriceSubmission,
@@ -18,7 +16,6 @@ import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import {
-  ZkUsdMasterOracle,
   ZkUsdMasterOracleErrors,
 } from '../../../contracts/zkusd-master-oracle.js';
 import { ZkUsdPriceTracker } from '../../../contracts/zkusd-price-tracker.js';
@@ -31,16 +28,16 @@ describe('zkUSD Price Feed Oracle Submission Test Suite', () => {
   let whitelistedOracles: Map<string, number>;
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
     whitelist = testHelper.whitelist;
     whitelistedOracles = testHelper.whitelistedOracles;
-    testHelper.createAgents(['alice']);
+    await testHelper.createAgents(['alice']);
   });
 
   const getWriteTrackerAddress = () => {
-    const isEven = testHelper.chain.local
-      ?.getNetworkState()
+    const isEven = testHelper.chain
+      .getNetworkState()
       .blockchainLength.mod(2)
       .equals(UInt32.from(0))
       .toBoolean();
@@ -353,7 +350,7 @@ describe('zkUSD Price Feed Oracle Submission Test Suite', () => {
 
     //move block forward
     testHelper.chain.local?.setBlockchainLength(
-      testHelper.chain.local?.getNetworkState().blockchainLength.add(1)
+      testHelper.chain.getNetworkState().blockchainLength.add(1)
     );
 
     const fallbackPrice =
@@ -518,13 +515,6 @@ describe('zkUSD Price Feed Oracle Submission Test Suite', () => {
   });
 
   it('should fail to submit the price if the contract runs out of available oracle funds', async () => {
-    const packedProtocolData =
-      await testHelper.engine.contract.protocolDataPacked.fetch();
-
-    const protocolData = ProtocolData.unpack(packedProtocolData!);
-
-    const oracleFee = protocolData.oracleFlatFee;
-
     //get the current balance of the price feed oracle
     const priceFeedOracleBalanceBefore =
       await testHelper.engine.contract.getAvailableOracleFunds();
@@ -586,10 +576,6 @@ describe('zkUSD Price Feed Oracle Submission Test Suite', () => {
 
   it('should not allow us to edit the state of the price tracker accounts manually', async () => {
     const trackerAddress = getWriteTrackerAddress();
-    const tracker = new ZkUsdPriceTracker(
-      trackerAddress,
-      testHelper.engine.contract.deriveTokenId()
-    );
 
     await assert.rejects(async () => {
       await transaction(testHelper.deployer, async () => {

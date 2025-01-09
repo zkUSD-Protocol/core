@@ -1,5 +1,5 @@
-import { AccountUpdate, Field, Mina, PrivateKey, UInt32 } from 'o1js';
-import { TestAmounts, TestHelper } from '../unit-test-helper.js';
+import { AccountUpdate, Mina } from 'o1js';
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { ProtocolData } from '../../../types.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
@@ -9,9 +9,9 @@ describe('zkUSD Protocol Oracle Fee Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false})
     await testHelper.deployTokenContracts();
-    testHelper.createAgents(['alice']);
+    await testHelper.createAgents(['alice']);
   });
 
   it('should allow the fee to be changed with the admin key', async () => {

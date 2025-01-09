@@ -1,5 +1,5 @@
 import { Field, Poseidon, PrivateKey, PublicKey } from 'o1js';
-import { TestHelper } from '../unit-test-helper.js';
+import { TestHelper } from '../../test-helper.js';
 import { OracleWhitelist } from '../../../types.js';
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert';
@@ -12,7 +12,7 @@ describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
   let newWhitelistHash: Field;
 
   before(async () => {
-    await testHelper.initChain();
+    await testHelper.initLocalChain({proofsEnabled: false});
     await testHelper.deployTokenContracts();
     whitelist = testHelper.whitelist;
   });
