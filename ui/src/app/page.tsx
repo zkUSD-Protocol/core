@@ -4,8 +4,8 @@ import Image from "next/image.js";
 
 import heroMinaLogo from "../../public/assets/hero-mina-logo.svg";
 import arrowRightSmall from "../../public/assets/arrow-right-small.svg";
-import { useEffect } from "react";
-import { FileSystemCache } from "@lib/utils/cache";
+import { cache, useEffect } from "react";
+import { fetchFiles, FileSystem } from "../lib/utils/compiled-contracts";
 
 export default function Home() {
   useEffect(() => {
@@ -30,34 +30,31 @@ export default function Home() {
         )
       );
 
-      const cache = new FileSystemCache();
-
-      console.log("Cache:", cache);
-
-      console.log("Can write:", cache.canWrite);
-
-      console.time("Compiling contracts");
-
-      console.log("Compiling ZkUsdVault");
-      const compiled = await ZkUsdVault.compile({ cache });
-
-      console.log("Compiled:", compiled);
-
-      console.log("Compiling ZkUsdMasterOracle");
-      await ZkUsdMasterOracle.compile();
-
-      console.log("Compiling ZkUsdPriceTracker");
-      await ZkUsdPriceTracker.compile();
-
       //@ts-ignore
       const FungibleToken = FungibleTokenContract(ZkUsdEngine);
-      console.log("Compiling FungibleToken");
-      await FungibleToken.compile();
+
+      console.time("Compiling contracts");
+      const cachedFiles = await fetchFiles();
+      console.log("cachedFiles", cachedFiles);
+
+      console.log("Compiling ZkUsdMasterOracle");
+      await ZkUsdMasterOracle.compile({ cache: FileSystem(cachedFiles) });
+
+      console.log("Compiling ZkUsdPriceTracker");
+      await ZkUsdPriceTracker.compile({ cache: FileSystem(cachedFiles) });
+
+      console.log("Compiling ZkUsdVault");
+      await ZkUsdVault.compile({
+        cache: FileSystem(cachedFiles),
+      });
 
       console.log("Compiling ZkUsdEngine");
-      console.log(ZkUsdEngine);
+      await ZkUsdEngine.compile({ cache: FileSystem(cachedFiles) });
 
-      await ZkUsdEngine.compile();
+      console.log("Compiling FungibleToken");
+      await FungibleToken.compile({
+        cache: FileSystem(cachedFiles),
+      });
 
       console.timeEnd("Compiling contracts");
 
