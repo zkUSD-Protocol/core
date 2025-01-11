@@ -8,10 +8,20 @@ import {
 import { ZkUsdVault } from './contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys } from './config/keys.js';
-import { AccountUpdate, Bool, fetchAccount, UInt32, UInt64, UInt8 } from 'o1js';
+import {
+  AccountUpdate,
+  Bool,
+  fetchAccount,
+  Mina,
+  UInt32,
+  UInt64,
+  UInt8,
+} from 'o1js';
 import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
 import { FileSystemCache } from './utils/cache.js';
+import { updateVerificationKeys } from './config/update-verification-keys.js';
+
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
@@ -23,24 +33,27 @@ export async function deploy(
   deployer: KeyPair
 ): Promise<DeployedContracts> {
   const chainId = currentNetwork.network().chainId;
-  console.log('Deploying contracts on ', chainId);
+  console.log('Deploying contracts on', chainId);
 
   const fee = chainId !== 'local' ? 1e8 : 0;
-
   const cache = new FileSystemCache();
 
   const networkKeys = getNetworkKeys(chainId);
+
+  const vaultVerification = await ZkUsdVault.compile();
+  updateVerificationKeys(vaultVerification.verificationKey);
+  const vaultVerificationKeyHash = vaultVerification.verificationKey.hash;
 
   const ZkUsdEngine = ZkUsdEngineContract(
     networkKeys.token.publicKey,
     networkKeys.masterOracle.publicKey,
     networkKeys.evenOraclePriceTracker.publicKey,
-    networkKeys.oddOraclePriceTracker.publicKey
+    networkKeys.oddOraclePriceTracker.publicKey,
+    vaultVerification.verificationKey
   );
-  const FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
   const token = {
-    contract: new FungibleToken(networkKeys.token.publicKey),
+    contract: new ZkUsdEngine.FungibleToken(networkKeys.token.publicKey),
   };
 
   const engine = {
@@ -55,18 +68,12 @@ export async function deploy(
   };
 
   //We always need to compile these contracts
-
-  const vaultVerification = await ZkUsdVault.compile({ cache });
-  const vaultVerificationKeyHash = vaultVerification.verificationKey.hash;
-
-  await ZkUsdMasterOracle.compile({ cache });
-  await ZkUsdPriceTracker.compile({ cache });
+  await ZkUsdMasterOracle.compile();
+  await ZkUsdPriceTracker.compile();
 
   if (currentNetwork.proofsEnabled) {
-    console.log('Compiling Engine contract');
-    await ZkUsdEngine.compile({ cache });
-    console.log('Compiling Token contract');
-    await FungibleToken.compile({ cache });
+    await ZkUsdEngine.FungibleToken.compile();
+    await ZkUsdEngine.compile();
   }
 
   //Check whether we have the protocol admin account created
@@ -144,11 +151,16 @@ export async function deploy(
   console.log('Initializing Engine contract');
 
   try {
-    const engineAccount = (
-      await fetchAccount({ publicKey: networkKeys.engine.publicKey })
+    const masterOracleAccount = (
+      await fetchAccount({
+        publicKey: networkKeys.masterOracle.publicKey,
+        tokenId: engine.contract.deriveTokenId(),
+      })
     ).account;
-    if (!engineAccount) throw new Error('Engine contract not found');
-    console.log('Engine contract already deployed');
+    console.log('Master Oracle account', masterOracleAccount);
+    if (!masterOracleAccount)
+      throw new Error('Master Oracle contract not initialised');
+    console.log('Engine already initialised');
   } catch {
     await transaction(
       deployer,

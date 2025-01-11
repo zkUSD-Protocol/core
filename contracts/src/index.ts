@@ -3,27 +3,23 @@ import { ZkUsdVault } from './contracts/zkusd-vault.js';
 import { ZkUsdMasterOracle } from './contracts/zkusd-master-oracle.js';
 import { ZkUsdPriceTracker } from './contracts/zkusd-price-tracker.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { initializeBindings } from 'o1js';
-import {
-  Cloud,
-  zkCloudWorker,
-  initBlockchain,
-  VerificationData,
-  blockchain,
-} from 'zkcloudworker';
-import packageJson from '../package.json';
+import { Field, initializeBindings, VerificationKey } from 'o1js';
+import { Cloud, zkCloudWorker, initBlockchain } from 'zkcloudworker';
+import verificationKeys from './config/verification-keys.json';
 import { zkUsdWorker } from './cloud-worker/worker.js';
+import { MinaNetwork } from './networks.js';
 
 export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
-  console.log(
-    `starting worker example version ${
-      packageJson.version ?? 'unknown'
-    } on chain ${cloud.chain}`
-  );
+  console.log(`starting worker example version on chain ${cloud.chain}`);
   await initializeBindings();
   await initBlockchain(cloud.chain);
   return new zkUsdWorker(cloud);
 }
+
+const vaultKey: VerificationKey = {
+  data: verificationKeys.vault.data,
+  hash: Field(verificationKeys.vault.hash),
+};
 
 export {
   ZkUsdEngineContract,
@@ -31,4 +27,5 @@ export {
   ZkUsdMasterOracle,
   ZkUsdPriceTracker,
   ZkUsdVault,
+  vaultKey,
 };

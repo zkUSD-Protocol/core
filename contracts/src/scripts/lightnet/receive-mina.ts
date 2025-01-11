@@ -1,6 +1,6 @@
 import { AccountUpdate, fetchAccount, PublicKey } from 'o1js';
-import { initBlockchain } from '../../mina.js';
 import { transaction } from '../../utils/transaction.js';
+import { MinaChain } from '../../mina.js';
 
 async function main() {
   const receiver = PublicKey.fromBase58(
@@ -8,9 +8,9 @@ async function main() {
   );
   const amount = 100e9;
 
-  const chain = await initBlockchain('lightnet');
+  const chain = await MinaChain.initLightnet();
 
-  const funder = chain.keys[0];
+  const funder = await MinaChain.newAccount();
 
   let accountFunded: Boolean = false;
 

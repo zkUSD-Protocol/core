@@ -1,6 +1,8 @@
 import {
   FungibleTokenAdminBase,
   FungibleTokenContract,
+  FungibleTokenAdmin,
+  FungibleToken,
 } from '@minatokens/token';
 import {
   AccountUpdate,
@@ -88,7 +90,8 @@ export function ZkUsdEngineContract(
   zkUsdTokenAddress: PublicKey,
   masterOracleAddress: PublicKey,
   evenOraclePriceTrackerAddress: PublicKey,
-  oddOraclePriceTrackerAddress: PublicKey
+  oddOraclePriceTrackerAddress: PublicKey,
+  vaultVerificationKey: VerificationKey
 ) {
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     @state(UInt64) minaPriceEvenBlock = State<UInt64>();
@@ -96,7 +99,13 @@ export function ZkUsdEngineContract(
     @state(Field) oracleWhitelistHash = State<Field>(); // Hash of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>();
     @state(Field) vaultVerificationKeyHash = State<Field>(); // Hash of the vault verification key
-    @state(Bool) interactionFlag = State<Bool>(); // Flag to prevent reentrancy
+    @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
+
+    static zkUsdTokenAddress = zkUsdTokenAddress;
+    static masterOracleAddress = masterOracleAddress;
+    static evenOraclePriceTrackerAddress = evenOraclePriceTrackerAddress;
+    static oddOraclePriceTrackerAddress = oddOraclePriceTrackerAddress;
+    static vaultVerificationKey = vaultVerificationKey;
 
     static FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
@@ -165,6 +174,18 @@ export function ZkUsdEngineContract(
       //Ensure admin key
       await this.ensureAdminSignature();
 
+      const FungibleToken = ZkUsdEngine.FungibleToken;
+
+      Provable.log(
+        'Fungible Token verification key hash',
+        FungibleToken._verificationKey?.hash
+      );
+
+      Provable.log(
+        'ZkUsdEngine verificationKey',
+        ZkUsdEngine._verificationKey?.hash
+      );
+
       //Set the permissions to track the collateral deposits on the engine
       let au = AccountUpdate.createSigned(this.address, this.deriveTokenId());
       au.account.isNew.getAndRequireEquals().assertTrue();
@@ -179,7 +200,7 @@ export function ZkUsdEngineContract(
 
       // //Set up the master oracle to track the oracle funds and manage the fallback price
       const masterOracle = AccountUpdate.createSigned(
-        masterOracleAddress,
+        ZkUsdEngine.masterOracleAddress,
         this.deriveTokenId()
       );
       masterOracle.body.useFullCommitment = Bool(true);
@@ -208,12 +229,12 @@ export function ZkUsdEngineContract(
 
       //Set up the oracle price trackers
       const evenOraclePriceTracker = AccountUpdate.createSigned(
-        evenOraclePriceTrackerAddress,
+        ZkUsdEngine.evenOraclePriceTrackerAddress,
         this.deriveTokenId()
       );
 
       const oddOraclePriceTracker = AccountUpdate.createSigned(
-        oddOraclePriceTrackerAddress,
+        ZkUsdEngine.oddOraclePriceTrackerAddress,
         this.deriveTokenId()
       );
 
@@ -281,7 +302,7 @@ export function ZkUsdEngineContract(
      */
     public async getAvailableOracleFunds(): Promise<UInt64> {
       const account = AccountUpdate.create(
-        masterOracleAddress,
+        ZkUsdEngine.masterOracleAddress,
         this.deriveTokenId()
       ).account;
       const balance = account.balance.getAndRequireEquals();
@@ -326,7 +347,9 @@ export function ZkUsdEngineContract(
       await vault.updateOwner(newOwner, owner);
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
       await zkUSD.getBalanceOf(newOwner);
@@ -360,7 +383,9 @@ export function ZkUsdEngineContract(
       const owner = this.sender.getAndRequireSignature();
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
       await zkUSD.getBalanceOf(owner);
@@ -379,18 +404,15 @@ export function ZkUsdEngineContract(
         .getAndRequireEquals()
         .assertTrue(ZkUsdEngineErrors.VAULT_EXISTS);
 
-      //Get the verification key for the vault
-      const vaultVerificationKey = new VerificationKey(
-        ZkUsdVault._verificationKey!
-      );
-
       //Ensure that the verification key is the correct one for the vault
-      vaultVerificationKey.hash.assertEquals(vaultVerificationKeyHash);
+      ZkUsdEngine.vaultVerificationKey.hash.assertEquals(
+        vaultVerificationKeyHash
+      );
 
       //Set the verification key for the vault
       vault.body.update.verificationKey = {
         isSome: Bool(true),
-        value: vaultVerificationKey,
+        value: ZkUsdEngine.vaultVerificationKey,
       };
 
       //Set the permissions for the vault
@@ -553,7 +575,9 @@ export function ZkUsdEngineContract(
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //Get the price
       const minaPrice = await this.getMinaPrice();
@@ -602,7 +626,9 @@ export function ZkUsdEngineContract(
       const owner = this.sender.getUnconstrained();
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //Manage the debt in the vault
       const { collateralAmount, debtAmount } = await vault.burnZkUsd(
@@ -636,7 +662,9 @@ export function ZkUsdEngineContract(
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       // Get the liquidator
       // NOTE. we have sender signature from zkUSD.burn
@@ -810,7 +838,7 @@ export function ZkUsdEngineContract(
     @method async depositOracleFunds(amount: UInt64) {
       //We track the funds in the token account of the engine address
       const oracleFundsTrackerUpdate = AccountUpdate.create(
-        masterOracleAddress,
+        ZkUsdEngine.masterOracleAddress,
         this.deriveTokenId()
       );
 
@@ -840,7 +868,7 @@ export function ZkUsdEngineContract(
       await this.ensureAdminSignature();
 
       const masterOracle = new ZkUsdMasterOracle(
-        masterOracleAddress,
+        ZkUsdEngine.masterOracleAddress,
         this.deriveTokenId()
       );
 
@@ -880,8 +908,8 @@ export function ZkUsdEngineContract(
 
       const oraclePriceTrackerAddress = Provable.if(
         isOddBlock,
-        oddOraclePriceTrackerAddress,
-        evenOraclePriceTrackerAddress
+        ZkUsdEngine.oddOraclePriceTrackerAddress,
+        ZkUsdEngine.evenOraclePriceTrackerAddress
       );
 
       //Validate the sender is authorized to submit a price update
@@ -914,7 +942,7 @@ export function ZkUsdEngineContract(
       }
 
       const oracleFundsTracker = AccountUpdate.create(
-        masterOracleAddress,
+        ZkUsdEngine.masterOracleAddress,
         this.deriveTokenId()
       );
 
@@ -955,7 +983,7 @@ export function ZkUsdEngineContract(
 
       //Get the master oracle
       const masterOracle = new ZkUsdMasterOracle(
-        masterOracleAddress,
+        ZkUsdEngine.masterOracleAddress,
         this.deriveTokenId()
       );
 
@@ -966,8 +994,8 @@ export function ZkUsdEngineContract(
       //Otherwise, we get the median price from the odd price tracker
       const priceTrackerAddress = Provable.if(
         isOddBlock,
-        evenOraclePriceTrackerAddress,
-        oddOraclePriceTrackerAddress
+        ZkUsdEngine.evenOraclePriceTrackerAddress,
+        ZkUsdEngine.oddOraclePriceTrackerAddress
       );
 
       const priceTracker = new ZkUsdPriceTracker(
@@ -1163,5 +1191,6 @@ export function ZkUsdEngineContract(
       return Bool(true);
     }
   }
+
   return ZkUsdEngine;
 }

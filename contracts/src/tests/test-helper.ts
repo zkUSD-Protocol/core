@@ -1,13 +1,20 @@
-import { AccountUpdate, Bool, Field, PrivateKey, PublicKey, UInt64 } from "o1js";
-import { ZkUsdVault } from "../contracts/zkusd-vault.js";
-import { ZkUsdEngineContract } from "../contracts/zkusd-engine.js";
-import { ZkUsdMasterOracle } from "../contracts/zkusd-master-oracle.js";
-import { ContractInstance, KeyPair, OracleWhitelist } from "../types.js";
-import { FungibleTokenContract } from "@minatokens/token";
-import { MinaChain} from "../mina.js";
-import { NetworkKeyPairs, getNetworkKeys } from "../config/keys.js";
-import { transaction } from "../utils/transaction.js";
-import { deploy } from "../deploy.js";
+import {
+  AccountUpdate,
+  Bool,
+  Field,
+  PrivateKey,
+  PublicKey,
+  UInt64,
+} from 'o1js';
+import { ZkUsdVault } from '../contracts/zkusd-vault.js';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
+import { ZkUsdMasterOracle } from '../contracts/zkusd-master-oracle.js';
+import { ContractInstance, KeyPair, OracleWhitelist } from '../types.js';
+import { FungibleTokenContract } from '@minatokens/token';
+import { MinaChain } from '../mina.js';
+import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
+import { transaction } from '../utils/transaction.js';
+import { deploy } from '../deploy.js';
 
 export class TestAmounts {
   //ZERO
@@ -70,9 +77,7 @@ export class TestHelper {
 
   vaultVerificationKeyHash?: Field;
   whitelist: OracleWhitelist = new OracleWhitelist({
-    addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(
-      PublicKey.empty()
-    ),
+    addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(PublicKey.empty()),
   });
 
   whitelistedOracles: Map<string, number> = new Map();
@@ -85,7 +90,10 @@ export class TestHelper {
     return PrivateKey.randomKeypair();
   }
 
-  async initLocalChain(opts?: { proofsEnabled?: boolean | undefined; enforceTransactionLimits?: boolean | undefined; }) {
+  async initLocalChain(opts?: {
+    proofsEnabled?: boolean | undefined;
+    enforceTransactionLimits?: boolean | undefined;
+  }) {
     await this.chain.initLocal(opts);
     this.deployer = await this.chain.newAccount();
   }
@@ -94,7 +102,6 @@ export class TestHelper {
     await this.chain.initLightnet();
     this.deployer = await this.chain.newAccount();
   }
-
 
   async deployTokenContracts() {
     const deployedContracts = await deploy(this.chain, this.deployer);
@@ -173,11 +180,11 @@ export class TestHelper {
         },
         {
           extraSigners: [this.agents[name].vault!.privateKey],
+          printTx: true,
         }
       );
     }
   }
-
 
   async updateOracleMinaPrice(price: UInt64) {
     // Use the map to iterate over whitelisted oracles
@@ -195,7 +202,6 @@ export class TestHelper {
 
     this.chain.moveChainForward();
   }
-
 
   async stopTheProtocol() {
     await transaction(
@@ -220,5 +226,4 @@ export class TestHelper {
       }
     );
   }
-
 }

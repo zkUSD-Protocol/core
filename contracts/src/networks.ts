@@ -1,4 +1,4 @@
-type blockchain = 'local' | 'lightnet';
+import { blockchain } from 'zkcloudworker';
 
 interface MinaNetwork {
   mina: string[];
