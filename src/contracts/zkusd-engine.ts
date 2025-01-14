@@ -26,7 +26,9 @@ import {
   ProtocolDataPacked,
   ProtocolData,
   VaultState,
-  MinaPrice
+  MinaPrice,
+  MinaPriceInput,
+  PriceAggregationProofPublicOutput,
 } from '../types.js';
 import {
   MinaPriceUpdateEvent,
@@ -46,7 +48,7 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
 } from '../events.js';
-import { MinaPriceInput, MinaPriceProofPublicOutput, verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/mina-price-proof.js';
+import { verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/oracle-price-aggregation.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -73,21 +75,22 @@ export const ZkUsdEngineErrors = {
 };
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
-  initialPrice: UInt64;
   admin: PublicKey;
   oracleFlatFee: UInt64;
   emergencyStop: Bool;
   vaultVerificationKeyHash: Field;
 }
 
-export function ZkUsdEngineContract(
-  args:{
-  oracleFundTrackerAddress: PublicKey,
-  zkUsdTokenAddress: PublicKey,
-  minaPriceInputZkProgramVkHash: Field
-  }
-) {
-  const { oracleFundTrackerAddress, zkUsdTokenAddress, minaPriceInputZkProgramVkHash} = args;
+export function ZkUsdEngineContract(args: {
+  oracleFundTrackerAddress: PublicKey;
+  zkUsdTokenAddress: PublicKey;
+  minaPriceInputZkProgramVkHash: Field;
+}) {
+  const {
+    oracleFundTrackerAddress,
+    zkUsdTokenAddress,
+    minaPriceInputZkProgramVkHash,
+  } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     @state(Field) oracleWhitelistRoot = State<Field>(); // Merkle root of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>();
@@ -404,10 +407,12 @@ export function ZkUsdEngineContract(
     /**
      * @notice  Verifies the Mina price input proof against contract data.
      * @param   minaPriceInput The Mina price input proof
-      * @returns The verified Mina price. If the proof is invalid, this function will throw an error.
+     * @returns The verified Mina price. If the proof is invalid, this function will throw an error.
      */
-    verifyMinaPriceInput(minaPriceInput: MinaPriceInput): MinaPriceProofPublicOutput {
-      const firstValidBlockHeight = this.network.blockchainLength.get()
+    verifyMinaPriceInput(
+      minaPriceInput: MinaPriceInput
+    ): PriceAggregationProofPublicOutput {
+      const firstValidBlockHeight = this.network.blockchainLength.get();
       // TODO how to constrain?
 
       const lastValidBlockHeight = firstValidBlockHeight.add(1);
@@ -416,8 +421,7 @@ export function ZkUsdEngineContract(
         input: minaPriceInput,
         oracleWhitelistRoot: this.oracleWhitelistRoot.getAndRequireEquals(),
         proofVkHash: minaPriceInputZkProgramVkHash,
-        firstValidBlockHeight,
-        lastValidBlockHeight,
+        currentBlockHeight: firstValidBlockHeight,
       });
       return minaPriceInput.proof.publicOutput;
     }
@@ -432,7 +436,11 @@ export function ZkUsdEngineContract(
      * @param   vaultAddress The address of the vault to redeem collateral from
      * @param   amount The amount of collateral to redeem
      */
-    @method async redeemCollateral(vaultAddress: PublicKey, amount: UInt64, minaPriceInput: MinaPriceInput) {
+    @method async redeemCollateral(
+      vaultAddress: PublicKey,
+      amount: UInt64,
+      minaPriceInput: MinaPriceInput
+    ) {
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -440,7 +448,8 @@ export function ZkUsdEngineContract(
       const owner = this.sender.getAndRequireSignature();
 
       // verify the price input
-      const {minaPrice, incentivizedOracle} = this.verifyMinaPriceInput(minaPriceInput);
+      const { minaPrice, incentivizedOracle } =
+        this.verifyMinaPriceInput(minaPriceInput);
 
       // incentivize the oracle that provided the valid price
       this.incentivizeOracle(incentivizedOracle);
@@ -483,7 +492,11 @@ export function ZkUsdEngineContract(
      * @param   vaultAddress The address of the vault to mint zkUSD for
      * @param   amount The amount of zkUSD to mint
      */
-    @method async mintZkUsd(vaultAddress: PublicKey, amount: UInt64, minaPriceInput: MinaPriceInput) {
+    @method async mintZkUsd(
+      vaultAddress: PublicKey,
+      amount: UInt64,
+      minaPriceInput: MinaPriceInput
+    ) {
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -494,7 +507,8 @@ export function ZkUsdEngineContract(
       const owner = this.sender.getAndRequireSignature();
 
       // verify the price input
-      const {minaPrice, incentivizedOracle} = this.verifyMinaPriceInput(minaPriceInput);
+      const { minaPrice, incentivizedOracle } =
+        this.verifyMinaPriceInput(minaPriceInput);
 
       // incentivize the oracle that provided the valid price
       this.incentivizeOracle(incentivizedOracle);
@@ -569,7 +583,10 @@ export function ZkUsdEngineContract(
      *          plus a bonus. The rest is sent to the vault owner.
      * @param   vaultAddress The address of the vault to liquidate
      */
-    @method async liquidate(vaultAddress: PublicKey, minaPriceInput: MinaPriceInput) {
+    @method async liquidate(
+      vaultAddress: PublicKey,
+      minaPriceInput: MinaPriceInput
+    ) {
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -585,7 +602,8 @@ export function ZkUsdEngineContract(
       const vaultOwner = vault.owner.getAndRequireEquals();
 
       // verify the price input
-      const {minaPrice, incentivizedOracle} = this.verifyMinaPriceInput(minaPriceInput);
+      const { minaPrice, incentivizedOracle } =
+        this.verifyMinaPriceInput(minaPriceInput);
 
       // incentivize the oracle that provided the valid price
       this.incentivizeOracle(incentivizedOracle);
@@ -698,7 +716,7 @@ export function ZkUsdEngineContract(
       });
     }
 
-    async getOracleFee(){
+    async getOracleFee() {
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
@@ -727,8 +745,6 @@ export function ZkUsdEngineContract(
         newFee: fee,
       });
     }
-
-
 
     /**
      * @notice  Updates the admin public key

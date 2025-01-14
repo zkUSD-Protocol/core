@@ -6,17 +6,10 @@ import {
 import { ZkUsdVault } from './contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys } from './config/keys.js';
-import {
-  AccountUpdate,
-  Bool,
-  fetchAccount,
-  UInt32,
-  UInt64,
-  UInt8,
-} from 'o1js';
+import { AccountUpdate, Bool, fetchAccount, UInt32, UInt64, UInt8 } from 'o1js';
 import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
-import { ProveMinaPriceProgram } from './proofs/mina-price-proof.js';
+import { AggregateOraclePrices } from './proofs/oracle-price-aggregation.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -34,15 +27,13 @@ export async function deploy(
 
   const networkKeys = getNetworkKeys(chainId);
 
-  const minaPriceProofProgramVk = await ProveMinaPriceProgram.compile();
+  const minaPriceProofProgramVk = await AggregateOraclePrices.compile();
 
-  const ZkUsdEngine = ZkUsdEngineContract(
-    {
-      oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
-      zkUsdTokenAddress: networkKeys.token.publicKey,
-      minaPriceInputZkProgramVkHash: minaPriceProofProgramVk.verificationKey.hash,
-    }
-  );
+  const ZkUsdEngine = ZkUsdEngineContract({
+    oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
+    zkUsdTokenAddress: networkKeys.token.publicKey,
+    minaPriceInputZkProgramVkHash: minaPriceProofProgramVk.verificationKey.hash,
+  });
   const FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
   const token = {
@@ -91,7 +82,6 @@ export async function deploy(
 
   //Think about what we are doing here
   const engineDeployProps: ZkUsdEngineDeployProps = {
-    initialPrice: UInt64.from(1e9),
     admin: networkKeys.protocolAdmin.publicKey,
     oracleFlatFee: UInt64.from(1e9),
     emergencyStop: Bool(false),
@@ -140,23 +130,26 @@ export async function deploy(
   console.log('Initializing Engine contract');
 
   try {
-    const engineAccount = (
-      await fetchAccount({ publicKey: networkKeys.engine.publicKey })
+    const engineTokenAccount = (
+      await fetchAccount({
+        publicKey: networkKeys.engine.publicKey,
+        tokenId: engine.contract.deriveTokenId(),
+      })
     ).account;
-    if (!engineAccount) throw new Error('Engine contract not found');
+    if (!engineTokenAccount) throw new Error('Engine contract not found');
     console.log('Engine contract already deployed');
   } catch {
     await transaction(
       deployer,
       async () => {
-        AccountUpdate.fundNewAccount(deployer.publicKey, 4);
+        AccountUpdate.fundNewAccount(deployer.publicKey, 1);
         await engine.contract.initialize();
       },
       {
         extraSigners: [
           networkKeys.protocolAdmin.privateKey,
           networkKeys.engine.privateKey,
-          networkKeys.oracleFundsTracker.privateKey,
+          // networkKeys.oracleFundsTracker.privateKey,
         ],
         fee,
       }

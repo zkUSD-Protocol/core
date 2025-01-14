@@ -1,12 +1,33 @@
-import { AccountUpdate, Bool, Field, PrivateKey, PublicKey, UInt64 } from "o1js";
-import { ZkUsdVault } from "../contracts/zkusd-vault.js";
-import { ZkUsdEngineContract } from "../contracts/zkusd-engine.js";
-import { ContractInstance, KeyPair, OracleWhitelist } from "../types.js";
-import { FungibleTokenContract } from "@minatokens/token";
-import { MinaChain} from "../mina.js";
-import { NetworkKeyPairs, getNetworkKeys } from "../config/keys.js";
-import { transaction } from "../utils/transaction.js";
-import { deploy } from "../deploy.js";
+import {
+  AccountUpdate,
+  Bool,
+  Field,
+  Mina,
+  PrivateKey,
+  PublicKey,
+  Sign,
+  Signature,
+  UInt64,
+} from 'o1js';
+import { ZkUsdVault } from '../contracts/zkusd-vault.js';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
+import {
+  ContractInstance,
+  KeyPair,
+  OraclePriceSubmissions,
+  OracleWhitelist,
+  PriceSubmission,
+} from '../types.js';
+import { FungibleTokenContract } from '@minatokens/token';
+import { MinaChain } from '../mina.js';
+import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
+import { transaction } from '../utils/transaction.js';
+import { deploy } from '../deploy.js';
+import Client from 'mina-signer';
+
+const client = new Client({
+  network: 'testnet',
+});
 
 export class TestAmounts {
   //ZERO
@@ -68,9 +89,7 @@ export class TestHelper {
 
   vaultVerificationKeyHash?: Field;
   whitelist: OracleWhitelist = new OracleWhitelist({
-    addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(
-      PublicKey.empty()
-    ),
+    addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(PublicKey.empty()),
   });
 
   whitelistedOracles: Map<string, number> = new Map();
@@ -83,7 +102,10 @@ export class TestHelper {
     return PrivateKey.randomKeypair();
   }
 
-  async initLocalChain(opts?: { proofsEnabled?: boolean | undefined; enforceTransactionLimits?: boolean | undefined; }) {
+  async initLocalChain(opts?: {
+    proofsEnabled?: boolean | undefined;
+    enforceTransactionLimits?: boolean | undefined;
+  }) {
     await this.chain.initLocal(opts);
     this.deployer = await this.chain.newAccount();
   }
@@ -93,47 +115,30 @@ export class TestHelper {
     this.deployer = await this.chain.newAccount();
   }
 
-
   async deployTokenContracts() {
     const deployedContracts = await deploy(this.chain, this.deployer);
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
 
-    for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
-      const oracleName = 'oracle' + (i + 1);
-      this.oracles[oracleName] = PrivateKey.randomKeypair();
-      this.whitelist.addresses[i] = this.oracles[oracleName].publicKey;
-      this.whitelistedOracles.set(oracleName, i);
-    }
-
-    await transaction(this.deployer, async () => {
-      AccountUpdate.fundNewAccount(this.deployer.publicKey, 8);
-      const au = AccountUpdate.createSigned(this.deployer.publicKey);
-      for (const [_name, oracle] of Object.entries(this.oracles)) {
-        au.send({
-          to: oracle.publicKey,
-          amount: TestAmounts.COLLATERAL_50_MINA,
-        });
+    if (this.chain.network().chainId === 'local') {
+      for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
+        const oracleName = 'oracle' + (i + 1);
+        this.oracles[oracleName] = PrivateKey.randomKeypair();
+        this.whitelist.addresses[i] = this.oracles[oracleName].publicKey;
+        this.whitelistedOracles.set(oracleName, i);
       }
-    });
 
-    await transaction(
-      this.deployer,
-      async () => {
-        await this.engine.contract.updateOracleWhitelist(this.whitelist);
-      },
-      {
-        extraSigners: [this.networkKeys.protocolAdmin.privateKey],
-      }
-    );
-
-    //Transfer Mina to the price feed oracle to pay the oracle fee
-    await transaction(this.deployer, async () => {
-      await this.engine.contract.depositOracleFunds(
-        TestAmounts.COLLATERAL_100_MINA
+      await transaction(
+        this.deployer,
+        async () => {
+          await this.engine.contract.updateOracleWhitelist(this.whitelist);
+        },
+        {
+          extraSigners: [this.networkKeys.protocolAdmin.privateKey],
+        }
       );
-    });
+    }
   }
 
   async createAgents(names: string[]) {
@@ -199,4 +204,50 @@ export class TestHelper {
     );
   }
 
+  async getPriceSubmissions() {
+    const price = UInt64.from(1e9);
+    const fallbackPrice = UInt64.from(0.5e9);
+    const blockHeight = Mina.getNetworkState().blockchainLength;
+
+    const oraclePriceSubmissions: OraclePriceSubmissions = {
+      submissions: [],
+    };
+
+    for (let i = 0; i < this.whitelist.addresses.length; i++) {
+      const oracleName = 'oracle' + (i + 1);
+      const oraclePrivateKey = this.oracles[oracleName].privateKey;
+      const oraclePublicKey = oraclePrivateKey.toPublicKey();
+
+      const signature = client.signFields(
+        [price.toBigInt(), blockHeight.toBigint()],
+        oraclePrivateKey.toBase58()
+      );
+
+      //build the price submission
+      const priceSubmission = new PriceSubmission({
+        publicKey: oraclePublicKey,
+        signature: Signature.fromBase58(signature.signature),
+        price: price,
+        blockHeight: blockHeight,
+      });
+
+      oraclePriceSubmissions.submissions.push(priceSubmission);
+    }
+
+    const fallbackPriceSubmissionSignature = client.signFields(
+      [price.toBigInt(), blockHeight.toBigint()],
+      this.networkKeys.protocolAdmin.privateKey.toBase58()
+    );
+
+    const fallbackPriceSubmission = new PriceSubmission({
+      publicKey: this.networkKeys.protocolAdmin.publicKey,
+      signature: Signature.fromBase58(
+        fallbackPriceSubmissionSignature.signature
+      ),
+      price: fallbackPrice,
+      blockHeight: blockHeight,
+    });
+
+    return { oraclePriceSubmissions, fallbackPriceSubmission };
+  }
 }
