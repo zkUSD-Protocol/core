@@ -9,7 +9,7 @@ interface TransactionContextProps {
   prepareTransaction: (
     callback: () => Promise<void>,
     memo: string
-  ) => Promise<{ tx: Mina.Transaction<false, false>; fee: UInt64 }>;
+  ) => Promise<Mina.Transaction<false, false>>;
   serializeTransaction: (tx: Mina.Transaction<false, false>) => string;
 }
 
@@ -36,13 +36,10 @@ export const TransactionProvider = ({
       throw new Error("Mina not found");
     }
 
-    const calculatedFee = await fee();
-    console.log("Calculated fee", calculatedFee);
-
     const tx = await Mina.transaction(
       {
         sender: account,
-        fee: calculatedFee ?? 1e8,
+        fee: await fee(),
         memo,
       },
       async () => {
@@ -50,11 +47,7 @@ export const TransactionProvider = ({
       }
     );
 
-    console.log("fee", tx.transaction.feePayer.body.fee);
-
-    console.log("Transaction prepared", tx);
-
-    return { tx, fee: calculatedFee };
+    return tx;
   };
 
   const serializeTransaction = (tx: Mina.Transaction<false, false>) => {

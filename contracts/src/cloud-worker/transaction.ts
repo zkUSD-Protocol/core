@@ -11,7 +11,6 @@ export function transactionParams(
 } {
   const { sender, nonce, tx } = JSON.parse(serializedTransaction);
   const transaction = Mina.Transaction.fromJSON(JSON.parse(tx));
-  console.log('transaction', transaction);
   const memo = transaction.transaction.memo;
   return {
     fee: UInt64.from(signedJson.zkappCommand.feePayer.body.fee),
@@ -26,10 +25,8 @@ export function deserializeTransaction(
   txNew: Mina.Transaction<false, false>,
   signedJson: any
 ) {
-  //console.log("new transaction", txNew);
   const { tx, blindingValues, length } = JSON.parse(serializedTransaction);
   const transaction = Mina.Transaction.fromJSON(JSON.parse(tx));
-  //console.log("transaction", transaction);
   if (length !== txNew.transaction.accountUpdates.length) {
     throw new Error('New Transaction length mismatch');
   }

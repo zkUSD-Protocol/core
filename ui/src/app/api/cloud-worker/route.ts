@@ -17,8 +17,6 @@ export async function POST(req: NextRequest) {
   try {
     const body: CloudWorkerRequest = await req.json();
 
-    console.log("body", body);
-
     const result = await api.execute({
       developer: "zkusd", // replace with your developer name
       repo: "zkusd", // replace with your repo name

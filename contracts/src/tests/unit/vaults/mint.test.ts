@@ -13,7 +13,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    await testHelper.initLocalChain({ proofsEnabled: true });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob']);
 

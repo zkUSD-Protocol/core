@@ -5,6 +5,8 @@ import { CloudWorkerProvider } from "./cloud-worker";
 import { VaultProvider } from "./vault";
 import { AccountProvider } from "./account";
 import { TransactionProvider } from "./transaction";
+import { VaultManagerProvider } from "./vault-manager";
+import { ContractsProvider } from "./contracts";
 
 interface ProviderProps {
   children: React.ReactNode;
@@ -16,13 +18,17 @@ const queryClient = new QueryClient();
 export function Providers({ children, initialState }: ProviderProps) {
   return (
     <QueryClientProvider client={queryClient}>
-      <CloudWorkerProvider>
-        <AccountProvider>
-          <TransactionProvider>
-            <VaultProvider>{children}</VaultProvider>
-          </TransactionProvider>
-        </AccountProvider>
-      </CloudWorkerProvider>
+      <ContractsProvider>
+        <CloudWorkerProvider>
+          <AccountProvider>
+            <TransactionProvider>
+              <VaultProvider>
+                <VaultManagerProvider>{children}</VaultManagerProvider>
+              </VaultProvider>
+            </TransactionProvider>
+          </AccountProvider>
+        </CloudWorkerProvider>
+      </ContractsProvider>
     </QueryClientProvider>
   );
 }

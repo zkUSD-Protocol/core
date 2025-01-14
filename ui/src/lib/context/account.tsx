@@ -2,6 +2,7 @@
 
 import { PublicKey } from "o1js";
 import { createContext, useContext, useEffect, useState } from "react";
+import { formatDisplayAccount } from "@/lib/utils";
 
 interface AccountContextProps {
   account: PublicKey | null;
@@ -19,9 +20,6 @@ export const AccountProvider = ({
   children: React.ReactNode;
 }) => {
   const [account, setAccount] = useState<PublicKey | null>(null);
-
-  const formatDisplayAccount = (account: string) =>
-    `${account.slice(0, 6)}...${account.slice(-4)}`;
 
   const connect = async () => {
     try {

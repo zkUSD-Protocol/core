@@ -1,43 +1,38 @@
 "use client";
-import Head from "next/head.js";
-import Image from "next/image.js";
 
-import heroMinaLogo from "../../public/assets/hero-mina-logo.svg";
-import arrowRightSmall from "../../public/assets/arrow-right-small.svg";
-import { cache, useEffect } from "react";
-import { useCloudWorker } from "@/lib/context/cloud-worker";
-import { useVault } from "@/lib/context/vault";
-import { PrivateKey, PublicKey } from "o1js";
-import { useAccount } from "@/lib/context/account";
+import React from "react";
+import { useVaultManager } from "@/lib/context/vault-manager";
+import { VaultCard } from "@/lib/components";
 
-export default function Home() {
-  const { executeTransaction } = useCloudWorker();
-  const { createVault } = useVault();
-  const { account, displayAccount, isConnected } = useAccount();
+export default function VaultsPage() {
+  const { vaultAddresses, createNewVault } = useVaultManager();
 
   const handleCreateVault = async () => {
-    const vaultPrivateKey = PrivateKey.random();
-    const vaultAddress = vaultPrivateKey.toPublicKey();
-
-    console.log("Creating vault with address", vaultAddress);
-
-    const tx = await createVault(vaultPrivateKey);
-    console.log(tx);
+    try {
+      await createNewVault();
+    } catch (err) {
+      console.error("Error creating vault:", err);
+    }
   };
 
-  useEffect(() => {
-    handleCreateVault();
-  }, []);
-
   return (
-    <>
-      <Head>
-        <title>Mina zkApp UI</title>
-        <meta name="description" content="built with o1js" />
-        <link rel="icon" href="/assets/favicon.ico" />
-      </Head>
+    <div className="p-8 bg-gray-100 min-h-screen">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6">My Vaults</h1>
 
-      <main>hello</main>
-    </>
+        <button
+          onClick={handleCreateVault}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 transition"
+        >
+          Create New Vault
+        </button>
+
+        <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {vaultAddresses.map((vaultAddr) => (
+            <VaultCard key={vaultAddr} vaultAddr={vaultAddr} />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

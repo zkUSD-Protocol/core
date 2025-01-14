@@ -5,7 +5,8 @@ import {
   CloudWorkerRequest,
   CloudWorkerResponse,
 } from "@/lib/types/cloud-worker";
-import { blockchain, initBlockchain } from "zkcloudworker";
+import { blockchain, fetchMinaAccount, initBlockchain } from "zkcloudworker";
+import { PublicKey } from "o1js";
 
 interface CloudWorkerContextProps {
   executeTransaction: (

@@ -1,4 +1,9 @@
-export type CloudWorkerTask = "compile" | "send" | "sendVaultTx";
+export type CloudWorkerTask =
+  | "createVault"
+  | "depositCollateral"
+  | "withdrawCollateral"
+  | "mintZkUsd"
+  | "liquidate";
 
 export interface CloudWorkerRequest {
   task: CloudWorkerTask;

@@ -174,18 +174,6 @@ export function ZkUsdEngineContract(
       //Ensure admin key
       await this.ensureAdminSignature();
 
-      const FungibleToken = ZkUsdEngine.FungibleToken;
-
-      Provable.log(
-        'Fungible Token verification key hash',
-        FungibleToken._verificationKey?.hash
-      );
-
-      Provable.log(
-        'ZkUsdEngine verificationKey',
-        ZkUsdEngine._verificationKey?.hash
-      );
-
       //Set the permissions to track the collateral deposits on the engine
       let au = AccountUpdate.createSigned(this.address, this.deriveTokenId());
       au.account.isNew.getAndRequireEquals().assertTrue();
