@@ -1,212 +1,334 @@
-import { Field, PrivateKey, PublicKey, TransactionPromise, UInt32, UInt64 } from "o1js";
-import { KeyPair } from "../types";
-import { FeePayerSpec, PendingTransaction, RejectedTransaction, Transaction } from "o1js/dist/node/lib/mina/mina";
+import {
+  Field,
+  PrivateKey,
+  PublicKey,
+  TransactionPromise,
+  UInt32,
+  UInt64,
+} from 'o1js';
+import { KeyPair } from '../types';
+import {
+  FeePayerSpec,
+  IncludedTransaction,
+  PendingTransaction,
+  RejectedTransaction,
+  Transaction,
+} from 'o1js/dist/node/lib/mina/mina';
+import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
+import { TrackedPromise } from '../utils/tracked-promise';
 
-
-interface TxApiProvider {
-    transaction(sender: FeePayerSpec, f: () => Promise<void>): TransactionPromise<false, false>;
-    getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32>;
+/**
+ * Provides an interface for creating and fetching transaction-related data.
+ */
+export interface TxApiProvider {
+  transaction(sender: FeePayerSpec, f: () => Promise<void>): TransactionPromise<false, false>;
+  getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32>;
 }
 
-type DefaultTransactionOptions = {
-  printTx: boolean
+/**
+ * Default configuration options for constructing transactions.
+ */
+export interface DefaultTransactionOptions {
+  printTx: boolean;
   extraSigners: PrivateKey[];
   startingFee: UInt64;
-  feeFetcher: (args: { tx: Transaction<true, false>, failedFee: UInt64 }) => Promise<UInt64>;
+  feeFetcher: (args: { tx: Transaction<true, false>; failedFee: UInt64 }) => Promise<UInt64>;
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeout: number;
 }
-type TransactionOptions = Partial<DefaultTransactionOptions>;
 
+/**
+ * Transaction options that allow partial overrides of the default configuration.
+ */
+export type TransactionOptions = Partial<DefaultTransactionOptions>;
 
-const defaultOptions: DefaultTransactionOptions = {
+/**
+ * Default transaction options with reasonable initial values.
+ */
+export const defaultOptions: DefaultTransactionOptions = {
   printTx: false,
   extraSigners: [],
   startingFee: new UInt64(0.01e9),
-  feeFetcher: async ({failedFee}) => {
+  feeFetcher: async ({ failedFee }) => {
     return failedFee.add(new UInt64(0.01e9));
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 30000
-}
+  dependencyStatusPollTimeout: 30000,
+};
 
+/**
+ * Describes a transaction request, including the sender, the main execution callback,
+ * and any additional configuration options or dependencies.
+ */
 export type TransactionRequest = {
   name?: string;
-  sender: KeyPair; // TODO: future: avoid passing the private key
+  /**
+   * TODO: future: avoid passing the private key
+   */
+  sender: KeyPair;
   callback: () => Promise<void>;
   options: TransactionOptions;
+  /**
+   * Transactions that must be included before this one can proceed.
+   */
   waitForIncluded: string[];
   callSite: string;
-}
+};
 
-interface TransactionHandle {
+/**
+ * Represents a minimal handle for accessing transaction metadata.
+ */
+export interface TransactionHandle {
   readonly txId: string;
   readonly txStatus: TransactionStatus;
   readonly nonce: UInt32 | undefined;
   readonly sender: PublicKey;
 }
 
+/**
+ * Type guard: Checks whether a transaction is rejected.
+ */
+export function isRejectedTransaction(
+  tx: PendingTransaction | IncludedTransaction | RejectedTransaction
+): tx is RejectedTransaction {
+  return tx.status === 'rejected';
+}
+
+/**
+ * Indicates that a transaction is waiting for other transactions to be included first.
+ */
 export type AwaitingForOtherTx = {
-  kind: "AwaitingForOtherTx";
+  kind: 'AwaitingForOtherTx';
   txs: string[];
-}
+};
 
+/**
+ * Indicates that a transaction is being retried with a higher fee.
+ */
 export type RetryingWithHigherFee = {
-  kind: "RetryingWithHigherFee";
+  kind: 'RetryingWithHigherFee';
   failureCount: number;
-}
+};
 
+/**
+ * Indicates that a transaction is scheduled for cancellation.
+ */
 export type ScheduledForCancellation = {
-  kind: "ScheduledForCancellation";
+  kind: 'ScheduledForCancellation';
   cancellationTx: string;
-}
+};
 
+/**
+ * Indicates that a transaction failed because a dependency was rejected or dropped.
+ */
 export type DependencyRejectedFailedOrDropped = {
-  kind: "DependencyRejectedFailedOrDropped";
+  kind: 'DependencyRejectedFailedOrDropped';
   depId: string;
   depStatus: TransactionStatus;
-}
+};
 
-type ProcessingTxStatus
-  = "Scheduled"
+/**
+ * Processing states for a transaction that is still in progress.
+ */
+type ProcessingTxStatus =
+  | 'Scheduled'
   | AwaitingForOtherTx
-  | "Pending"
+  | 'Pending'
   | ScheduledForCancellation
-  | RetryingWithHigherFee
+  | RetryingWithHigherFee;
 
-type FailedTxStatus
-  = "Rejected"
-  | "Cancelled"
-  | "DroppedFromMempool"
+/**
+ * Failure states for a transaction that cannot progress further.
+ */
+type FailedTxStatus =
+  | 'Rejected'
+  | 'FailedToProve'
+  | 'Cancelled'
+  | 'DroppedFromMempool'
+  | 'StuckInMempool' // Timed out while waiting; treated as failed
   | DependencyRejectedFailedOrDropped;
 
-export type TransactionStatus
-  = ProcessingTxStatus
-  | FailedTxStatus
-  | "StuckInMempool"  // when timed out on waiting: may be problematic, should it be treated as failed?
-  | "Included";
+/**
+ * Represents all possible states of a transaction.
+ */
+export type TransactionStatus = ProcessingTxStatus | FailedTxStatus | 'Included';
 
-function statusShouldBeWaitedFor(status: TransactionStatus): boolean {
-  const ss = ["Scheduled", "Pending", "StuckInMempool", "AwaitingForOtherTx", "ScheduledForCancellation", "RetryingWithHigherFee"];
-  if (typeof status === "object" && status !== null) {
-    return ss.includes(status.kind);
+/**
+ * Checks whether a transaction status indicates that it should still be awaited (i.e., it's in progress).
+ */
+export function statusShouldBeWaitedFor(status: TransactionStatus): status is ProcessingTxStatus {
+  const inProgressStates = [
+    'Scheduled',
+    'Pending',
+    'AwaitingForOtherTx',
+    'ScheduledForCancellation',
+    'RetryingWithHigherFee',
+  ];
+
+  if (typeof status === 'object' && status !== null) {
+    return inProgressStates.includes(status.kind);
   }
-  return ss.includes(status);
+  return inProgressStates.includes(status);
 }
 
-function statusIsFailed(status: TransactionStatus): status is FailedTxStatus {
-  if (typeof status === "string") {
-    // Check if the status is one of the string literals in FailedTxStatus
-    return ["Rejected", "Cancelled", "DroppedFromMempool"].includes(status);
-  }
+/**
+ * Checks whether a transaction status indicates that it has failed.
+ */
+export function statusIsFailed(status: TransactionStatus): status is FailedTxStatus {
+  const failureStates = [
+    'Rejected',
+    'FailedToProve',
+    'Cancelled',
+    'DroppedFromMempool',
+    'DependencyRejectedFailedOrDropped',
+  ];
 
-  // Check if the status is one of the objects in FailedTxStatus
-  if (typeof status === "object" && status !== null) {
-    return status.kind === "DependencyRejectedFailedOrDropped";
+  if (typeof status === 'object' && status !== null) {
+    return failureStates.includes(status.kind);
   }
-
-  return false;
+  return failureStates.includes(status);
 }
 
+/**
+ * Checks whether a transaction status is final (either included or failed).
+ */
+export function statusIsFinal(status: TransactionStatus): status is 'Included' | FailedTxStatus {
+  return !statusShouldBeWaitedFor(status);
+}
 
-class TransactionInternal {
+/**
+ * A proven transaction disallows direct `send` or `sign` to avoid accidental usage.
+ */
+export type ProvenTransaction = Omit<Transaction<true, false>, 'send' | 'sign'>;
+
+/**
+ * Internal representation of a transaction, holding its request, status, and associated promises.
+ */
+export class TransactionInternal {
   private _request?: TransactionRequest;
-  private _callSiteNonce: number;
-  private _dependentTxs: {txId: string, statusCallback: (status: TransactionStatus) => void}[] = [];
-  private _status: TransactionStatus = "Scheduled";
-  private _pendingTransaction?: PendingTransaction | RejectedTransaction;
+  private _callSiteNonce = 0;
+  private _dependentTxIds: string[] = [];
 
+  public status: TransactionStatus = 'Scheduled';
 
-  private constructor() {}
+  private _sendingPromise?: TrackedPromise<PendingTransaction | RejectedTransaction>;
+  private _waitingPromise?: TrackedPromise<IncludedTransaction | RejectedTransaction>;
+  private _provingPromise?: TrackedPromise<ProvenTransaction>;
+  // private _sendingPromiseMaker?: (fee: UInt64) => TrackedPromise<PendingTransaction | RejectedTransaction>;
 
+  /**
+   * Retrieves the most up-to-date transaction state from whichever promise has been fulfilled.
+   */
+  public get transactionState():
+    | ProvenTransaction
+    | PendingTransaction
+    | RejectedTransaction
+    | IncludedTransaction
+    | undefined {
+    if (this._waitingPromise?.state === 'fulfilled') {
+      return this._waitingPromise.result;
+    }
+    if (this._sendingPromise?.state === 'fulfilled') {
+      return this._sendingPromise.result;
+    }
+    if (this._provingPromise?.state === 'fulfilled') {
+      return this._provingPromise.result;
+    }
+    return undefined;
+  }
+
+  /**
+   * Returns the transaction hash if available.
+   */
+  public get hash(): string | undefined {
+    return this.transactionState && 'hash' in this.transactionState
+      ? this.transactionState.hash
+      : undefined;
+  }
+
+  /**
+   * Constructs an internal transaction from a TransactionRequest.
+   */
+  public static fromRequest(
+    request: TransactionRequest,
+    callSiteNonce = 0
+  ): TransactionInternal {
+    const tx = new TransactionInternal();
+    tx._request = request;
+    tx._callSiteNonce = callSiteNonce;
+    tx._dependentTxIds = request.waitForIncluded;
+    return tx;
+  }
+
+  /**
+   * Accessor for the sender public key.
+   */
   public get sender(): PublicKey {
     if (!this.request) {
-      throw new Error("TODO - implement sender for non-request transactions");
+      throw new Error('TODO - implement sender for non-request transactions');
     }
     return this.request.sender.publicKey;
   }
 
-  public get nonce() : UInt32 | undefined {
-    return this._pendingTransaction?.transaction.feePayer.body.nonce;
+  /**
+   * Attempts to extract the current nonce from the transaction state.
+   */
+  public get nonce(): UInt32 | undefined {
+    const state = this.transactionState;
+    if (state && 'transaction' in state) {
+      const zkappCommand = state.transaction as ZkappCommand;
+      return zkappCommand.feePayer.body.nonce;
+    }
+    return undefined;
   }
 
+  /**
+   * Returns the associated TransactionRequest, if any.
+   */
   public get request(): TransactionRequest | undefined {
     return this._request;
   }
 
+  /**
+   * Generates a textual ID for the transaction, either from its name or the call site.
+   */
   public getId(): string {
     if (this.request?.name) {
       return this.request.name;
     }
-    else if (this.request) {
-      const postfix = this._callSiteNonce ? `_${this._callSiteNonce}` : "";
+    if (this.request) {
+      const postfix = this._callSiteNonce ? `_${this._callSiteNonce}` : '';
       return this.request.callSite + postfix;
     }
-    throw new Error("TODO - implement getId() for non-request transactions");
-  }
-
-  public static fromRequest(request: TransactionRequest, callSiteNonce: number = 0): TransactionInternal {
-    const tx = new TransactionInternal();
-    tx._request = request;
-    tx._callSiteNonce = callSiteNonce;
-    return tx;
-  }
-
-  public bumpNonce(): void {
-    this._callSiteNonce++;
-  }
-
-  public addDependentTxs(txs: {txId: string, statusCallback: (status: TransactionStatus) => void}[]): void {
-    this._dependentTxs.push(...txs);
-  }
-
-
-  public get status(): TransactionStatus {
-    return this._status;
-  }
-
-  public set status(status: TransactionStatus) {
-    this._status = status;
-    this.onStatusChange()
-  }
-
-  private onStatusChange(): void {
-    // update dependent transactions
-    this._dependentTxs.forEach(({ statusCallback }) => {
-      statusCallback(this.status);
-    });
+    throw new Error('TODO - implement getId() for non-request transactions');
   }
 
   /**
-   * Waits for a transaction status change until a specified condition is met or a timeout is reached.
-   *
-   * This method polls the `status` property at regular intervals and evaluates the provided `stopWaiting`
-   * function on the current status. If the condition defined by `stopWaiting` returns `true`, the method
-   * resolves with the current status. If the timeout is reached before the condition is met, an error is thrown.
-   *
-   * @param stopWaiting - A callback function that evaluates the current status. The polling stops
-   *                      when this function returns `true`.
-   * @param statusPollInterval - The interval, in milliseconds, between each polling attempt.
-   *                             Default is 2000ms (2 seconds).
-   * @param timeout - The maximum duration, in milliseconds, to wait for the condition to be met.
-   *                  If the timeout is reached, the method throws an error. Default is 30000ms (30 seconds).
-   * @returns A promise that resolves with the current status when the condition defined by `stopWaiting` is met.
-   * @throws An error if the timeout is reached before the condition is satisfied.
-   *
-   * @example
-   * // Example usage:
-   * try {
-   *   const finalStatus = await transaction.awaitStatusChange(
-   *     (status) => status === "included", // Stop waiting when status is "accepted"
-   *     2000,                             // Poll every 2 seconds
-   *     10000                             // Timeout after 10 seconds
-   *   );
-   *   console.log("Transaction status changed to:", finalStatus);
-   * } catch (error) {
-   *   console.error("Timeout or error while waiting for status change:", error.message);
-   * }
+   * Returns an array of transaction dependency IDs, if any.
+   */
+  public get dependencies(): { txId: string }[] {
+    return this._dependentTxIds.map((txId) => ({ txId }));
+  }
+
+  /**
+   * Installs the promises for proving, sending, and waiting on this transaction.
+   */
+  public installPromises(args: {
+    provingPromise: TrackedPromise<Transaction<true, false>>;
+    waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction>;
+    sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction>;
+    mkSendingPromise: (fee: UInt64) => TrackedPromise<PendingTransaction | RejectedTransaction>;
+  }): void {
+    this._waitingPromise = args.waitingPromise;
+    this._sendingPromise = args.sendingPromise;
+    this._provingPromise = args.provingPromise;
+    // this._sendingPromiseMaker = args.mkSendingPromise;
+  }
+
+  /**
+   * Polls the `status` property at regular intervals until `stopWaiting(status)` is true or a timeout is reached.
    */
   public async awaitStatusChange(
     stopWaiting: (status: TransactionStatus) => boolean,
@@ -218,83 +340,78 @@ class TransactionInternal {
 
     while (!stopWaiting(currentStatus)) {
       if (Date.now() - startTime >= timeout) {
-        throw new Error("Timeout reached while waiting for status change.");
+        throw new Error('Timeout reached while waiting for status change.');
       }
-
-      await new Promise((resolve) => setTimeout(resolve, statusPollInterval)); // Wait for the poll interval
+      await new Promise((resolve) => setTimeout(resolve, statusPollInterval));
       currentStatus = this.status;
-      console.log("Polled status:", currentStatus);
+      console.log('Polled status:', currentStatus);
     }
 
     return currentStatus;
   }
 
-
-
-
-
-
-  public dependencyStatusChanged(depId: string, status: TransactionStatus): void {
-    console.log(`Transaction ${this.getId()} received status change for dependency ${depId}: ${status}`);
-    this.checkDependencies();
-  }
-
-  public checkDependencies(): void {
-    // if 
-
-
-    // if all dependencies are included, send the transaction
-  }
-
-  private sendTransaction(): void {
-
-  }
-
-
+  /**
+   * Provides a minimal handle to monitor transaction state.
+   */
   public get handle(): TransactionHandle {
-    const tx = this;
+    const self = this;
     return {
       get txId() {
-        return tx.getId();
+        return self.getId();
       },
-
-      get txStatus() : TransactionStatus {
-        return tx.status;
+      get txStatus(): TransactionStatus {
+        return self.status;
       },
-
-      get nonce() : UInt32 {
-        return tx.nonce!;
+      get nonce(): UInt32 | undefined {
+        return self.nonce;
       },
-
-      get sender() : PublicKey {
-        return tx.sender;
-      }
-
-    }
+      get sender(): PublicKey {
+        return self.sender;
+      },
+    };
   }
 
-  public setPendingTransaction(pendingTransaction: PendingTransaction | RejectedTransaction): void {
-    this._pendingTransaction = pendingTransaction;
-    switch (pendingTransaction.status) {
-      case "pending": {
-        this.status = "Pending";
-        break;
-      }
-      case "rejected": {
-        this.status = "Rejected";
-        break;
-      }
-    }
-  }
+  // Private constructor to force usage of static methods
+  private constructor() {}
 }
 
 
+// the class is intended to be used as a per-chain singleton
+// also to be called from a single thread
+// the class is intended to be used as a per-chain singleton
+// also to be called from a single thread
 export class TransactionManager {
+  // New: Keep a WeakMap to store per-chain instances
+  private static _instances = new WeakMap<TxApiProvider, TransactionManager>();
+
+  /**
+   * Retrieve an existing TransactionManager for the given TxApiProvider,
+   * or create a new one if none exists.
+   */
+  public static getInstance(chain: TxApiProvider): TransactionManager {
+    let instance = TransactionManager._instances.get(chain);
+    if (!instance) {
+      instance = new TransactionManager(chain);
+      TransactionManager._instances.set(chain, instance);
+    }
+    return instance;
+  }
+
   private chain: TxApiProvider;
 
   private transactions: Map<string, TransactionInternal> = new Map();
-  private callSiteNonces: Map<string, number> = new Map();
+  private _callSiteNonces: Map<string, number> = new Map();
 
+  // Make the constructor private so that it cannot be called directly
+  private constructor(chain: TxApiProvider) {
+    this.chain = chain;
+  }
+
+  private getCallSiteNonce(callSite: string): number {
+    const r = this._callSiteNonces.get(callSite) ?? 0;
+    this._callSiteNonces.set(callSite, r + 1);
+    return r;
+  }
 
   // this will create a new transaction
   // and schedule it for proving signing and sending
@@ -306,13 +423,14 @@ export class TransactionManager {
   // if the fee is too low, it will retry with higher fee
   // the transaction will be retried until it is included or failed
   // or timed out
+  // do not call concurrently
   async tx(
     sender: KeyPair, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
-  name?: string,
-  options?: TransactionOptions,
-  waitForIncluded?: string[]
-  ): Promise<TransactionHandle>{
+    name?: string,
+    options?: TransactionOptions,
+    waitForIncluded?: string[]
+  ): Promise<TransactionHandle> {
 
     //===
     // prepare and verify transaction request as scheduled by function user
@@ -325,13 +443,8 @@ export class TransactionManager {
       callSite: getCallSite(1)
     };
 
-    // name must be unique
-    if (request.name) {
-      throw new Error(`Transaction with name ${request.name} already exists`);
-    }
-
     // dependencies must be met
-    const deps: TransactionInternal[] = []
+    const deps: TransactionInternal[] = [];
     for (const depId of request.waitForIncluded) {
       const dep = this.transactions.get(depId);
       if (!dep) {
@@ -339,51 +452,60 @@ export class TransactionManager {
       }
       deps.push(dep);
     }
+
+    // name must be unique if it is provided
+    if (request.name) {
+      if (this.transactions.has(request.name)) {
+        throw new Error(`Transaction with name ${request.name} already exists`);
+      }
+    }
     //=== the request is assumed to be valid at this point
 
     //=== include the transaction in the manager
-    // (callSite + callSiteNonce) must be unique
-    let callSiteNonce = this.callSiteNonces.get(request.callSite) ?? 0;
     // -- create the tx and add it to the manager
-    const tx = TransactionInternal.fromRequest(request, callSiteNonce);
+    const tx = TransactionInternal.fromRequest(request, this.getCallSiteNonce(request.callSite));
     this.transactions.set(tx.getId(), tx);
     // --
-    // increment callSiteNonce - the tx was added
-    this.callSiteNonces.set(request.callSite, callSiteNonce + 1);
 
-    // install dependencies
-    for (const dep of deps) {
-      dep.addDependentTxs([{
-        txId: tx.getId(),
-        statusCallback: (status: TransactionStatus) => {
-          tx.dependencyStatusChanged(dep.getId(), status);
-        }
-      }]);
-    }
     //=== the transaction is included in the manager at this point
 
-    //=== prepare promises that will manager the transaction lifecycle
+    //=== prepare promises that will manage the transaction lifecycle
     const mgr = this;
+
     // schedule proving
-    const provingPromise = transactionBuildAndProve(mgr.chain, sender, callback, options);
+    const provingPromise = new TrackedPromise(async () => {
+      try {
+        return await transactionBuildAndProve(mgr.chain, sender, callback, options);
+      } catch (error) {
+        tx.status = "FailedToProve";
+        console.error("Error during proving:", error);
+        throw error;
+      }
+    });
 
     // schedule waiting for dependencies to be included
-    const depsAwaitingPromise = Promise.all(deps.map(async (dep) => {
-      const depStatus = await dep.awaitStatusChange(
-        status => status === "Included" || statusIsFailed(status),
-        options?.dependencyStatusPollInterval ?? defaultOptions.dependencyStatusPollInterval,
-        options?.dependencyStatusPollTimeout ?? defaultOptions.dependencyStatusPollTimeout);
-      if (depStatus !== "Included") {
-        throw new Error(`Transaction dependency ${dep.getId()} has failed status ${depStatus}`);
+    const depsAwaitingPromise = new TrackedPromise(async () => {
+      if (tx.dependencies.length !== 0) {
+        tx.status = { kind: "AwaitingForOtherTx", txs: tx.dependencies.map(dep => dep.txId) }
       }
-      return;
-    }));
+      await Promise.all(deps.map(async (dep) => {
+        const depStatus = await dep.awaitStatusChange(
+          status => status === "Included" || statusIsFailed(status),
+          options?.dependencyStatusPollInterval ?? defaultOptions.dependencyStatusPollInterval,
+          options?.dependencyStatusPollTimeout ?? defaultOptions.dependencyStatusPollTimeout
+        );
+        if (depStatus !== "Included") {
+          tx.status = { kind: "DependencyRejectedFailedOrDropped", depId: dep.getId(), depStatus };
+          throw new Error(`Transaction dependency ${dep.getId()} has failed status ${depStatus}`);
+        }
+        return;
+      }));
+      tx.status = "Scheduled";
+    });
 
     // make a function that will schedule getting nonce and sign
-    // because the nonce has higher chance of being wrong at this point
-    // so we delay it until the last moment
     const mkSigningPromise = function (fee: UInt64) {
-      return async (ptx: Transaction<true, false>) => {
+      return (ptx: Transaction<true, false>) => new TrackedPromise(async () => {
         const nonce = await mgr.chain.getAccountNonce(sender.publicKey);
         ptx.transaction.feePayer.body.nonce = nonce;
         ptx.transaction.feePayer.body.fee = fee;
@@ -391,12 +513,12 @@ export class TransactionManager {
         // TODO use signing service instead, do not pass private keys around
         const signers = options?.extraSigners ? [sender.privateKey, ...options.extraSigners] : [sender.privateKey];
         return ptx.sign(signers);
-      }
+      });
     };
 
     // create sending promise maker
     const mkSendingPromise = function (fee: UInt64) {
-      return async () => {
+      return new TrackedPromise(async () => {
         const results = await Promise.all([provingPromise, depsAwaitingPromise]);
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
@@ -412,23 +534,16 @@ export class TransactionManager {
             break;
           }
         }
-
-        tx.status = sentTx.status === "pending" ? "Pending" : "Rejected";
         return sentTx;
-      }
+      });
     }
     // schedule sending
-    const sendingPromise = mkSendingPromise(options?.startingFee ?? defaultOptions.startingFee);
+    const sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction> = mkSendingPromise(options?.startingFee ?? defaultOptions.startingFee);
 
     // schedule waiting for the transaction to be included
-    // the future logic is:
-    // when waiting times out, the graphql api is asked
-    // for the transaction status if it is still in the mempool
-    // then we retry with higher fee or leave it with the status
-    // of stuck in mempool
-    const waitingPromise = async () => {
-      const sentTx = await sendingPromise();
-      if (sentTx.status === "rejected") return;
+    const waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction> = new TrackedPromise(async () => {
+      const sentTx = await sendingPromise;
+      if (isRejectedTransaction(sentTx)) return sentTx;
       const awaitedTx = await sentTx.safeWait();
       if (awaitedTx.status === "included") {
         tx.status = "Included";
@@ -443,21 +558,26 @@ export class TransactionManager {
           tx.status = "Rejected";
         }
       }
-    }
+      return awaitedTx;
+    });
 
-    // TODO indstall promises in the tx
-    // TODO install timestamps in the tx
+    // TODO later install timestamps in the tx
 
+    tx.installPromises({
+      sendingPromise,
+      waitingPromise,
+      provingPromise,
+      mkSendingPromise
+    });
 
     return tx.handle;
   }
-
-
 }
+
 
 function getCallSite(depth: number): string {
   let ret = "unknown_call_site";
-  const callerLine = getCallerAtDepth(depth+1);
+  const callerLine = getCallerAtDepth(depth + 1);
   // Regex to extract function name, file path, line, and column
   const match = callerLine.match(/at (.+?) \((.+?):(\d+):(\d+)\)/) ||
     callerLine.match(/at (.+?):(\d+):(\d+)/);
