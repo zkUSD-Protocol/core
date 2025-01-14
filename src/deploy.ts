@@ -1,6 +1,4 @@
-import { MinaChainInstance  } from './mina.js';
-import { ZkUsdMasterOracle } from './contracts/zkusd-master-oracle.js';
-import { ZkUsdPriceTracker } from './contracts/zkusd-price-tracker.js';
+import { MinaChainInstance } from './mina.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
@@ -18,11 +16,11 @@ import {
 } from 'o1js';
 import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
+import { ProveMinaPriceProgram } from './proofs/mina-price-proof.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  masterOracle: ContractInstance<ZkUsdMasterOracle>;
 }
 
 export async function deploy(
@@ -36,11 +34,14 @@ export async function deploy(
 
   const networkKeys = getNetworkKeys(chainId);
 
+  const minaPriceProofProgramVk = await ProveMinaPriceProgram.compile();
+
   const ZkUsdEngine = ZkUsdEngineContract(
-    networkKeys.token.publicKey,
-    networkKeys.masterOracle.publicKey,
-    networkKeys.evenOraclePriceTracker.publicKey,
-    networkKeys.oddOraclePriceTracker.publicKey
+    {
+      oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
+      zkUsdTokenAddress: networkKeys.token.publicKey,
+      minaPriceInputZkProgramVkHash: minaPriceProofProgramVk.verificationKey.hash,
+    }
   );
   const FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
@@ -52,21 +53,10 @@ export async function deploy(
     contract: new ZkUsdEngine(networkKeys.engine.publicKey),
   };
 
-  const masterOracle = {
-    contract: new ZkUsdMasterOracle(
-      networkKeys.masterOracle.publicKey,
-      engine.contract.deriveTokenId()
-    ),
-  };
-
   //We always need to compile these contracts
 
   const vaultVerification = await ZkUsdVault.compile();
   const vaultVerificationKeyHash = vaultVerification.verificationKey.hash;
-
-  await ZkUsdMasterOracle.compile();
-
-  await ZkUsdPriceTracker.compile();
 
   if (currentNetwork.proofsEnabled) {
     console.log('Compiling Engine contract');
@@ -74,7 +64,6 @@ export async function deploy(
     console.log('Compiling Token contract');
     await FungibleToken.compile();
   }
-
 
   //Check whether we have the protocol admin account created
 
@@ -139,7 +128,7 @@ export async function deploy(
           networkKeys.token.privateKey,
           networkKeys.engine.privateKey,
           networkKeys.protocolAdmin.privateKey,
-          networkKeys.evenOraclePriceTracker.privateKey,
+          networkKeys.oracleFundsTracker.privateKey,
         ],
         fee,
       }
@@ -167,9 +156,7 @@ export async function deploy(
         extraSigners: [
           networkKeys.protocolAdmin.privateKey,
           networkKeys.engine.privateKey,
-          networkKeys.masterOracle.privateKey,
-          networkKeys.evenOraclePriceTracker.privateKey,
-          networkKeys.oddOraclePriceTracker.privateKey,
+          networkKeys.oracleFundsTracker.privateKey,
         ],
         fee,
       }
@@ -179,6 +166,5 @@ export async function deploy(
   return {
     token,
     engine,
-    masterOracle,
   };
 }

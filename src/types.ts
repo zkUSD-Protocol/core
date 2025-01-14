@@ -133,6 +133,12 @@ class LiquidationResults extends Struct({
   vaultOwnerCollateral: UInt64,
 }) {}
 
+class MinaPrice extends Struct({
+  priceNanoUSD: UInt64,
+  firstValidBlockHeight: UInt32,
+  lastValidBlockHeight: UInt32,
+}) {}
+
 export {
   KeyPair,
   PriceFeedAction,
@@ -145,4 +151,6 @@ export {
   VaultState,
   LiquidationResults,
   ContractInstance,
+  MinaPrice,
 };
+

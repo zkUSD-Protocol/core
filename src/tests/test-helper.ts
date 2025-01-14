@@ -1,7 +1,6 @@
 import { AccountUpdate, Bool, Field, PrivateKey, PublicKey, UInt64 } from "o1js";
 import { ZkUsdVault } from "../contracts/zkusd-vault.js";
 import { ZkUsdEngineContract } from "../contracts/zkusd-engine.js";
-import { ZkUsdMasterOracle } from "../contracts/zkusd-master-oracle.js";
 import { ContractInstance, KeyPair, OracleWhitelist } from "../types.js";
 import { FungibleTokenContract } from "@minatokens/token";
 import { MinaChain} from "../mina.js";
@@ -66,7 +65,6 @@ export class TestHelper {
 
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  masterOracle: ContractInstance<ZkUsdMasterOracle>;
 
   vaultVerificationKeyHash?: Field;
   whitelist: OracleWhitelist = new OracleWhitelist({
@@ -101,7 +99,6 @@ export class TestHelper {
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
-    this.masterOracle = deployedContracts.masterOracle;
 
     for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
       const oracleName = 'oracle' + (i + 1);
@@ -177,25 +174,6 @@ export class TestHelper {
       );
     }
   }
-
-
-  async updateOracleMinaPrice(price: UInt64) {
-    // Use the map to iterate over whitelisted oracles
-    for (const [oracleName] of this.whitelistedOracles) {
-      await transaction(this.oracles[oracleName], async () => {
-        await this.engine.contract.submitPrice(price, this.whitelist);
-      });
-    }
-
-    this.chain.moveChainForward();
-
-    await transaction(this.deployer, async () => {
-      await this.engine.contract.settlePriceUpdate();
-    });
-
-    this.chain.moveChainForward();
-  }
-
 
   async stopTheProtocol() {
     await transaction(
