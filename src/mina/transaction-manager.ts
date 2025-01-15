@@ -2,13 +2,11 @@ import {
   Field,
   PrivateKey,
   PublicKey,
-  TransactionPromise,
   UInt32,
   UInt64,
 } from 'o1js';
 import { KeyPair } from '../types';
 import {
-  FeePayerSpec,
   IncludedTransaction,
   PendingTransaction,
   RejectedTransaction,
@@ -16,14 +14,8 @@ import {
 } from 'o1js/dist/node/lib/mina/mina';
 import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise';
+import { IMinaNetworkInterface } from './mina-network-interface';
 
-/**
- * Provides an interface for creating and fetching transaction-related data.
- */
-export interface TxApiProvider {
-  transaction(sender: FeePayerSpec, f: () => Promise<void>): TransactionPromise<false, false>;
-  getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32>;
-}
 
 /**
  * Default configuration options for constructing transactions.
@@ -376,36 +368,24 @@ export class TransactionInternal {
 }
 
 
-// the class is intended to be used as a per-chain singleton
-// also to be called from a single thread
-// the class is intended to be used as a per-chain singleton
-// also to be called from a single thread
+//  Do not call from concurrent threads
 export class TransactionManager {
-  // New: Keep a WeakMap to store per-chain instances
-  private static _instances = new WeakMap<TxApiProvider, TransactionManager>();
+  private _mina: IMinaNetworkInterface;
+
+  public get mina(): IMinaNetworkInterface {
+    return this._mina;
+  }
 
   /**
    * Retrieve an existing TransactionManager for the given TxApiProvider,
    * or create a new one if none exists.
    */
-  public static getInstance(chain: TxApiProvider): TransactionManager {
-    let instance = TransactionManager._instances.get(chain);
-    if (!instance) {
-      instance = new TransactionManager(chain);
-      TransactionManager._instances.set(chain, instance);
-    }
-    return instance;
+  public static new(minaInterface: IMinaNetworkInterface): TransactionManager {
+    return new TransactionManager(minaInterface);
   }
-
-  private chain: TxApiProvider;
 
   private transactions: Map<string, TransactionInternal> = new Map();
   private _callSiteNonces: Map<string, number> = new Map();
-
-  // Make the constructor private so that it cannot be called directly
-  private constructor(chain: TxApiProvider) {
-    this.chain = chain;
-  }
 
   private getCallSiteNonce(callSite: string): number {
     const r = this._callSiteNonces.get(callSite) ?? 0;
@@ -475,7 +455,7 @@ export class TransactionManager {
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
       try {
-        return await transactionBuildAndProve(mgr.chain, sender, callback, options);
+        return await transactionBuildAndProve(mgr.mina, sender, callback, options);
       } catch (error) {
         tx.status = "FailedToProve";
         console.error("Error during proving:", error);
@@ -506,7 +486,7 @@ export class TransactionManager {
     // make a function that will schedule getting nonce and sign
     const mkSigningPromise = function (fee: UInt64) {
       return (ptx: Transaction<true, false>) => new TrackedPromise(async () => {
-        const nonce = await mgr.chain.getAccountNonce(sender.publicKey);
+        const nonce = await mgr.mina.nonceManager.getAccountNonce(sender.publicKey);
         ptx.transaction.feePayer.body.nonce = nonce;
         ptx.transaction.feePayer.body.fee = fee;
         console.log("Signing transaction  ...");
@@ -572,6 +552,10 @@ export class TransactionManager {
 
     return tx.handle;
   }
+
+  private constructor(networkInterface: IMinaNetworkInterface) {
+    this._mina = networkInterface;
+  }
 }
 
 
@@ -613,7 +597,7 @@ function getCallerAtDepth(depth: number = 1): string {
 // DEV: possibly refactor later
 // it does not send the transaction to the network
 export async function transactionBuildAndProve(
-  chain: TxApiProvider,
+  chain: IMinaNetworkInterface,
   sender: KeyPair,
   callback: () => Promise<void>,
   options: TransactionOptions & { nonce?: UInt32 } = {}

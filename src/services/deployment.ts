@@ -1,11 +1,11 @@
-import { MinaChainInstance } from './mina.js';
+import { IMinaNetworkInterface } from '../mina/mina-network-interface.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
-} from './contracts/zkusd-engine.js';
-import { ZkUsdVault } from './contracts/zkusd-vault.js';
+} from '../contracts/zkusd-engine.js';
+import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { getNetworkKeys } from './config/keys.js';
+import { getNetworkKeys } from '../config/keys.js';
 import {
   AccountUpdate,
   Bool,
@@ -14,9 +14,9 @@ import {
   UInt64,
   UInt8,
 } from 'o1js';
-import { ContractInstance, KeyPair } from './types.js';
-import { transaction } from './utils/transaction.js';
-import { ProveMinaPriceProgram } from './proofs/mina-price-proof.js';
+import { ContractInstance, KeyPair } from '../types.js';
+import { transaction } from '../utils/transaction.js';
+import { ProveMinaPriceProgram } from '../proofs/mina-price-proof.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -24,10 +24,10 @@ interface DeployedContracts {
 }
 
 export async function deploy(
-  currentNetwork: MinaChainInstance,
+  currentNetwork: IMinaNetworkInterface,
   deployer: KeyPair
 ): Promise<DeployedContracts> {
-  const chainId = currentNetwork.network().chainId;
+  const chainId = currentNetwork.network.chainId;
   console.log('Deploying contracts on ', chainId);
 
   const fee = chainId !== 'local' ? 1e8 : 0;
