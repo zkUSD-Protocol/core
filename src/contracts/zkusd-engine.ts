@@ -74,9 +74,10 @@ export const ZkUsdEngineErrors = {
 };
 
 
-// if a mina price proof contains less then this number of oracles
-// then one of them must be from the master oracle
-const MASTER_ORACLE_REQUIRED_THRESHOLD = UInt32.from(4);
+/**
+  * @notice  The minimum number of valid submissions required to update the Mina price
+  */
+const MINIMUM_VALID_SUBMISSIONS = 2;
 
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
@@ -84,7 +85,6 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   oracleFlatFee: UInt64;
   emergencyStop: Bool;
   vaultVerificationKeyHash: Field;
-  // masterOracleRequiredThreshold: UInt32;
 }
 
 export function ZkUsdEngineContract(args: {
@@ -261,14 +261,16 @@ export function ZkUsdEngineContract(args: {
         blockForPrice.add(validPriceBlockCount)
       );
 
-      // Verify the sender is in the whitelist
       verifyMinaPriceInputProof({
         input: minaPriceInput,
         oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
         proofVkHash: minaPriceInputZkProgramVkHash,
         currentBlockHeight: blockForPrice,
-        masterOracleRequiredThreshold: MASTER_ORACLE_REQUIRED_THRESHOLD,
       });
+
+      minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
+        MINIMUM_VALID_SUBMISSIONS
+      );
 
       return minaPriceInput.proof.publicOutput;
     }

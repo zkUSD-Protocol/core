@@ -1,7 +1,5 @@
 import {
   Bool,
-  Field,
-  Poseidon,
   Provable,
   PublicKey,
   Signature,
@@ -14,8 +12,9 @@ import {
 import {
   MinaPrice,
   OracleWhitelist,
+  computeOracleWhitelistHash,
 } from '../../types.js';
-import { PriceAggregationProofPublicInput, PriceAggregationProofPublicOutput } from './common.js';
+import { PriceAggregationProofPublicInput, PriceAggregationProofPublicOutput, ValidSubmissions } from './common.js';
 
 /**
  * @notice Represents a single price submission from an oracle
@@ -62,9 +61,12 @@ const AggregateOraclePrices = ZkProgram({
         publicInput: PriceAggregationProofPublicInput,
         privateInput: PriceAggregationProofPrivateInput
       ) {
-        let masterOracleUsed = Bool(false);
-        let usedOraclesCount = UInt32.zero;
-        let usedOraclesHash = Field.from(0);
+        publicInput.oracleWhitelistHash.assertEquals(
+          computeOracleWhitelistHash(privateInput.oracleWhitelist),
+          'Invalid oracle whitelist hash');
+
+        let validSubmissions = ValidSubmissions.empty();
+        let validSubmissionsCount = UInt32.zero;
         let minaPrice = new MinaPrice({ currentBlockHeight: publicInput.currentBlockHeight, priceNanoUSD: UInt64.zero });
 
         const N = OracleWhitelist.MAX_PARTICIPANTS;
@@ -73,7 +75,6 @@ const AggregateOraclePrices = ZkProgram({
         let values = new Array<UInt64>(N).fill(UInt64.zero);
 
         // Validate each of the up to N submissions
-        let ix = UInt32.zero;
         for (let i = 0; i < N; i++) {
           const submission = privateInput.oraclePriceSubmissions.submissions[i];
 
@@ -87,39 +88,21 @@ const AggregateOraclePrices = ZkProgram({
             submission.blockHeight.equals(publicInput.currentBlockHeight);
           const isPositive = submission.price.greaterThan(UInt64.zero);
           const isReal = submission.isDummy.not();
-          const validSubmission = validSig
+          const currentSubmissionIsValid: Bool = validSig
             .and(isWhitelisted)
             .and(correctBlock)
             .and(isPositive)
             .and(isReal);
 
           // if valid then add to values, count and hash
-          values[i] = Provable.if(validSubmission, submission.price, UInt64.zero);
-          usedOraclesCount = Provable.if(validSubmission, usedOraclesCount.add(1), usedOraclesCount);
-          const pkh = Poseidon.hash(submission.publicKey.toFields());
-          usedOraclesHash = Provable.if(
-            validSubmission,
-            Provable.if(
-              usedOraclesCount.equals(UInt32.zero),
-              pkh,
-              Poseidon.hash([usedOraclesHash, pkh])),
-            usedOraclesHash);
+          values[i] = Provable.if(currentSubmissionIsValid, submission.price, UInt64.zero);
+          validSubmissionsCount = Provable.if(currentSubmissionIsValid, validSubmissionsCount.add(1), validSubmissionsCount);
+          validSubmissions.valid[i] = {publicKey: submission.publicKey, submissionValid: currentSubmissionIsValid};
 
-          masterOracleUsed = Provable.if(
-            // if at the master oracle index
-            ix.equals(privateInput.oracleWhitelist.masterOracleIndex)
-              // and the submission is valid
-              .and(validSubmission),
-            // then set to used
-            Bool(true),
-            // else leave as it is
-            masterOracleUsed);
-
-          ix = ix.add(1);
         }
 
         // assert that there are valid values
-        usedOraclesCount.assertGreaterThan(UInt32.zero);
+        validSubmissionsCount.assertGreaterThan(UInt32.zero);
 
         // sort values
         for (let i = 0; i < N-1; i++) {
@@ -135,19 +118,19 @@ const AggregateOraclePrices = ZkProgram({
         }
 
         // index of the first valid price value
-        const starting_i = UInt32.from(N).sub(usedOraclesCount);
+        const starting_i = UInt32.from(N).sub(validSubmissionsCount);
 
         // compute the median of values[starting_i..]
         // rest == 1 -> odd case
         // quotient -> the mid-index
-        const { quotient, rest } = usedOraclesCount.divMod(2);
+        const { quotient, rest } = validSubmissionsCount.divMod(2);
         const firstMidIndex = starting_i.add(quotient.sub(1));  // 10 -> 4, 11 -> 4
         const secondMixIndex = starting_i.add(quotient);        // 10 -> 5, 11 -> 5
         // in the even case the median is (v[first] + v[second]) / 2 in the odd case it is just the second
 
         let the_median = UInt64.zero;
 
-        ix = UInt32.zero;
+        let ix = UInt32.zero;
         for (let i = 0; i < N; i++) {
           const v = values[i];
 
@@ -177,9 +160,7 @@ const AggregateOraclePrices = ZkProgram({
         return {
           publicOutput: new PriceAggregationProofPublicOutput({
             minaPrice,
-            usedOraclesHash,
-            usedOraclesCount,
-            masterOracleUsed
+            validSubmissions,
           }),
         };
       },

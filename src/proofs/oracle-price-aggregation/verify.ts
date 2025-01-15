@@ -1,8 +1,6 @@
 import {
-  Bool,
   DynamicProof,
   Field,
-  Provable,
   Struct,
   UInt32,
   VerificationKey,
@@ -39,7 +37,6 @@ const verifyMinaPriceInput = async (args: {
   input: MinaPriceInput;
   oracleWhitelistHash: Field;
   currentBlockHeight: UInt32;
-  masterOracleRequiredThreshold: UInt32;
   proofVkHash: Field;
 }) => {
   const {
@@ -47,7 +44,6 @@ const verifyMinaPriceInput = async (args: {
     oracleWhitelistHash,
     proofVkHash,
     currentBlockHeight,
-    masterOracleRequiredThreshold
   } = args;
 
   input.verificationKey.hash.assertEquals(
@@ -62,18 +58,6 @@ const verifyMinaPriceInput = async (args: {
     currentBlockHeight,
     'Invalid current block height'
   );
-
-  const usedOraclesCount = input.proof.publicOutput.usedOraclesCount;
-  const masterOracleUsed = input.proof.publicOutput.masterOracleUsed;
-
-  const masterOracleUseValid = Provable.if(
-    usedOraclesCount.lessThan(masterOracleRequiredThreshold),
-    masterOracleUsed,
-    Bool(true),
-  );
-
-  masterOracleUseValid.assertTrue(
-    `A valid master oracle submission should be present in the proof when only ${input.proof.publicOutput.usedOraclesCount} valid submissions.`);
 
   input.proof.verify(input.verificationKey);
 };

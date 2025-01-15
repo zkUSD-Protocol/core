@@ -89,7 +89,6 @@ export class TestHelper {
   vaultVerificationKeyHash?: Field;
   whitelist: OracleWhitelist = new OracleWhitelist({
     addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(PublicKey.empty()),
-    masterOracleIndex: UInt32.from(0),
   });
 
   whitelistedOracles: Map<string, number> = new Map();

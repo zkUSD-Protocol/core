@@ -7,6 +7,7 @@ import {
   UInt32,
   Bool,
   PrivateKey,
+  Poseidon,
 } from 'o1js';
 
 // ============================================================================
@@ -82,11 +83,18 @@ const MAX_ORACLE_COUNT = 8;
  * @notice Whitelist of authorized oracle addresses
  */
 export class OracleWhitelist extends Struct({
-  masterOracleIndex: UInt32,
   addresses: Provable.Array(PublicKey, MAX_ORACLE_COUNT),
 }) {
   static MAX_PARTICIPANTS = MAX_ORACLE_COUNT;
 }
+
+// DEV: not sure where to put it
+//      but since there is many ways to compute the hash,
+//      we must have it available for all the tools
+export function computeOracleWhitelistHash(whitelist: OracleWhitelist): Field {
+  return Poseidon.hash(whitelist.addresses.map(pk => pk.toFields()).flat());
+}
+
 
 /**
  * @notice Represents a verified MINA price

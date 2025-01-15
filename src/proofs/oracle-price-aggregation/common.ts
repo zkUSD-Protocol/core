@@ -1,12 +1,14 @@
 import {
-  Bool,
   Field,
+  Provable,
   Struct,
   UInt32,
+  PublicKey,
+  Bool,
 } from 'o1js';
 
 import {
-  MinaPrice,
+  MinaPrice, OracleWhitelist,
 } from '../../types.js';
 
 
@@ -18,17 +20,48 @@ class PriceAggregationProofPublicInput extends Struct({
   oracleWhitelistHash: Field,
 }) {}
 
+class ValidSubmission extends Struct({
+  publicKey: PublicKey,
+  submissionValid: Bool
+}) {
+  static empty(): ValidSubmission {
+    return new ValidSubmission({
+      publicKey: PublicKey.empty(),
+      submissionValid: Bool(false)
+    });
+  }
+}
+
+/**
+ * @notice Collection of public keys of whitelist oracles along information
+           about their submission validity.
+ */
+class ValidSubmissions extends Struct({
+  valid: Provable.Array(ValidSubmission, OracleWhitelist.MAX_PARTICIPANTS),
+  count: UInt32,
+}) {
+
+  static empty(): ValidSubmissions {
+    return new ValidSubmissions({
+      valid: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(ValidSubmission.empty()),
+      count: UInt32.from(0),
+    });
+  }
+
+}
+
 /**
  * @notice Output data structure from price aggregation proof
  */
 class PriceAggregationProofPublicOutput extends Struct({
   minaPrice: MinaPrice,
-  usedOraclesHash: Field,
-  usedOraclesCount: UInt32,
-  masterOracleUsed: Bool,
+  validSubmissions: ValidSubmissions,
 }) {}
 
+
 export {
+  ValidSubmission,
+  ValidSubmissions,
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput,
 };
