@@ -7,9 +7,6 @@ import {
   UInt32,
   Bool,
   PrivateKey,
-  Signature,
-  VerificationKey,
-  DynamicProof,
 } from 'o1js';
 
 // ============================================================================
@@ -79,32 +76,16 @@ export class ProtocolDataPacked extends Struct({
 // ============================================================================
 // Oracle & Price Types
 // ============================================================================
-
-/**
- * @notice Represents a single price submission from an oracle
- */
-export class PriceSubmission extends Struct({
-  publicKey: PublicKey,
-  signature: Signature,
-  price: UInt64,
-  blockHeight: UInt32,
-  isDummy: Bool,
-}) {}
-
-/**
- * @notice Collection of oracle price submissions
- */
-export class OraclePriceSubmissions extends Struct({
-  submissions: Provable.Array(PriceSubmission, 8),
-}) {}
+const MAX_ORACLE_COUNT = 8;
 
 /**
  * @notice Whitelist of authorized oracle addresses
  */
 export class OracleWhitelist extends Struct({
-  addresses: Provable.Array(PublicKey, 8),
+  masterOracleIndex: UInt32,
+  addresses: Provable.Array(PublicKey, MAX_ORACLE_COUNT),
 }) {
-  static MAX_PARTICIPANTS = 8;
+  static MAX_PARTICIPANTS = MAX_ORACLE_COUNT;
 }
 
 /**
@@ -115,30 +96,6 @@ export class MinaPrice extends Struct({
   currentBlockHeight: UInt32,
 }) {}
 
-/**
- * @notice Input data structure for price aggregation proof
- */
-export class PriceAggregationProofPublicInput extends Struct({
-  currentBlockHeight: UInt32,
-}) {}
-
-/**
- * @notice Output data structure from price aggregation proof
- */
-export class PriceAggregationProofPublicOutput extends Struct({
-  minaPrice: MinaPrice,
-  protocolAdmin: PublicKey,
-  oracleWhitelistHash: Field,
-}) {}
-
-/**
- * @notice Input data structure for price aggregation proof
- */
-export class PriceAggregationProofPrivateInput extends Struct({
-  oracleWhitelist: OracleWhitelist,
-  oraclePriceSubmissions: OraclePriceSubmissions,
-  fallbackPriceSubmission: PriceSubmission,
-}) {}
 
 // ============================================================================
 // Vault Types
@@ -185,20 +142,6 @@ export interface ContractInstance<T> {
 // Oracle Proof Types
 // ============================================================================
 
-/**
- * @notice Input structure for Mina price verification
- */
-export class PriceAggregationProof extends DynamicProof<
-  PriceAggregationProofPublicInput,
-  PriceAggregationProofPublicOutput
-> {
-  static publicInputType = PriceAggregationProofPublicInput;
-  static publicOutputType = PriceAggregationProofPublicOutput;
-}
-export class MinaPriceInput extends Struct({
-  proof: PriceAggregationProof,
-  verificationKey: VerificationKey,
-}) {}
 
 /**
  * A struct combining a price and a flag telling us whether

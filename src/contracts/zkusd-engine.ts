@@ -28,8 +28,6 @@ import {
   ProtocolData,
   VaultState,
   MinaPrice,
-  MinaPriceInput,
-  PriceAggregationProofPublicOutput,
 } from '../types.js';
 import {
   MinaPriceUpdateEvent,
@@ -49,7 +47,7 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
 } from '../events.js';
-import { verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/oracle-price-aggregation.js';
+import { MinaPriceInput, PriceAggregationProofPublicOutput, verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/oracle-price-aggregation/verify.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -75,11 +73,18 @@ export const ZkUsdEngineErrors = {
   INSUFFICIENT_BALANCE: 'Insufficient balance for withdrawal',
 };
 
+
+// if a mina price proof contains less then this number of oracles
+// then one of them must be from the master oracle
+const MASTER_ORACLE_REQUIRED_THRESHOLD = UInt32.from(4);
+
+
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
   oracleFlatFee: UInt64;
   emergencyStop: Bool;
   vaultVerificationKeyHash: Field;
+  // masterOracleRequiredThreshold: UInt32;
 }
 
 export function ZkUsdEngineContract(args: {
@@ -262,6 +267,7 @@ export function ZkUsdEngineContract(args: {
         oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
         proofVkHash: minaPriceInputZkProgramVkHash,
         currentBlockHeight: blockForPrice,
+        masterOracleRequiredThreshold: MASTER_ORACLE_REQUIRED_THRESHOLD,
       });
 
       return minaPriceInput.proof.publicOutput;
