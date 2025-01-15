@@ -18,6 +18,7 @@ import {
   TokenContract,
   AccountUpdateForest,
   Int64,
+  UInt32,
 } from 'o1js';
 import { ZkUsdVault } from './zkusd-vault.js';
 
@@ -85,14 +86,16 @@ export function ZkUsdEngineContract(args: {
   oracleFundTrackerAddress: PublicKey;
   zkUsdTokenAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
+  validPriceBlockCount: UInt32;
 }) {
   const {
     oracleFundTrackerAddress,
     zkUsdTokenAddress,
     minaPriceInputZkProgramVkHash,
+    validPriceBlockCount,
   } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
-    @state(Field) oracleWhitelistRoot = State<Field>(); // Merkle root of the oracle whitelist
+    @state(Field) oracleWhitelistHash = State<Field>(); // Merkle root of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>();
     @state(Field) vaultVerificationKeyHash = State<Field>(); // Hash of the vault verification key
     @state(Bool) interactionFlag = State<Bool>(); // Flag to prevent reentrancy
@@ -134,7 +137,7 @@ export function ZkUsdEngineContract(args: {
         send: Permissions.proof(),
       });
 
-      this.oracleWhitelistRoot.set(Field.from(0));
+      this.oracleWhitelistHash.set(Field.from(0));
 
       this.protocolDataPacked.set(
         ProtocolData.new({
@@ -214,6 +217,54 @@ export function ZkUsdEngineContract(args: {
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
+    }
+
+    /**
+     * @notice  Ensures the protocol is not stopped
+     */
+    async ensureProtocolNotStopped() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      protocolData.emergencyStop.assertFalse('Protocol is stopped');
+    }
+
+    /**
+     * @notice  Internal helper to validate admin signature
+     * @returns The signed account update from the admin
+     */
+    async ensureAdminSignature(): Promise<AccountUpdate> {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return AccountUpdate.createSigned(protocolData.admin);
+    }
+
+    /**
+     * @notice  Verifies the Mina price input proof against contract data.
+     * @param   minaPriceInput The Mina price input proof
+     * @returns The verified Mina price. If the proof is invalid, this function will throw an error.
+     */
+    verifyMinaPriceInput(
+      minaPriceInput: MinaPriceInput
+    ): PriceAggregationProofPublicOutput {
+      const blockForPrice =
+        minaPriceInput.proof.publicOutput.currentBlockHeight;
+
+      this.network.blockchainLength.requireBetween(
+        blockForPrice,
+        blockForPrice.add(validPriceBlockCount)
+      );
+
+      // Verify the sender is in the whitelist
+      verifyMinaPriceInputProof({
+        input: minaPriceInput,
+        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
+        proofVkHash: minaPriceInputZkProgramVkHash,
+        currentBlockHeight: blockForPrice,
+      });
+
+      return minaPriceInput.proof.publicOutput;
     }
 
     /**
@@ -405,33 +456,6 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * @notice  Verifies the Mina price input proof against contract data.
-     * @param   minaPriceInput The Mina price input proof
-     * @returns The verified Mina price. If the proof is invalid, this function will throw an error.
-     */
-    verifyMinaPriceInput(
-      minaPriceInput: MinaPriceInput
-    ): PriceAggregationProofPublicOutput {
-      const firstValidBlockHeight = this.network.blockchainLength.get();
-      // TODO how to constrain?
-
-      const lastValidBlockHeight = firstValidBlockHeight.add(1);
-      // Verify the sender is in the whitelist
-      verifyMinaPriceInputProof({
-        input: minaPriceInput,
-        oracleWhitelistRoot: this.oracleWhitelistRoot.getAndRequireEquals(),
-        proofVkHash: minaPriceInputZkProgramVkHash,
-        currentBlockHeight: firstValidBlockHeight,
-      });
-      return minaPriceInput.proof.publicOutput;
-    }
-
-    // TODO
-    incentivizeOracle(oracle: PublicKey) {
-      const fee = this.getOracleFee();
-    }
-
-    /**
      * @notice  Redeems collateral from a vault
      * @param   vaultAddress The address of the vault to redeem collateral from
      * @param   amount The amount of collateral to redeem
@@ -441,6 +465,9 @@ export function ZkUsdEngineContract(args: {
       amount: UInt64,
       minaPriceInput: MinaPriceInput
     ) {
+      //Ensure the protocol is not stopped
+      await this.ensureProtocolNotStopped();
+
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -448,11 +475,7 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getAndRequireSignature();
 
       // verify the price input
-      const { minaPrice, incentivizedOracle } =
-        this.verifyMinaPriceInput(minaPriceInput);
-
-      // incentivize the oracle that provided the valid price
-      this.incentivizeOracle(incentivizedOracle);
+      const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
 
       //Redeem the collateral
       const { collateralAmount, debtAmount } = await vault.redeemCollateral(
@@ -497,6 +520,9 @@ export function ZkUsdEngineContract(args: {
       amount: UInt64,
       minaPriceInput: MinaPriceInput
     ) {
+      //Ensure the protocol is not stopped
+      await this.ensureProtocolNotStopped();
+
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -507,11 +533,7 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getAndRequireSignature();
 
       // verify the price input
-      const { minaPrice, incentivizedOracle } =
-        this.verifyMinaPriceInput(minaPriceInput);
-
-      // incentivize the oracle that provided the valid price
-      this.incentivizeOracle(incentivizedOracle);
+      const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
 
       //Manage the debt in the vault
       const { collateralAmount, debtAmount } = await vault.mintZkUsd(
@@ -587,6 +609,9 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPriceInput: MinaPriceInput
     ) {
+      //Ensure the protocol is not stopped
+      await this.ensureProtocolNotStopped();
+
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -602,11 +627,7 @@ export function ZkUsdEngineContract(args: {
       const vaultOwner = vault.owner.getAndRequireEquals();
 
       // verify the price input
-      const { minaPrice, incentivizedOracle } =
-        this.verifyMinaPriceInput(minaPriceInput);
-
-      // incentivize the oracle that provided the valid price
-      this.incentivizeOracle(incentivizedOracle);
+      const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
 
       const { oldVaultState, liquidatorCollateral, vaultOwnerCollateral } =
         await vault.liquidate(minaPrice);
@@ -653,17 +674,6 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * @notice  Internal helper to validate admin signature
-     * @returns The signed account update from the admin
-     */
-    async ensureAdminSignature(): Promise<AccountUpdate> {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return AccountUpdate.createSigned(protocolData.admin);
-    }
-
-    /**
      * @notice  Toggles the emergency stop state of the protocol
      * @dev     Can only be called by authorized addresses via protocol vault
      * @param   shouldStop True to stop the protocol, false to resume
@@ -700,7 +710,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async updateOracleWhitelist(whitelist: OracleWhitelist) {
       //Precondition
-      const previousHash = this.oracleWhitelistRoot.getAndRequireEquals();
+      const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
 
       //Ensure admin signature
       await this.ensureAdminSignature();
@@ -708,7 +718,7 @@ export function ZkUsdEngineContract(args: {
       const updatedWhitelistHash = Poseidon.hash(
         OracleWhitelist.toFields(whitelist)
       );
-      this.oracleWhitelistRoot.set(updatedWhitelistHash);
+      this.oracleWhitelistHash.set(updatedWhitelistHash);
 
       this.emitEvent('OracleWhitelistUpdated', {
         previousHash,

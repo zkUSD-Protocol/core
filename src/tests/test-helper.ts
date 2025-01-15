@@ -229,14 +229,22 @@ export class TestHelper {
         signature: Signature.fromBase58(signature.signature),
         price: price,
         blockHeight: blockHeight,
+        isDummy: i > 1 ? Bool(true) : Bool(false),
       });
 
       oraclePriceSubmissions.submissions.push(priceSubmission);
     }
 
     const fallbackPriceSubmissionSignature = client.signFields(
-      [price.toBigInt(), blockHeight.toBigint()],
+      [fallbackPrice.toBigInt(), blockHeight.toBigint()],
       this.networkKeys.protocolAdmin.privateKey.toBase58()
+    );
+
+    console.log(
+      'Signing fallback price submission with price',
+      price.toString(),
+      'and block height',
+      blockHeight.toString()
     );
 
     const fallbackPriceSubmission = new PriceSubmission({
@@ -246,8 +254,16 @@ export class TestHelper {
       ),
       price: fallbackPrice,
       blockHeight: blockHeight,
+      isDummy: Bool(false),
     });
 
     return { oraclePriceSubmissions, fallbackPriceSubmission };
+  }
+
+  async getMinaPriceInput() {
+    const blockHeight = Mina.getNetworkState().blockchainLength;
+    const minaPriceInput = await ProveMinaPriceProgram.prove({
+      blockHeight,
+    });
   }
 }

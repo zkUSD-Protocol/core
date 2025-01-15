@@ -88,6 +88,7 @@ export class PriceSubmission extends Struct({
   signature: Signature,
   price: UInt64,
   blockHeight: UInt32,
+  isDummy: Bool,
 }) {}
 
 /**
@@ -118,9 +119,6 @@ export class MinaPrice extends Struct({
  * @notice Input data structure for price aggregation proof
  */
 export class PriceAggregationProofPublicInput extends Struct({
-  oracleWhitelist: OracleWhitelist,
-  oraclePriceSubmissions: OraclePriceSubmissions,
-  fallbackPriceSubmission: PriceSubmission,
   currentBlockHeight: UInt32,
 }) {}
 
@@ -129,8 +127,17 @@ export class PriceAggregationProofPublicInput extends Struct({
  */
 export class PriceAggregationProofPublicOutput extends Struct({
   minaPrice: MinaPrice,
-  incentivizedOracle: PublicKey,
   protocolAdmin: PublicKey,
+  oracleWhitelistHash: Field,
+}) {}
+
+/**
+ * @notice Input data structure for price aggregation proof
+ */
+export class PriceAggregationProofPrivateInput extends Struct({
+  oracleWhitelist: OracleWhitelist,
+  oraclePriceSubmissions: OraclePriceSubmissions,
+  fallbackPriceSubmission: PriceSubmission,
 }) {}
 
 // ============================================================================
@@ -191,4 +198,13 @@ export class PriceAggregationProof extends DynamicProof<
 export class MinaPriceInput extends Struct({
   proof: PriceAggregationProof,
   verificationKey: VerificationKey,
+}) {}
+
+/**
+ * A struct combining a price and a flag telling us whether
+ * this item is from a “real” oracle or just fallback.
+ */
+export class PriceWithFlag extends Struct({
+  price: UInt64,
+  isOracle: Bool,
 }) {}

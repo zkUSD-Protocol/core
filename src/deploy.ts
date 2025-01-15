@@ -33,7 +33,11 @@ export async function deploy(
     oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
     zkUsdTokenAddress: networkKeys.token.publicKey,
     minaPriceInputZkProgramVkHash: minaPriceProofProgramVk.verificationKey.hash,
+    validPriceBlockCount: UInt32.from(
+      currentNetwork.network().validPriceBlockCount!
+    ),
   });
+
   const FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
   const token = {
@@ -149,7 +153,6 @@ export async function deploy(
         extraSigners: [
           networkKeys.protocolAdmin.privateKey,
           networkKeys.engine.privateKey,
-          // networkKeys.oracleFundsTracker.privateKey,
         ],
         fee,
       }
