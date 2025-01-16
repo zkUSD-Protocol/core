@@ -5,28 +5,24 @@ import {
   Mina,
   PrivateKey,
   PublicKey,
-  Sign,
   Signature,
+  UInt32,
   UInt64,
   VerificationKey,
 } from 'o1js';
 import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import {
-  ContractInstance,
-  KeyPair,
-  MinaPriceInput,
-  OraclePriceSubmissions,
-  OracleWhitelist,
-  PriceSubmission,
-} from '../types.js';
+import { ContractInstance, KeyPair, OracleWhitelist } from '../types.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { MinaChain } from '../mina.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
 import { deploy } from '../deploy.js';
 import Client from 'mina-signer';
-import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation.js';
+import {
+  OraclePriceSubmissions,
+  PriceSubmission,
+} from '../proofs/oracle-price-aggregation/prove.js';
 
 const client = new Client({
   network: 'testnet',
@@ -268,34 +264,34 @@ export class TestHelper {
     return { oraclePriceSubmissions, fallbackPriceSubmission };
   }
 
-  async getMinaPriceInput(price: UInt64) {
-    const blockHeight = Mina.getNetworkState().blockchainLength;
+  // async getMinaPriceInput(price: UInt64) {
+  //   const blockHeight = Mina.getNetworkState().blockchainLength;
 
-    const { oraclePriceSubmissions, fallbackPriceSubmission } =
-      await this.getPriceSubmissions({
-        oraclePrice: price,
-        fallbackPrice: price,
-      });
+  //   const { oraclePriceSubmissions, fallbackPriceSubmission } =
+  //     await this.getPriceSubmissions({
+  //       oraclePrice: price,
+  //       fallbackPrice: price,
+  //     });
 
-    const programOutput = await AggregateOraclePrices.compute(
-      { currentBlockHeight: blockHeight },
-      {
-        oracleWhitelist: this.whitelist,
-        oraclePriceSubmissions,
-        fallbackPriceSubmission,
-      }
-    );
+  //   const programOutput = await AggregateOraclePrices.compute(
+  //     { currentBlockHeight: blockHeight },
+  //     {
+  //       oracleWhitelist: this.whitelist,
+  //       oraclePriceSubmissions,
+  //       fallbackPriceSubmission,
+  //     }
+  //   );
 
-    console.log(
-      'Verification Key Hash',
-      this.oracleAggregationVk.hash.toString()
-    );
+  //   console.log(
+  //     'Verification Key Hash',
+  //     this.oracleAggregationVk.hash.toString()
+  //   );
 
-    const minaPriceInput = new MinaPriceInput({
-      proof: programOutput.proof,
-      verificationKey: this.oracleAggregationVk,
-    });
+  //   const minaPriceInput = new MinaPriceInput({
+  //     proof: programOutput.proof,
+  //     verificationKey: this.oracleAggregationVk,
+  //   });
 
-    return minaPriceInput;
-  }
+  //   return minaPriceInput;
+  // }
 }

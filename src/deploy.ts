@@ -17,7 +17,7 @@ import {
 } from 'o1js';
 import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
-import { AggregateOraclePrices } from './proofs/oracle-price-aggregation.js';
+import { AggregateOraclePrices } from './proofs/oracle-price-aggregation/prove.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
