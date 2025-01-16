@@ -1,5 +1,5 @@
 import { DynamicProof, Field, MerkleWitness, PublicKey, Struct, UInt32, UInt64, VerificationKey, ZkProgram } from "o1js";
-import { MinaPrice } from "../types";
+import { MinaPrice } from "../types.js";
 
 const MERKLE_TREE_HEIGHT = 5;
 export const MAX_ORACLE_COUNT = 2 ** (MERKLE_TREE_HEIGHT - 1);

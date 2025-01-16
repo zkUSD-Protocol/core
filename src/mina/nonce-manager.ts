@@ -4,11 +4,18 @@ interface INonceManager {
   getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32>;
 }
 
-class NonceManager implements INonceManager {
-  public getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32>{
+class LocalNonceManager implements INonceManager {
+  public getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32> {
     return Promise.resolve(new UInt32(0));
   }
 
 }
 
-export {INonceManager, NonceManager};
+class NonceManager implements INonceManager {
+  public getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32> {
+    throw new Error("Method not implemented.");
+  }
+
+}
+
+export {INonceManager, LocalNonceManager, NonceManager};

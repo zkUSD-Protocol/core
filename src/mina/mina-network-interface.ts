@@ -1,7 +1,7 @@
 import { Mina, Lightnet, UInt32 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types.js';
-import { INonceManager } from './nonce-manager.js';
+import { INonceManager, LocalNonceManager } from './nonce-manager.js';
 
 /**
  * This type captures whatever methods come back from `Mina.Network()`.
@@ -135,6 +135,9 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     networkInterface.backend = local;
     networkInterface.instance = local.instance;
     networkInterface._local = local.instance;
+
+    // Set the nonce manager
+    networkInterface._nonceManager = new LocalNonceManager();
 
     // Switch the global "active" Mina instance
     Mina.setActiveInstance(networkInterface.instance);
