@@ -1,10 +1,9 @@
 import { Bool, Field, Mina, PrivateKey, Signature, UInt32, UInt64 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { AggregateOraclePrices } from '../../../proofs/oracle-price-aggregation.js';
-import { TestHelper } from '../../test-helper.js';
-import { OraclePriceSubmissions, PriceSubmission } from '../../../types.js';
 import { Client } from 'mina-signer';
+import { AggregateOraclePrices, PriceSubmission } from '../../../proofs/oracle-price-aggregation/prove.js';
+import { TestHelper } from '../../test-helper.js';
 
 const client = new Client({
   network: 'testnet',

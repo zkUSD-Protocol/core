@@ -28,8 +28,6 @@ import {
   ProtocolData,
   VaultState,
   MinaPrice,
-  MinaPriceInput,
-  PriceAggregationProofPublicOutput,
 } from '../types.js';
 import {
   MinaPriceUpdateEvent,
@@ -49,7 +47,7 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
 } from '../events.js';
-import { verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/oracle-price-aggregation.js';
+import { MinaPriceInput, PriceAggregationProofPublicOutput, verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/oracle-price-aggregation/verify.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -74,6 +72,13 @@ export const ZkUsdEngineErrors = {
     'Protocol fee is a percentage and must be less than or equal to 100',
   INSUFFICIENT_BALANCE: 'Insufficient balance for withdrawal',
 };
+
+
+/**
+  * @notice  The minimum number of valid submissions required to update the Mina price
+  */
+const MINIMUM_VALID_SUBMISSIONS = 2;
+
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
@@ -256,13 +261,16 @@ export function ZkUsdEngineContract(args: {
         blockForPrice.add(validPriceBlockCount)
       );
 
-      // Verify the sender is in the whitelist
       verifyMinaPriceInputProof({
         input: minaPriceInput,
         oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
         proofVkHash: minaPriceInputZkProgramVkHash,
         currentBlockHeight: blockForPrice,
       });
+
+      minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
+        MINIMUM_VALID_SUBMISSIONS
+      );
 
       return minaPriceInput.proof.publicOutput;
     }
