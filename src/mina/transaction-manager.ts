@@ -15,6 +15,7 @@ import {
 import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
+import { Mutex } from '../utils/mutex.js';
 
 
 /**
@@ -365,11 +366,10 @@ export class TransactionInternal {
 
     while (!until(currentStatus)) {
       if (Date.now() - startTime >= timeout) {
-        throw new Error('Timeout reached while waiting for status change.');
+        throw new Error(`${this.getId()} Timeout reached while waiting for status change.`);
       }
       await new Promise((resolve) => setTimeout(resolve, statusPollInterval));
       currentStatus = this.status;
-      console.log('Polled status:', currentStatus);
     }
 
     return currentStatus;
@@ -427,6 +427,7 @@ export class TransactionInternal {
 
 //  Do not call from concurrent threads
 export class TransactionManager {
+  private _provingMutex: Mutex = new Mutex();
   private _mina: IMinaNetworkInterface;
 
   public get mina(): IMinaNetworkInterface {
@@ -464,10 +465,12 @@ export class TransactionManager {
   async tx(
     sender: KeyPair, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
-    name?: string,
-    options?: TransactionOptions,
-    waitForIncluded?: string[]
+    options?: TransactionOptions & {
+      name?: string,
+      waitForIncluded?: string[]
+    }
   ): Promise<TransactionHandle> {
+    const { name, waitForIncluded } = options ?? {};
 
     //===
     // prepare and verify transaction request as scheduled by function user
@@ -511,7 +514,7 @@ export class TransactionManager {
 
     function failed_before_sending(phase: string, error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const err = `Error during ${phase}: ${errorMessage}`;
+      const err = `${tx.getId()} - error during ${phase}: ${errorMessage}`;
       tx.status = { kind: 'FailedBeforeSending', errors: [err] };
       console.error(err);
       return new Error(err);
@@ -521,9 +524,11 @@ export class TransactionManager {
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
       try {
-        return await transactionBuildAndProve(mgr.mina, sender, callback, options);
+        return await transactionBuildAndProve(
+          mgr._provingMutex,
+          mgr.mina, sender, callback, options);
       } catch (error) {
-        throw  failed_before_sending("proving the tx", error);
+        throw failed_before_sending("proving the tx", error);
       }
     });
 
@@ -541,7 +546,7 @@ export class TransactionManager {
           });
           if (depStatus !== "Included") {
             tx.status = { kind: "DependencyRejectedFailedOrDropped", depId: dep.getId(), depStatus };
-            throw new Error(`Transaction dependency ${dep.getId()} has failed status ${depStatus}`);
+            throw new Error(`Transaction dependency ${dep.getId()} has failed status ${JSON.stringify(depStatus, null, 2)}`);
           }
           return;
         }));
@@ -563,7 +568,10 @@ export class TransactionManager {
             console.error(err);
             throw err;
           }
-          ptx.transaction.feePayer.body.nonce = nonce;
+          if (nonce !== null) {
+            console.log("set the nonce");
+            ptx.transaction.feePayer.body.nonce = nonce;
+          }
           ptx.transaction.feePayer.body.fee = fee;
           console.log("Signing transaction  ...");
           // TODO use signing service instead, do not pass private keys around
@@ -582,19 +590,19 @@ export class TransactionManager {
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
-        try{
-        const sentTx = await signedTx.safeSend();
-        switch (sentTx.status) {
-          case "pending": {
-            tx.status = "Pending";
-            break;
+        try {
+          const sentTx = await signedTx.safeSend();
+          switch (sentTx.status) {
+            case "pending": {
+              tx.status = "Pending";
+              break;
+            }
+            case "rejected": {
+              tx.status = { kind: "Rejected", errors: ["error when the tx has been sent", ...sentTx.errors] };
+              break;
+            }
           }
-          case "rejected": {
-            tx.status = { kind: "Rejected", errors: ["error when the tx has been sent", ...sentTx.errors] };
-            break;
-          }
-        }
-        return sentTx;
+          return sentTx;
         } catch (error) {
           throw failed_before_sending("sending the tx", error);
         }
@@ -680,6 +688,7 @@ function getCallerAtDepth(depth: number = 1): string {
 // DEV: possibly refactor later
 // it does not send the transaction to the network
 export async function transactionBuildAndProve(
+  mutex: Mutex,
   chain: IMinaNetworkInterface,
   sender: KeyPair,
   callback: () => Promise<void>,
@@ -692,15 +701,16 @@ export async function transactionBuildAndProve(
     nonce
   } = options;
 
+  console.log('the nonce', nonce);
 
-  const tx = await chain.transaction(
+  const tx = await mutex.runExclusive(async () => await chain.transaction(
     {
       sender: sender.publicKey,
       ...(startingFee && { fee: startingFee }),
       ...(nonce && { nonce: Number(nonce) })
     },
     callback
-  );
+  ));
 
   if (printTx) {
     console.log(tx.toPretty());

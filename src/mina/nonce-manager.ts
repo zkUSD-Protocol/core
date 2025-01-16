@@ -1,12 +1,12 @@
 import { Field, PublicKey, UInt32 } from "o1js";
 
 interface INonceManager {
-  getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32>;
+  getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32 | null>;
 }
 
 class LocalNonceManager implements INonceManager {
-  public getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32> {
-    return Promise.resolve(new UInt32(0));
+  public getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<UInt32 | null> {
+    return Promise.resolve(null);
   }
 
 }
