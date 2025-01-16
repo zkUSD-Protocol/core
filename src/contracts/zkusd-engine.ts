@@ -48,7 +48,11 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
 } from '../events.js';
-import { MinaPriceInput, PriceAggregationProofPublicOutput, verifyMinaPriceInput as verifyMinaPriceInputProof } from '../proofs/oracle-price-aggregation/verify.js';
+import {
+  MinaPriceInput,
+  PriceAggregationProofPublicOutput,
+  verifyMinaPriceInput as verifyMinaPriceInputProof,
+} from '../proofs/oracle-price-aggregation/verify.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -73,13 +77,6 @@ export const ZkUsdEngineErrors = {
     'Protocol fee is a percentage and must be less than or equal to 100',
   INSUFFICIENT_BALANCE: 'Insufficient balance for withdrawal',
 };
-
-
-/**
-  * @notice  The minimum number of valid submissions required to update the Mina price
-  */
-const MINIMUM_VALID_SUBMISSIONS = 2;
-
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
@@ -107,6 +104,8 @@ export function ZkUsdEngineContract(args: {
     @state(Bool) interactionFlag = State<Bool>(); // Flag to prevent reentrancy
 
     static FungibleToken = FungibleTokenContract(ZkUsdEngine);
+
+    static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3);
 
     readonly events = {
       MinaPriceUpdate: MinaPriceUpdateEvent,
@@ -232,7 +231,7 @@ export function ZkUsdEngineContract(args: {
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
-      protocolData.emergencyStop.assertFalse('Protocol is stopped');
+      protocolData.emergencyStop.assertFalse(ZkUsdEngineErrors.EMERGENCY_HALT);
     }
 
     /**
@@ -270,7 +269,7 @@ export function ZkUsdEngineContract(args: {
       });
 
       minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
-        MINIMUM_VALID_SUBMISSIONS
+        ZkUsdEngine.MINIMUM_VALID_ORACLE_SUBMISSIONS
       );
 
       return minaPriceInput.proof.publicOutput;

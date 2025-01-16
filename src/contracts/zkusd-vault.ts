@@ -264,7 +264,7 @@ export class ZkUsdVault extends SmartContract {
       await this.computeLiquidationAmounts({
         collateralAmount: collateralAmount.value,
         liquidatedDebt: debtAmount.value,
-        minaPrice
+        minaPrice,
       });
 
     //Return the vault state before liquidation
@@ -311,10 +311,7 @@ export class ZkUsdVault extends SmartContract {
     debtAmount: UInt64,
     minaPrice: MinaPrice
   ): UInt64 {
-    const collateralValue = this.calculateUsdValue(
-      collateralAmount,
-      minaPrice
-    );
+    const collateralValue = this.calculateUsdValue(collateralAmount, minaPrice);
     const maxAllowedDebt = this.calculateMaxAllowedDebt(collateralValue);
     const debtInFields = debtAmount.toFields()[0];
     return UInt64.fromFields([this.safeDiv(maxAllowedDebt, debtInFields)]);

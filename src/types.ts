@@ -92,7 +92,7 @@ export class OracleWhitelist extends Struct({
 //      but since there is many ways to compute the hash,
 //      we must have it available for all the tools
 export function computeOracleWhitelistHash(whitelist: OracleWhitelist): Field {
-  return Poseidon.hash(whitelist.addresses.map((pk) => pk.toFields()).flat());
+  return Poseidon.hash(OracleWhitelist.toFields(whitelist));
 }
 
 /**

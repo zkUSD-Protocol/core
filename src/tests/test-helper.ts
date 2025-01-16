@@ -1,6 +1,7 @@
 import {
   AccountUpdate,
   Bool,
+  DynamicProof,
   Field,
   Mina,
   PrivateKey,
@@ -12,7 +13,12 @@ import {
 } from 'o1js';
 import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import { ContractInstance, KeyPair, OracleWhitelist } from '../types.js';
+import {
+  computeOracleWhitelistHash,
+  ContractInstance,
+  KeyPair,
+  OracleWhitelist,
+} from '../types.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { MinaChain } from '../mina.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
@@ -20,9 +26,15 @@ import { transaction } from '../utils/transaction.js';
 import { deploy } from '../deploy.js';
 import Client from 'mina-signer';
 import {
+  AggregateOraclePrices,
   OraclePriceSubmissions,
   PriceSubmission,
 } from '../proofs/oracle-price-aggregation/prove.js';
+import {
+  MinaPriceInput,
+  PriceAggregationProofPublicInput,
+  PriceAggregationProofPublicOutput,
+} from '../proofs/oracle-price-aggregation/verify.js';
 
 const client = new Client({
   network: 'testnet',
@@ -239,59 +251,43 @@ export class TestHelper {
       oraclePriceSubmissions.submissions.push(priceSubmission);
     }
 
-    const fallbackPriceSubmissionSignature = client.signFields(
-      [fallbackPrice.toBigInt(), blockHeight.toBigint()],
-      this.networkKeys.protocolAdmin.privateKey.toBase58()
-    );
-
-    console.log(
-      'Signing fallback price submission with price',
-      fallbackPrice.toString(),
-      'and block height',
-      blockHeight.toString()
-    );
-
-    const fallbackPriceSubmission = new PriceSubmission({
-      publicKey: this.networkKeys.protocolAdmin.publicKey,
-      signature: Signature.fromBase58(
-        fallbackPriceSubmissionSignature.signature
-      ),
-      price: fallbackPrice,
-      blockHeight: blockHeight,
-      isDummy: Bool(false),
-    });
-
-    return { oraclePriceSubmissions, fallbackPriceSubmission };
+    return oraclePriceSubmissions;
   }
 
-  // async getMinaPriceInput(price: UInt64) {
-  //   const blockHeight = Mina.getNetworkState().blockchainLength;
+  async getMinaPriceInput(price: UInt64) {
+    const blockHeight = Mina.getNetworkState().blockchainLength;
 
-  //   const { oraclePriceSubmissions, fallbackPriceSubmission } =
-  //     await this.getPriceSubmissions({
-  //       oraclePrice: price,
-  //       fallbackPrice: price,
-  //     });
+    const oraclePriceSubmissions = await this.getPriceSubmissions({
+      oraclePrice: price,
+      fallbackPrice: price,
+    });
 
-  //   const programOutput = await AggregateOraclePrices.compute(
-  //     { currentBlockHeight: blockHeight },
-  //     {
-  //       oracleWhitelist: this.whitelist,
-  //       oraclePriceSubmissions,
-  //       fallbackPriceSubmission,
-  //     }
-  //   );
+    const oracleWhitelistHash = computeOracleWhitelistHash(this.whitelist);
 
-  //   console.log(
-  //     'Verification Key Hash',
-  //     this.oracleAggregationVk.hash.toString()
-  //   );
+    const programOutput = await AggregateOraclePrices.compute(
+      {
+        currentBlockHeight: blockHeight,
+        oracleWhitelistHash,
+      },
+      {
+        oracleWhitelist: this.whitelist,
+        oraclePriceSubmissions,
+      }
+    );
 
-  //   const minaPriceInput = new MinaPriceInput({
-  //     proof: programOutput.proof,
-  //     verificationKey: this.oracleAggregationVk,
-  //   });
+    const proof = {
+      publicInput: programOutput.proof.publicInput,
+      publicOutput: programOutput.proof.publicOutput,
+    } as DynamicProof<
+      PriceAggregationProofPublicInput,
+      PriceAggregationProofPublicOutput
+    >;
 
-  //   return minaPriceInput;
-  // }
+    const minaPriceInput = new MinaPriceInput({
+      proof: proof,
+      verificationKey: this.oracleAggregationVk,
+    });
+
+    return minaPriceInput;
+  }
 }
