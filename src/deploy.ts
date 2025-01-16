@@ -6,7 +6,15 @@ import {
 import { ZkUsdVault } from './contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys } from './config/keys.js';
-import { AccountUpdate, Bool, fetchAccount, UInt32, UInt64, UInt8 } from 'o1js';
+import {
+  AccountUpdate,
+  Bool,
+  fetchAccount,
+  UInt32,
+  UInt64,
+  UInt8,
+  VerificationKey,
+} from 'o1js';
 import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
 import { AggregateOraclePrices } from './proofs/oracle-price-aggregation.js';
@@ -14,6 +22,7 @@ import { AggregateOraclePrices } from './proofs/oracle-price-aggregation.js';
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  oracleAggregationVk: VerificationKey;
 }
 
 export async function deploy(
@@ -27,12 +36,14 @@ export async function deploy(
 
   const networkKeys = getNetworkKeys(chainId);
 
-  const minaPriceProofProgramVk = await AggregateOraclePrices.compile();
+  const oracleAggregationVk = new VerificationKey(
+    (await AggregateOraclePrices.compile()).verificationKey
+  );
 
   const ZkUsdEngine = ZkUsdEngineContract({
     oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
     zkUsdTokenAddress: networkKeys.token.publicKey,
-    minaPriceInputZkProgramVkHash: minaPriceProofProgramVk.verificationKey.hash,
+    minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
     validPriceBlockCount: UInt32.from(
       currentNetwork.network().validPriceBlockCount!
     ),
@@ -162,5 +173,6 @@ export async function deploy(
   return {
     token,
     engine,
+    oracleAggregationVk,
   };
 }

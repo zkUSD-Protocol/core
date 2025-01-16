@@ -10,6 +10,7 @@ import {
   Signature,
   VerificationKey,
   DynamicProof,
+  Proof,
 } from 'o1js';
 
 // ============================================================================
@@ -188,7 +189,7 @@ export interface ContractInstance<T> {
 /**
  * @notice Input structure for Mina price verification
  */
-export class PriceAggregationProof extends DynamicProof<
+export class PriceAggregationProof extends Proof<
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput
 > {

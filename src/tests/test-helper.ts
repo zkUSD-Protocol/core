@@ -8,12 +8,14 @@ import {
   Sign,
   Signature,
   UInt64,
+  VerificationKey,
 } from 'o1js';
 import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import {
   ContractInstance,
   KeyPair,
+  MinaPriceInput,
   OraclePriceSubmissions,
   OracleWhitelist,
   PriceSubmission,
@@ -24,6 +26,7 @@ import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
 import { deploy } from '../deploy.js';
 import Client from 'mina-signer';
+import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation.js';
 
 const client = new Client({
   network: 'testnet',
@@ -86,8 +89,8 @@ export class TestHelper {
 
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-
   vaultVerificationKeyHash?: Field;
+  oracleAggregationVk: VerificationKey;
   whitelist: OracleWhitelist = new OracleWhitelist({
     addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(PublicKey.empty()),
   });
@@ -120,6 +123,7 @@ export class TestHelper {
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
+    this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
 
     if (this.chain.network().chainId === 'local') {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
@@ -204,9 +208,13 @@ export class TestHelper {
     );
   }
 
-  async getPriceSubmissions() {
-    const price = UInt64.from(1e9);
-    const fallbackPrice = UInt64.from(0.5e9);
+  async getPriceSubmissions({
+    oraclePrice,
+    fallbackPrice,
+  }: {
+    oraclePrice: UInt64;
+    fallbackPrice: UInt64;
+  }) {
     const blockHeight = Mina.getNetworkState().blockchainLength;
 
     const oraclePriceSubmissions: OraclePriceSubmissions = {
@@ -219,7 +227,7 @@ export class TestHelper {
       const oraclePublicKey = oraclePrivateKey.toPublicKey();
 
       const signature = client.signFields(
-        [price.toBigInt(), blockHeight.toBigint()],
+        [oraclePrice.toBigInt(), blockHeight.toBigint()],
         oraclePrivateKey.toBase58()
       );
 
@@ -227,9 +235,9 @@ export class TestHelper {
       const priceSubmission = new PriceSubmission({
         publicKey: oraclePublicKey,
         signature: Signature.fromBase58(signature.signature),
-        price: price,
+        price: oraclePrice,
         blockHeight: blockHeight,
-        isDummy: i > 1 ? Bool(true) : Bool(false),
+        isDummy: Bool(false),
       });
 
       oraclePriceSubmissions.submissions.push(priceSubmission);
@@ -242,7 +250,7 @@ export class TestHelper {
 
     console.log(
       'Signing fallback price submission with price',
-      price.toString(),
+      fallbackPrice.toString(),
       'and block height',
       blockHeight.toString()
     );
@@ -260,10 +268,34 @@ export class TestHelper {
     return { oraclePriceSubmissions, fallbackPriceSubmission };
   }
 
-  async getMinaPriceInput() {
+  async getMinaPriceInput(price: UInt64) {
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const minaPriceInput = await ProveMinaPriceProgram.prove({
-      blockHeight,
+
+    const { oraclePriceSubmissions, fallbackPriceSubmission } =
+      await this.getPriceSubmissions({
+        oraclePrice: price,
+        fallbackPrice: price,
+      });
+
+    const programOutput = await AggregateOraclePrices.compute(
+      { currentBlockHeight: blockHeight },
+      {
+        oracleWhitelist: this.whitelist,
+        oraclePriceSubmissions,
+        fallbackPriceSubmission,
+      }
+    );
+
+    console.log(
+      'Verification Key Hash',
+      this.oracleAggregationVk.hash.toString()
+    );
+
+    const minaPriceInput = new MinaPriceInput({
+      proof: programOutput.proof,
+      verificationKey: this.oracleAggregationVk,
     });
+
+    return minaPriceInput;
   }
 }

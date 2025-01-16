@@ -19,6 +19,7 @@ import {
   AccountUpdateForest,
   Int64,
   UInt32,
+  Provable,
 } from 'o1js';
 import { ZkUsdVault } from './zkusd-vault.js';
 
@@ -249,7 +250,7 @@ export function ZkUsdEngineContract(args: {
       minaPriceInput: MinaPriceInput
     ): PriceAggregationProofPublicOutput {
       const blockForPrice =
-        minaPriceInput.proof.publicOutput.currentBlockHeight;
+        minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
 
       this.network.blockchainLength.requireBetween(
         blockForPrice,

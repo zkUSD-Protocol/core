@@ -242,7 +242,7 @@ export const AggregateOraclePrices = ZkProgram({
   },
 });
 
-export const verifyMinaPriceInput = async (args: {
+export const verifyMinaPriceInput = (args: {
   input: MinaPriceInput;
   oracleWhitelistHash: Field;
   proofVkHash: Field;
@@ -250,17 +250,20 @@ export const verifyMinaPriceInput = async (args: {
 }) => {
   const { input, oracleWhitelistHash, proofVkHash, currentBlockHeight } = args;
 
+  Provable.log('input key hash', input.verificationKey.hash);
+  Provable.log('proofVkHash', proofVkHash);
+
   input.verificationKey.hash.assertEquals(
     proofVkHash,
     'Invalid verification key hash'
   );
-  input.proof.publicInput.oracleWhitelistHash.assertEquals(
+  input.proof.publicOutput.oracleWhitelistHash.assertEquals(
     oracleWhitelistHash,
     'Invalid oracle whitelist hash'
   );
-  input.proof.publicInput.currentBlockHeight.assertEquals(
+  input.proof.publicOutput.minaPrice.currentBlockHeight.assertEquals(
     currentBlockHeight,
     'Invalid current block height'
   );
-  input.proof.verify(input.verificationKey);
+  input.proof.verify();
 };
