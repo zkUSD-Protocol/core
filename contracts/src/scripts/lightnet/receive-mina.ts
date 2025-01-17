@@ -41,7 +41,6 @@ async function main() {
     },
     {
       fee: 1e8,
-      printTx: true,
     }
   );
 

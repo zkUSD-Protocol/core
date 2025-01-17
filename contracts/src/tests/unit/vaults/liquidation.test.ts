@@ -9,14 +9,26 @@ import { ProtocolData } from '../../../types.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
+import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Liquidation Test Suite', () => {
   const testHelper = new TestHelper();
+  let priceTwoUsd: MinaPriceInput;
+  let priceOneUsd: MinaPriceInput;
+  let priceFiftyCent: MinaPriceInput;
+  let priceFourtyCent: MinaPriceInput;
+  let priceTwentyFiveCent: MinaPriceInput;
 
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false});
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
-    await testHelper.createAgents(['alice', 'bob', 'charlie', 'dave', 'rewards']);
+    await testHelper.createAgents([
+      'alice',
+      'bob',
+      'charlie',
+      'dave',
+      'rewards',
+    ]);
 
     //Deploy a fresh vault
     await testHelper.createVaults(['alice', 'bob', 'charlie', 'dave']);
@@ -28,7 +40,17 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
         TestAmounts.COLLATERAL_100_MINA
       );
     });
-
+    priceTwoUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_2_USD);
+    priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+    priceTwentyFiveCent = await testHelper.getMinaPriceInput(
+      TestAmounts.PRICE_25_CENT
+    );
+    priceFiftyCent = await testHelper.getMinaPriceInput(
+      TestAmounts.PRICE_50_CENT
+    );
+    priceFourtyCent = await testHelper.getMinaPriceInput(
+      TestAmounts.PRICE_40_CENT
+    );
     // Bob deposits 900 Mina
     await transaction(testHelper.agents.bob.keys, async () => {
       await testHelper.engine.contract.depositCollateral(
@@ -41,7 +63,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_30_ZKUSD
+        TestAmounts.DEBT_30_ZKUSD,
+        priceOneUsd
       );
     });
 
@@ -49,7 +72,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await transaction(testHelper.agents.bob.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.bob.vault!.publicKey,
-        TestAmounts.DEBT_100_ZKUSD
+        TestAmounts.DEBT_100_ZKUSD,
+        priceOneUsd
       );
     });
   });
@@ -59,7 +83,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
       async () => {
         await transaction(testHelper.agents.bob.keys, async () => {
           await testHelper.engine.contract.liquidate(
-            testHelper.agents.alice.vault!.publicKey
+            testHelper.agents.alice.vault!.publicKey,
+            priceOneUsd
           );
         });
       },
@@ -71,7 +96,10 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
 
   it('should fail liquidation if liquidator does not have sufficent zkUsd', async () => {
     //Price drops to 0.25
-    await testHelper.updateOracleMinaPrice(TestAmounts.PRICE_25_CENT);
+
+    const newPrice = await testHelper.getMinaPriceInput(
+      TestAmounts.PRICE_25_CENT
+    );
 
     //Bob transfers 1 zkUSD to Charlie
     await transaction(testHelper.agents.bob.keys, async () => {
@@ -85,7 +113,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await assert.rejects(async () => {
       await transaction(testHelper.agents.charlie.keys, async () => {
         await testHelper.engine.contract.liquidate(
-          testHelper.agents.alice.vault!.publicKey
+          testHelper.agents.alice.vault!.publicKey,
+          newPrice
         );
       });
     }, /Overflow/i);
@@ -104,16 +133,14 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await assert.rejects(async () => {
       await transaction(testHelper.agents.bob.keys, async () => {
         await testHelper.engine.contract.liquidate(
-          testHelper.agents.alice.vault!.publicKey
+          testHelper.agents.alice.vault!.publicKey,
+          priceTwentyFiveCent
         );
       });
     }, /Update_not_permitted_balance/i);
   });
 
   it('should allow liquidation of vault if it is undercollateralized', async () => {
-    //Price raises to 0.4
-    const price = TestAmounts.PRICE_40_CENT;
-    await testHelper.updateOracleMinaPrice(price);
     // But the alice vault is still undercollateralized
 
     //Reset bobs permissions
@@ -145,7 +172,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
 
     await transaction(testHelper.agents.bob.keys, async () => {
       await testHelper.engine.contract.liquidate(
-        testHelper.agents.alice.vault!.publicKey
+        testHelper.agents.alice.vault!.publicKey,
+        priceFourtyCent
       );
     });
 
@@ -199,7 +227,7 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     // which is defined by ratio, e.g. ratio 110 is 10% bonus
     const collateralValue = aliceVaultDebtPreLiq!.value
       .mul(Field.from(1e9))
-      .div(price.value);
+      .div(priceFourtyCent.proof.publicOutput.minaPrice.priceNanoUSD);
     const valueWithLiquidationBonus = UInt64.Unsafe.fromField(
       collateralValue.mul(ratio.value).div(Field.from(100))
     );
@@ -262,9 +290,6 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
   });
 
   it('should give all collateral to liquidator when debt value exceeds collateral + liquidation bonus', async () => {
-    //Price starts at $1
-    await testHelper.updateOracleMinaPrice(TestAmounts.PRICE_1_USD);
-
     // Setup: Dave deposits 100 MINA and mints 50 zkUSD
     await transaction(testHelper.agents.dave.keys, async () => {
       await testHelper.engine.contract.depositCollateral(
@@ -276,7 +301,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await transaction(testHelper.agents.dave.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.dave.vault!.publicKey,
-        TestAmounts.DEBT_50_ZKUSD
+        TestAmounts.DEBT_50_ZKUSD,
+        priceOneUsd
       );
     });
 
@@ -286,7 +312,6 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     // - 50 zkUSD debt = $50 worth of MINA (100 MINA)
     // - With 10% bonus, liquidator should get 110 MINA
     // - Since only 105 MINA exists, liquidator gets all of it
-    await testHelper.updateOracleMinaPrice(TestAmounts.PRICE_50_CENT);
 
     const daveVaultCollateralPreLiq =
       await testHelper.agents.dave.vault?.contract.collateralAmount.fetch();
@@ -305,7 +330,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     // Bob liquidates Dave's vault
     await transaction(testHelper.agents.bob.keys, async () => {
       await testHelper.engine.contract.liquidate(
-        testHelper.agents.dave.vault!.publicKey
+        testHelper.agents.dave.vault!.publicKey,
+        priceFiftyCent
       );
     });
 
@@ -358,9 +384,6 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
   });
 
   it('Should fail if the price feed is in emergency mode', async () => {
-    // Drop price to make vault eligible for liquidation
-    await testHelper.updateOracleMinaPrice(TestAmounts.PRICE_2_USD);
-
     // Set up Alice's vault with collateral and debt
     await transaction(testHelper.agents.charlie.keys, async () => {
       await testHelper.engine.contract.depositCollateral(
@@ -372,12 +395,12 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await transaction(testHelper.agents.charlie.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.charlie.vault!.publicKey,
-        TestAmounts.DEBT_50_CENT_ZKUSD
+        TestAmounts.DEBT_50_CENT_ZKUSD,
+        priceTwoUsd
       );
     });
 
     // Drop price to make vault eligible for liquidation
-    await testHelper.updateOracleMinaPrice(TestAmounts.PRICE_25_CENT);
 
     await testHelper.stopTheProtocol();
 
@@ -388,7 +411,8 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     await assert.rejects(async () => {
       await transaction(testHelper.agents.bob.keys, async () => {
         await testHelper.engine.contract.liquidate(
-          testHelper.agents.charlie.vault!.publicKey
+          testHelper.agents.charlie.vault!.publicKey,
+          priceTwentyFiveCent
         );
       });
     }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));

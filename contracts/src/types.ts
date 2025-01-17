@@ -7,72 +7,17 @@ import {
   UInt32,
   Bool,
   PrivateKey,
+  Poseidon,
 } from 'o1js';
 
-interface KeyPair {
-  privateKey: PrivateKey;
-  publicKey: PublicKey;
-}
+// ============================================================================
+// Protocol Core Types
+// ============================================================================
 
-interface ContractInstance<T> {
-  contract: T extends new (...args: any[]) => infer R ? R : T;
-}
-
-class PriceFeedAction extends Struct({
-  address: PublicKey,
-  price: UInt64,
-}) {}
-
-class PriceState extends Struct({
-  prices: Provable.Array(UInt64, 10),
-  count: UInt64,
-}) {}
-
-class PriceSubmissionPacked extends Struct({
-  packedData: Field,
-}) {}
-
-class PriceSubmission extends Struct({
-  price: UInt64,
-  blockNumber: UInt32,
-}) {
-  static new(price?: UInt64, blockNumber?: UInt32): PriceSubmission {
-    return new PriceSubmission({
-      price: price ?? UInt64.zero,
-      blockNumber: blockNumber ?? UInt32.zero,
-    });
-  }
-  pack(): PriceSubmissionPacked {
-    return new PriceSubmissionPacked({
-      packedData: Field.fromBits([
-        ...this.price.value.toBits(64),
-        ...this.blockNumber.value.toBits(32),
-      ]),
-    });
-  }
-
-  static unpack(packed: PriceSubmissionPacked): PriceSubmission {
-    const bits = packed.packedData.toBits(128);
-    const price = UInt64.Unsafe.fromField(Field.fromBits(bits.slice(0, 64)));
-    const blockNumber = UInt32.Unsafe.fromField(
-      Field.fromBits(bits.slice(64, 96))
-    );
-    return new PriceSubmission({ price, blockNumber });
-  }
-}
-
-class ProtocolDataPacked extends Struct({
-  adminX: Field,
-  packedData: Field,
-}) {}
-
-class OracleWhitelist extends Struct({
-  addresses: Provable.Array(PublicKey, 8),
-}) {
-  static MAX_PARTICIPANTS = 8;
-}
-
-class ProtocolData extends Struct({
+/**
+ * @notice Core protocol data structure containing admin and configuration
+ */
+export class ProtocolData extends Struct({
   admin: PublicKey,
   oracleFlatFee: UInt64,
   emergencyStop: Bool,
@@ -121,28 +66,93 @@ class ProtocolData extends Struct({
   }
 }
 
-class VaultState extends Struct({
+/**
+ * @notice Packed version of protocol data for efficient storage
+ */
+export class ProtocolDataPacked extends Struct({
+  adminX: Field,
+  packedData: Field,
+}) {}
+
+// ============================================================================
+// Oracle & Price Types
+// ============================================================================
+const MAX_ORACLE_COUNT = 8;
+
+/**
+ * @notice Whitelist of authorized oracle addresses
+ */
+export class OracleWhitelist extends Struct({
+  addresses: Provable.Array(PublicKey, MAX_ORACLE_COUNT),
+}) {
+  static MAX_PARTICIPANTS = MAX_ORACLE_COUNT;
+}
+
+// DEV: not sure where to put it
+//      but since there is many ways to compute the hash,
+//      we must have it available for all the tools
+export function computeOracleWhitelistHash(whitelist: OracleWhitelist): Field {
+  return Poseidon.hash(OracleWhitelist.toFields(whitelist));
+}
+
+/**
+ * @notice Represents a verified MINA price
+ */
+export class MinaPrice extends Struct({
+  priceNanoUSD: UInt64,
+  currentBlockHeight: UInt32,
+}) {}
+
+// ============================================================================
+// Vault Types
+// ============================================================================
+
+/**
+ * @notice Represents the state of a user's vault
+ */
+export class VaultState extends Struct({
   collateralAmount: UInt64,
   debtAmount: UInt64,
   owner: PublicKey,
 }) {}
 
-class LiquidationResults extends Struct({
+/**
+ * @notice Results from a vault liquidation
+ */
+export class LiquidationResults extends Struct({
   oldVaultState: VaultState,
   liquidatorCollateral: UInt64,
   vaultOwnerCollateral: UInt64,
 }) {}
 
-export {
-  KeyPair,
-  PriceFeedAction,
-  PriceState,
-  PriceSubmission,
-  PriceSubmissionPacked,
-  ProtocolData,
-  ProtocolDataPacked,
-  OracleWhitelist,
-  VaultState,
-  LiquidationResults,
-  ContractInstance,
-};
+// ============================================================================
+// Utility Types
+// ============================================================================
+
+/**
+ * @notice Keypair type for managing public/private key pairs
+ */
+export interface KeyPair {
+  privateKey: PrivateKey;
+  publicKey: PublicKey;
+}
+
+/**
+ * @notice Helper type for contract instances
+ */
+export interface ContractInstance<T> {
+  contract: T extends new (...args: any[]) => infer R ? R : T;
+}
+
+// ============================================================================
+// Oracle Proof Types
+// ============================================================================
+
+/**
+ * A struct combining a price and a flag telling us whether
+ * this item is from a “real” oracle or just fallback.
+ */
+export class PriceWithFlag extends Struct({
+  price: UInt64,
+  isOracle: Bool,
+}) {}

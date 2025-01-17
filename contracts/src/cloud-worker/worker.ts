@@ -18,12 +18,11 @@ import {
   Cache,
   Field,
   UInt64,
+  UInt32,
 } from 'o1js';
 import {
   ZkUsdEngineContract,
   ZkUsdVault,
-  ZkUsdMasterOracle,
-  ZkUsdPriceTracker,
   FungibleTokenContract,
 } from '../index.js';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
@@ -44,6 +43,12 @@ interface TransactionConfig {
   buildTx: (contract: any, args: TransactionArgs) => Promise<void>;
   requiresNewAccounts?: boolean;
 }
+
+const validPriceBlockCount: Record<string, number> = {
+  local: 1,
+  lightnet: 30,
+  devnet: 30, // Added devnet configuration
+};
 
 export class zkUsdWorker extends zkCloudWorker {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -113,25 +118,30 @@ export class zkUsdWorker extends zkCloudWorker {
         hash: Field(verificationKeys.vault.hash),
       };
 
-      if (!vaultKey) {
-        throw new Error('Vault key not found');
+      const oracleAggregationKey: VerificationKey = {
+        data: verificationKeys.oracleAggregation.data,
+        hash: Field(verificationKeys.oracleAggregation.hash),
+      };
+
+      if (!vaultKey || !oracleAggregationKey) {
+        throw new Error('Verification keys not found');
       }
 
-      const ZkUsdEngine = ZkUsdEngineContract(
-        this.keys.token.publicKey,
-        this.keys.masterOracle.publicKey,
-        this.keys.evenOraclePriceTracker.publicKey,
-        this.keys.oddOraclePriceTracker.publicKey,
-        vaultKey
-      );
+      const ZkUsdEngine = ZkUsdEngineContract({
+        oracleFundTrackerAddress: this.keys.oracleFundsTracker.publicKey,
+        zkUsdTokenAddress: this.keys.token.publicKey,
+        minaPriceInputZkProgramVkHash: oracleAggregationKey.hash,
+        validPriceBlockCount: UInt32.from(
+          validPriceBlockCount[this.cloud.chain]
+        ),
+        vaultVerificationKey: vaultKey,
+      });
 
       const FungibleToken = ZkUsdEngine.FungibleToken;
 
       if (!ZkUsdEngine._provers) {
         console.time('compiled zkUSD Contracts');
 
-        await ZkUsdMasterOracle.compile();
-        await ZkUsdPriceTracker.compile();
         await ZkUsdVault.compile();
         await FungibleToken.compile();
         await ZkUsdEngine.compile();

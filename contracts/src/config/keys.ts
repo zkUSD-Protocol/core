@@ -4,11 +4,9 @@ import { KeyPair } from '../types.js';
 
 export interface NetworkKeyPairs {
   protocolAdmin: KeyPair;
-  masterOracle: KeyPair;
+  oracleFundsTracker: KeyPair;
   token: KeyPair;
   engine: KeyPair;
-  evenOraclePriceTracker: KeyPair;
-  oddOraclePriceTracker: KeyPair;
 }
 
 const localKeys: NetworkKeyPairs = {
@@ -20,7 +18,7 @@ const localKeys: NetworkKeyPairs = {
       'B62qpQzmXmB3euvH3U5sfckNicA6zm7dDYSajXJEEVk5NMAtXzeefgu'
     ),
   },
-  masterOracle: {
+  oracleFundsTracker: {
     privateKey: PrivateKey.fromBase58(
       'EKEvEeJQqe1e6TFVYsvMpGeJAXtSPNmCrHDWSWHS1Swum8iuTnq9'
     ),
@@ -42,22 +40,6 @@ const localKeys: NetworkKeyPairs = {
     ),
     publicKey: PublicKey.fromBase58(
       'B62qkwLvZ6e5NzRgQwkTaA9m88fTUZLHmpwvmCQEqbp5KcAAfqFAaf9'
-    ),
-  },
-  evenOraclePriceTracker: {
-    privateKey: PrivateKey.fromBase58(
-      'EKEhjKoJgTKZ22ovXXvt9dT3zbLVDoKDwvHtPaDQdWzPCu6uBd1b'
-    ),
-    publicKey: PublicKey.fromBase58(
-      'B62qk5VcEhiXeUCzR7a6aPH7A3YLm86jeP4ffMarPt8Q6pMbGjCZDLU'
-    ),
-  },
-  oddOraclePriceTracker: {
-    privateKey: PrivateKey.fromBase58(
-      'EKF3K7jmFwKdjnpSr4bQ9rYQ3Bc4yV53wr5Gz8v7YLqXArokT97Q'
-    ),
-    publicKey: PublicKey.fromBase58(
-      'B62qqpWYnkG8AgYTDvtvxSJhAoJemHZJGPcVrTgGNKT5Kz9pQjMoysm'
     ),
   },
 };

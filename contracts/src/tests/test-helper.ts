@@ -1,20 +1,44 @@
 import {
   AccountUpdate,
   Bool,
+  DynamicProof,
   Field,
+  Mina,
   PrivateKey,
   PublicKey,
+  Signature,
+  UInt32,
   UInt64,
+  VerificationKey,
 } from 'o1js';
 import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import { ZkUsdMasterOracle } from '../contracts/zkusd-master-oracle.js';
-import { ContractInstance, KeyPair, OracleWhitelist } from '../types.js';
+import {
+  computeOracleWhitelistHash,
+  ContractInstance,
+  KeyPair,
+  OracleWhitelist,
+} from '../types.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { MinaChain } from '../mina.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
 import { deploy } from '../deploy.js';
+import Client from 'mina-signer';
+import {
+  AggregateOraclePrices,
+  OraclePriceSubmissions,
+  PriceSubmission,
+} from '../proofs/oracle-price-aggregation/prove.js';
+import {
+  MinaPriceInput,
+  PriceAggregationProofPublicInput,
+  PriceAggregationProofPublicOutput,
+} from '../proofs/oracle-price-aggregation/verify.js';
+
+const client = new Client({
+  network: 'testnet',
+});
 
 export class TestAmounts {
   //ZERO
@@ -73,9 +97,8 @@ export class TestHelper {
 
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  masterOracle: ContractInstance<ZkUsdMasterOracle>;
-
   vaultVerificationKeyHash?: Field;
+  oracleAggregationVk: VerificationKey;
   whitelist: OracleWhitelist = new OracleWhitelist({
     addresses: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(PublicKey.empty()),
   });
@@ -108,42 +131,26 @@ export class TestHelper {
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
-    this.masterOracle = deployedContracts.masterOracle;
+    this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
 
-    for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
-      const oracleName = 'oracle' + (i + 1);
-      this.oracles[oracleName] = PrivateKey.randomKeypair();
-      this.whitelist.addresses[i] = this.oracles[oracleName].publicKey;
-      this.whitelistedOracles.set(oracleName, i);
-    }
-
-    await transaction(this.deployer, async () => {
-      AccountUpdate.fundNewAccount(this.deployer.publicKey, 8);
-      const au = AccountUpdate.createSigned(this.deployer.publicKey);
-      for (const [_name, oracle] of Object.entries(this.oracles)) {
-        au.send({
-          to: oracle.publicKey,
-          amount: TestAmounts.COLLATERAL_50_MINA,
-        });
+    if (this.chain.network().chainId === 'local') {
+      for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
+        const oracleName = 'oracle' + (i + 1);
+        this.oracles[oracleName] = PrivateKey.randomKeypair();
+        this.whitelist.addresses[i] = this.oracles[oracleName].publicKey;
+        this.whitelistedOracles.set(oracleName, i);
       }
-    });
 
-    await transaction(
-      this.deployer,
-      async () => {
-        await this.engine.contract.updateOracleWhitelist(this.whitelist);
-      },
-      {
-        extraSigners: [this.networkKeys.protocolAdmin.privateKey],
-      }
-    );
-
-    //Transfer Mina to the price feed oracle to pay the oracle fee
-    await transaction(this.deployer, async () => {
-      await this.engine.contract.depositOracleFunds(
-        TestAmounts.COLLATERAL_100_MINA
+      await transaction(
+        this.deployer,
+        async () => {
+          await this.engine.contract.updateOracleWhitelist(this.whitelist);
+        },
+        {
+          extraSigners: [this.networkKeys.protocolAdmin.privateKey],
+        }
       );
-    });
+    }
   }
 
   async createAgents(names: string[]) {
@@ -180,27 +187,9 @@ export class TestHelper {
         },
         {
           extraSigners: [this.agents[name].vault!.privateKey],
-          printTx: true,
         }
       );
     }
-  }
-
-  async updateOracleMinaPrice(price: UInt64) {
-    // Use the map to iterate over whitelisted oracles
-    for (const [oracleName] of this.whitelistedOracles) {
-      await transaction(this.oracles[oracleName], async () => {
-        await this.engine.contract.submitPrice(price, this.whitelist);
-      });
-    }
-
-    this.chain.moveChainForward();
-
-    await transaction(this.deployer, async () => {
-      await this.engine.contract.settlePriceUpdate();
-    });
-
-    this.chain.moveChainForward();
   }
 
   async stopTheProtocol() {
@@ -225,5 +214,80 @@ export class TestHelper {
         extraSigners: [this.networkKeys.protocolAdmin.privateKey],
       }
     );
+  }
+
+  async getPriceSubmissions({
+    oraclePrice,
+    fallbackPrice,
+  }: {
+    oraclePrice: UInt64;
+    fallbackPrice: UInt64;
+  }) {
+    const blockHeight = Mina.getNetworkState().blockchainLength;
+
+    const oraclePriceSubmissions: OraclePriceSubmissions = {
+      submissions: [],
+    };
+
+    for (let i = 0; i < this.whitelist.addresses.length; i++) {
+      const oracleName = 'oracle' + (i + 1);
+      const oraclePrivateKey = this.oracles[oracleName].privateKey;
+      const oraclePublicKey = oraclePrivateKey.toPublicKey();
+
+      const signature = client.signFields(
+        [oraclePrice.toBigInt(), blockHeight.toBigint()],
+        oraclePrivateKey.toBase58()
+      );
+
+      //build the price submission
+      const priceSubmission = new PriceSubmission({
+        publicKey: oraclePublicKey,
+        signature: Signature.fromBase58(signature.signature),
+        price: oraclePrice,
+        blockHeight: blockHeight,
+        isDummy: Bool(false),
+      });
+
+      oraclePriceSubmissions.submissions.push(priceSubmission);
+    }
+
+    return oraclePriceSubmissions;
+  }
+
+  async getMinaPriceInput(price: UInt64) {
+    const blockHeight = Mina.getNetworkState().blockchainLength;
+
+    const oraclePriceSubmissions = await this.getPriceSubmissions({
+      oraclePrice: price,
+      fallbackPrice: price,
+    });
+
+    const oracleWhitelistHash = computeOracleWhitelistHash(this.whitelist);
+
+    const programOutput = await AggregateOraclePrices.compute(
+      {
+        currentBlockHeight: blockHeight,
+        oracleWhitelistHash,
+      },
+      {
+        oracleWhitelist: this.whitelist,
+        oraclePriceSubmissions,
+      }
+    );
+
+    const proof = {
+      publicInput: programOutput.proof.publicInput,
+      publicOutput: programOutput.proof.publicOutput,
+    } as DynamicProof<
+      PriceAggregationProofPublicInput,
+      PriceAggregationProofPublicOutput
+    >;
+
+    const minaPriceInput = new MinaPriceInput({
+      proof: proof,
+      verificationKey: this.oracleAggregationVk,
+    });
+
+    return minaPriceInput;
   }
 }

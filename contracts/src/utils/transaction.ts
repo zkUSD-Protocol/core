@@ -20,8 +20,6 @@ export async function transaction(
     printAccountUpdates = false,
   } = options;
 
-  console.log('ARE PROOFS ENABLED?', Mina.getProofsEnabled());
-
   const tx = await Mina.transaction(
     {
       sender: sender.publicKey,
@@ -69,9 +67,8 @@ export async function transaction(
     console.log(tx.transaction.accountUpdates);
   }
 
-  console.time('prove');
   await tx.prove();
-  console.timeEnd('prove');
+
   tx.sign([sender.privateKey, ...extraSigners]);
   const sentTx = await tx.send();
   const txResult = await sentTx.wait();

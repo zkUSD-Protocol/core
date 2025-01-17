@@ -5,17 +5,21 @@ import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
+import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Redeem Test Suite', () => {
   const testHelper = new TestHelper();
+  let priceOneUsd: MinaPriceInput;
 
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false});
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie', 'rewards']);
 
     //deploy alice's vault
     await testHelper.createVaults(['alice', 'bob']);
+
+    priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     //Alice deposits 100 Mina
     await transaction(testHelper.agents.alice.keys, async () => {
@@ -29,7 +33,8 @@ describe('zkUSD Vault Redeem Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD
+        TestAmounts.DEBT_5_ZKUSD,
+        priceOneUsd
       );
     });
   });
@@ -41,7 +46,8 @@ describe('zkUSD Vault Redeem Test Suite', () => {
         async () => {
           await testHelper.engine.contract.redeemCollateral(
             testHelper.agents.alice.vault!.publicKey,
-            amount
+            amount,
+            priceOneUsd
           );
         },
         {
@@ -161,7 +167,8 @@ describe('zkUSD Vault Redeem Test Suite', () => {
         await transaction(testHelper.agents.bob.keys, async () => {
           await testHelper.engine.contract.redeemCollateral(
             testHelper.agents.alice.vault!.publicKey,
-            TestAmounts.COLLATERAL_1_MINA
+            TestAmounts.COLLATERAL_1_MINA,
+            priceOneUsd
           );
         });
       },
@@ -229,7 +236,8 @@ describe('zkUSD Vault Redeem Test Suite', () => {
         await transaction(testHelper.agents.alice.keys, async () => {
           await testHelper.engine.contract.redeemCollateral(
             testHelper.agents.alice.vault!.publicKey,
-            TestAmounts.COLLATERAL_1_MINA
+            TestAmounts.COLLATERAL_1_MINA,
+            priceOneUsd
           );
         });
       },
@@ -246,7 +254,8 @@ describe('zkUSD Vault Redeem Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.redeemCollateral(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.COLLATERAL_1_MINA
+        TestAmounts.COLLATERAL_1_MINA,
+        priceOneUsd
       );
     });
   });

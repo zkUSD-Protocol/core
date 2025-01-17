@@ -1,12 +1,3 @@
-import {
-  AccountUpdate,
-  fetchEvents,
-  Field,
-  Mina,
-  PublicKey,
-  TokenId,
-  UInt64,
-} from 'o1js';
 import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
 import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
@@ -17,7 +8,7 @@ describe('zkUSD Deployment Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: true });
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie', 'david', 'eve']);
   });

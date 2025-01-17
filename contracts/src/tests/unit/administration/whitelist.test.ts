@@ -12,7 +12,7 @@ describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
   let newWhitelistHash: Field;
 
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false});
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     whitelist = testHelper.whitelist;
   });

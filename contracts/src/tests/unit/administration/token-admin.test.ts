@@ -20,6 +20,7 @@ import {
   FungibleTokenContract,
 } from '@minatokens/token';
 import { transaction } from '../../../utils/transaction.js';
+import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 export class NewFungibleTokenAdmin
   extends SmartContract
@@ -87,13 +88,16 @@ describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
   const newAdminContract = PrivateKey.randomKeypair();
   const newAdmin = PrivateKey.randomKeypair();
   const adminContract = new NewFungibleTokenAdmin(newAdminContract.publicKey);
+  let priceOneUsd: MinaPriceInput;
 
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false})
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
 
     await testHelper.createAgents(['alice']);
     await testHelper.createVaults(['alice']);
+
+    priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     //Alice deposits 100 Mina
     await transaction(testHelper.agents.alice.keys, async () => {
@@ -106,7 +110,8 @@ describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD
+        TestAmounts.DEBT_5_ZKUSD,
+        priceOneUsd
       );
     });
 
@@ -152,7 +157,8 @@ describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
       await transaction(testHelper.agents.alice.keys, async () => {
         await testHelper.engine.contract.mintZkUsd(
           testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_5_ZKUSD
+          TestAmounts.DEBT_5_ZKUSD,
+          priceOneUsd
         );
       });
     }, /Account_app_state_precondition_unsatisfied/);
