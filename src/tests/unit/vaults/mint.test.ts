@@ -43,13 +43,17 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
 
   it('should allow alice to mint zkUSD', async () => {
-    await transaction(testHelper.agents.alice.keys, async () => {
-      await testHelper.engine.contract.mintZkUsd(
-        testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD,
-        minaPriceInput
-      );
-    });
+    await transaction(
+      testHelper.agents.alice.keys,
+      async () => {
+        await testHelper.engine.contract.mintZkUsd(
+          testHelper.agents.alice.vault!.publicKey,
+          TestAmounts.DEBT_5_ZKUSD,
+          minaPriceInput
+        );
+      },
+      { printTx: true }
+    );
 
     const aliceBalance = await testHelper.token.contract.getBalanceOf(
       testHelper.agents.alice.keys.publicKey

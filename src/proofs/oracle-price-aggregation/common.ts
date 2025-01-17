@@ -1,16 +1,6 @@
-import {
-  Field,
-  Provable,
-  Struct,
-  UInt32,
-  PublicKey,
-  Bool,
-} from 'o1js';
+import { Field, Provable, Struct, UInt32, PublicKey, Bool, UInt64 } from 'o1js';
 
-import {
-  MinaPrice, OracleWhitelist,
-} from '../../types.js';
-
+import { MinaPrice, OracleWhitelist } from '../../types.js';
 
 /**
  * @notice Input data structure for price aggregation proof
@@ -22,12 +12,12 @@ class PriceAggregationProofPublicInput extends Struct({
 
 class ValidSubmission extends Struct({
   publicKey: PublicKey,
-  submissionValid: Bool
+  submissionValid: Bool,
 }) {
   static empty(): ValidSubmission {
     return new ValidSubmission({
       publicKey: PublicKey.empty(),
-      submissionValid: Bool(false)
+      submissionValid: Bool(false),
     });
   }
 }
@@ -40,14 +30,14 @@ class ValidSubmissions extends Struct({
   valid: Provable.Array(ValidSubmission, OracleWhitelist.MAX_PARTICIPANTS),
   count: UInt32,
 }) {
-
   static empty(): ValidSubmissions {
     return new ValidSubmissions({
-      valid: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(ValidSubmission.empty()),
+      valid: Array(OracleWhitelist.MAX_PARTICIPANTS).fill(
+        ValidSubmission.empty()
+      ),
       count: UInt32.from(0),
     });
   }
-
 }
 
 /**
@@ -57,7 +47,6 @@ class PriceAggregationProofPublicOutput extends Struct({
   minaPrice: MinaPrice,
   validSubmissions: ValidSubmissions,
 }) {}
-
 
 export {
   ValidSubmission,
