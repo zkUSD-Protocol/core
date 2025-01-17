@@ -1,20 +1,23 @@
 import { AccountUpdate, Bool } from 'o1js';
-import { TestAmounts, TestHelper } from '../../test-helper.js'
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { ProtocolData } from '../../../types.js';
 import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
+import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
   const testHelper = new TestHelper();
-
+  let priceOneUsd: MinaPriceInput;
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false})
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice']);
 
     await testHelper.createVaults(['alice']);
+
+    priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     //Alice deposits 100 Mina
     await transaction(testHelper.agents.alice.keys, async () => {
@@ -133,7 +136,8 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
         AccountUpdate.fundNewAccount(testHelper.agents.alice.keys.publicKey, 1);
         await testHelper.engine.contract.mintZkUsd(
           testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_5_ZKUSD
+          TestAmounts.DEBT_5_ZKUSD,
+          priceOneUsd
         );
       });
     }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
@@ -148,7 +152,8 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
       await transaction(testHelper.agents.alice.keys, async () => {
         await testHelper.engine.contract.mintZkUsd(
           testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_5_ZKUSD
+          TestAmounts.DEBT_5_ZKUSD,
+          priceOneUsd
         );
       });
     }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
@@ -158,7 +163,8 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD
+        TestAmounts.DEBT_5_ZKUSD,
+        priceOneUsd
       );
     });
 

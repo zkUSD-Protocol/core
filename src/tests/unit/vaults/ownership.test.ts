@@ -3,15 +3,18 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { Account, AccountUpdate } from 'o1js';
 import { transaction } from '../../../utils/transaction.js';
+import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Ownership Test Suite', () => {
   const testHelper = new TestHelper();
-
+  let priceOneUsd: MinaPriceInput;
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false});
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie']);
     await testHelper.createVaults(['alice']);
+
+    priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     // Alice deposits initial collateral
     await transaction(testHelper.agents.alice.keys, async () => {
@@ -25,7 +28,8 @@ describe('zkUSD Vault Ownership Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD
+        TestAmounts.DEBT_5_ZKUSD,
+        priceOneUsd
       );
     });
   });
@@ -83,7 +87,8 @@ describe('zkUSD Vault Ownership Test Suite', () => {
     await transaction(testHelper.agents.bob.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD
+        TestAmounts.DEBT_5_ZKUSD,
+        priceOneUsd
       );
     });
 
@@ -125,7 +130,8 @@ describe('zkUSD Vault Ownership Test Suite', () => {
         await transaction(testHelper.agents.alice.keys, async () => {
           await testHelper.engine.contract.mintZkUsd(
             testHelper.agents.alice.vault!.publicKey,
-            TestAmounts.DEBT_5_ZKUSD
+            TestAmounts.DEBT_5_ZKUSD,
+            priceOneUsd
           );
         });
       },

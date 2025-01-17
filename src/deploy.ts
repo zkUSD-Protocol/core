@@ -1,6 +1,4 @@
-import { MinaChainInstance  } from './mina.js';
-import { ZkUsdMasterOracle } from './contracts/zkusd-master-oracle.js';
-import { ZkUsdPriceTracker } from './contracts/zkusd-price-tracker.js';
+import { MinaChainInstance } from './mina.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
@@ -15,14 +13,16 @@ import {
   UInt32,
   UInt64,
   UInt8,
+  VerificationKey,
 } from 'o1js';
 import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
+import { AggregateOraclePrices } from './proofs/oracle-price-aggregation/prove.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  masterOracle: ContractInstance<ZkUsdMasterOracle>;
+  oracleAggregationVk: VerificationKey;
 }
 
 export async function deploy(
@@ -36,12 +36,19 @@ export async function deploy(
 
   const networkKeys = getNetworkKeys(chainId);
 
-  const ZkUsdEngine = ZkUsdEngineContract(
-    networkKeys.token.publicKey,
-    networkKeys.masterOracle.publicKey,
-    networkKeys.evenOraclePriceTracker.publicKey,
-    networkKeys.oddOraclePriceTracker.publicKey
+  const oracleAggregationVk = new VerificationKey(
+    (await AggregateOraclePrices.compile()).verificationKey
   );
+
+  const ZkUsdEngine = ZkUsdEngineContract({
+    oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
+    zkUsdTokenAddress: networkKeys.token.publicKey,
+    minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
+    validPriceBlockCount: UInt32.from(
+      currentNetwork.network().validPriceBlockCount!
+    ),
+  });
+
   const FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
   const token = {
@@ -52,21 +59,10 @@ export async function deploy(
     contract: new ZkUsdEngine(networkKeys.engine.publicKey),
   };
 
-  const masterOracle = {
-    contract: new ZkUsdMasterOracle(
-      networkKeys.masterOracle.publicKey,
-      engine.contract.deriveTokenId()
-    ),
-  };
-
   //We always need to compile these contracts
 
   const vaultVerification = await ZkUsdVault.compile();
   const vaultVerificationKeyHash = vaultVerification.verificationKey.hash;
-
-  await ZkUsdMasterOracle.compile();
-
-  await ZkUsdPriceTracker.compile();
 
   if (currentNetwork.proofsEnabled) {
     console.log('Compiling Engine contract');
@@ -74,7 +70,6 @@ export async function deploy(
     console.log('Compiling Token contract');
     await FungibleToken.compile();
   }
-
 
   //Check whether we have the protocol admin account created
 
@@ -102,7 +97,6 @@ export async function deploy(
 
   //Think about what we are doing here
   const engineDeployProps: ZkUsdEngineDeployProps = {
-    initialPrice: UInt64.from(1e9),
     admin: networkKeys.protocolAdmin.publicKey,
     oracleFlatFee: UInt64.from(1e9),
     emergencyStop: Bool(false),
@@ -139,7 +133,7 @@ export async function deploy(
           networkKeys.token.privateKey,
           networkKeys.engine.privateKey,
           networkKeys.protocolAdmin.privateKey,
-          networkKeys.evenOraclePriceTracker.privateKey,
+          networkKeys.oracleFundsTracker.privateKey,
         ],
         fee,
       }
@@ -151,25 +145,25 @@ export async function deploy(
   console.log('Initializing Engine contract');
 
   try {
-    const engineAccount = (
-      await fetchAccount({ publicKey: networkKeys.engine.publicKey })
+    const engineTokenAccount = (
+      await fetchAccount({
+        publicKey: networkKeys.engine.publicKey,
+        tokenId: engine.contract.deriveTokenId(),
+      })
     ).account;
-    if (!engineAccount) throw new Error('Engine contract not found');
+    if (!engineTokenAccount) throw new Error('Engine contract not found');
     console.log('Engine contract already deployed');
   } catch {
     await transaction(
       deployer,
       async () => {
-        AccountUpdate.fundNewAccount(deployer.publicKey, 4);
+        AccountUpdate.fundNewAccount(deployer.publicKey, 1);
         await engine.contract.initialize();
       },
       {
         extraSigners: [
           networkKeys.protocolAdmin.privateKey,
           networkKeys.engine.privateKey,
-          networkKeys.masterOracle.privateKey,
-          networkKeys.evenOraclePriceTracker.privateKey,
-          networkKeys.oddOraclePriceTracker.privateKey,
         ],
         fee,
       }
@@ -179,6 +173,6 @@ export async function deploy(
   return {
     token,
     engine,
-    masterOracle,
+    oracleAggregationVk,
   };
 }

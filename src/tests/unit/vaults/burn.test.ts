@@ -4,17 +4,23 @@ import { ZkUsdVaultErrors } from '../../../contracts/zkusd-vault.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
+import { MinaPrice } from '../../../types.js';
+import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Burn Test Suite', () => {
   const testHelper = new TestHelper();
 
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false});
+    await testHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie']);
 
     //deploy alice's vault
     await testHelper.createVaults(['alice']);
+
+    const price: MinaPriceInput = await testHelper.getMinaPriceInput(
+      TestAmounts.PRICE_1_USD
+    );
 
     // Alice deposits 100 Mina
     await transaction(testHelper.agents.alice.keys, async () => {
@@ -28,7 +34,8 @@ describe('zkUSD Vault Burn Test Suite', () => {
     await transaction(testHelper.agents.alice.keys, async () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_30_ZKUSD
+        TestAmounts.DEBT_30_ZKUSD,
+        price
       );
     });
   });
