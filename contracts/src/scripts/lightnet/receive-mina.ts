@@ -2,7 +2,7 @@ import { AccountUpdate, fetchAccount, PublicKey } from 'o1js';
 import { transaction } from '../../utils/transaction.js';
 import { MinaChain } from '../../mina.js';
 
-async function main() {
+export async function receiveMina() {
   const receiver = PublicKey.fromBase58(
     'B62qmbTQ56amhVUBTH3umviEEnnQhTbKf5EkpyXb62Rzho3T3A1dPYx'
   );
@@ -14,25 +14,15 @@ async function main() {
 
   let accountFunded: Boolean = false;
 
-  // try {
-  //   const account = (await fetchAccount({ publicKey: funder.publicKey }))
-  //     .account;
-  //   console.log('Account:', account);
-  //   if (account) {
-  //     accountFunded = true;
-  //     console.log('Account already funded');
-  //   } else {
-  //     throw new Error('Account not found');
-  //   }
-  // } catch (e) {
-  //   accountFunded = false;
-  //   console.log('Account not found');
-  // }
+  const receiverAccount = (await fetchAccount({ publicKey: receiver })).account;
 
   await transaction(
     funder,
     async () => {
-      AccountUpdate.fundNewAccount(funder.publicKey, 1);
+      if (!receiverAccount) {
+        AccountUpdate.fundNewAccount(funder.publicKey, 1);
+      }
+
       const au = AccountUpdate.createSigned(funder.publicKey);
       au.send({
         to: receiver,
@@ -47,4 +37,4 @@ async function main() {
   console.log('Mina sent to receiver');
 }
 
-main();
+receiveMina();

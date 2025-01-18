@@ -8,14 +8,18 @@ interface MinaNetwork {
   lightnetAccountManager?: string;
   explorerAccountUrl?: string;
   explorerTransactionUrl?: string;
-  validPriceBlockCount?: number;
 }
+
+export const validPriceBlockCount: Record<string, number> = {
+  local: 1,
+  lightnet: 10,
+  devnet: 30,
+};
 
 const Local: MinaNetwork = {
   mina: [],
   archive: [],
   chainId: 'local',
-  validPriceBlockCount: 1,
 };
 
 const Lightnet: MinaNetwork = {
@@ -24,7 +28,6 @@ const Lightnet: MinaNetwork = {
   lightnetAccountManager: 'http://localhost:8181',
   chainId: 'lightnet',
   name: 'Lightnet',
-  validPriceBlockCount: 10,
 };
 
 const networks: MinaNetwork[] = [Local, Lightnet];

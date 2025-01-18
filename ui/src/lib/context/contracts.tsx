@@ -1,8 +1,13 @@
 "use client";
 
 import React, { createContext, useContext, useMemo } from "react";
-import { Mina, PublicKey } from "o1js";
-import { ZkUsdEngineContract, vaultKey } from "zkusd";
+import { Mina, PublicKey, UInt32 } from "o1js";
+import {
+  ZkUsdEngineContract,
+  vaultVk,
+  validPriceBlockCount,
+  oracleAggregationVk,
+} from "zkusd";
 
 /**
  * Define the shape of what's in your contracts context.
@@ -29,32 +34,21 @@ export function ContractsProvider({ children }: { children: React.ReactNode }) {
   const engine = useMemo(() => {
     const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_ADDRESS;
     const engineAddress = process.env.NEXT_PUBLIC_ENGINE_ADDRESS;
-    const masterOracleAddress = process.env.NEXT_PUBLIC_MASTER_ORACLE_ADDRESS;
-    const evenOracleAddress =
-      process.env.NEXT_PUBLIC_EVEN_ORACLE_PRICE_TRACKER_ADDRESS;
-    const oddOracleAddress =
-      process.env.NEXT_PUBLIC_ODD_ORACLE_PRICE_TRACKER_ADDRESS;
-
-    if (
-      !tokenAddress ||
-      !engineAddress ||
-      !masterOracleAddress ||
-      !evenOracleAddress ||
-      !oddOracleAddress
-    ) {
+    if (!tokenAddress || !engineAddress) {
       throw new Error(
         "Missing environment variables for engine contract addresses"
       );
     }
 
     // Get the engine contract class definition
-    const ZkUsdEngine = ZkUsdEngineContract(
-      PublicKey.fromBase58(tokenAddress),
-      PublicKey.fromBase58(masterOracleAddress),
-      PublicKey.fromBase58(evenOracleAddress),
-      PublicKey.fromBase58(oddOracleAddress),
-      vaultKey
-    );
+    const ZkUsdEngine = ZkUsdEngineContract({
+      zkUsdTokenAddress: PublicKey.fromBase58(tokenAddress),
+      minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
+      validPriceBlockCount: UInt32.from(
+        validPriceBlockCount[process.env.NEXT_PUBLIC_NETWORK || "local"]
+      ),
+      vaultVerificationKey: vaultVk,
+    });
 
     // Instantiate the engine with address
     return new ZkUsdEngine(PublicKey.fromBase58(engineAddress));

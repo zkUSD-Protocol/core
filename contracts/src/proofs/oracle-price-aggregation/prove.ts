@@ -198,8 +198,13 @@ const AggregateOraclePrices = ZkProgram({
   },
 });
 
+class AggregateOraclePricesProof extends ZkProgram.Proof(
+  AggregateOraclePrices
+) {}
+
 export {
   AggregateOraclePrices,
+  AggregateOraclePricesProof,
   PriceAggregationProofPrivateInput,
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput,

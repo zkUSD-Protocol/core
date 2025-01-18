@@ -20,7 +20,8 @@ import { ContractInstance, KeyPair } from './types.js';
 import { transaction } from './utils/transaction.js';
 import { AggregateOraclePrices } from './proofs/oracle-price-aggregation/prove.js';
 import { FileSystemCache } from './utils/cache.js';
-import { updateVerificationKeys } from './config/update-verification-keys.js';
+import { updateVerificationKeys } from './utils/update-verification-keys.js';
+import { validPriceBlockCount } from './index.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -32,6 +33,7 @@ export async function deploy(
   currentNetwork: MinaChainInstance,
   deployer: KeyPair
 ): Promise<DeployedContracts> {
+  let engineVk: VerificationKey;
   const chainId = currentNetwork.network().chainId;
   console.log('Deploying contracts on', chainId);
 
@@ -46,22 +48,20 @@ export async function deploy(
 
   const vaultVerification = await ZkUsdVault.compile();
 
+  const vaultVk = vaultVerification.verificationKey;
+
   // Update verification keys
-  updateVerificationKeys(
-    vaultVerification.verificationKey,
-    oracleAggregationVk
-  );
+  updateVerificationKeys({
+    vaultVk,
+    oracleAggregationVk,
+  });
 
   const vaultVerificationKeyHash = vaultVerification.verificationKey.hash;
 
   const ZkUsdEngine = ZkUsdEngineContract({
-    oracleFundTrackerAddress: networkKeys.oracleFundsTracker.publicKey,
     zkUsdTokenAddress: networkKeys.token.publicKey,
     minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
-    validPriceBlockCount: UInt32.from(
-      currentNetwork.network().validPriceBlockCount!
-    ),
-    vaultVerificationKey: vaultVerification.verificationKey,
+    vaultVerificationKey: vaultVk,
   });
 
   const FungibleToken = FungibleTokenContract(ZkUsdEngine);
@@ -77,7 +77,7 @@ export async function deploy(
   //We always need to compile these contracts
   if (currentNetwork.proofsEnabled) {
     await ZkUsdEngine.FungibleToken.compile();
-    await ZkUsdEngine.compile();
+    engineVk = (await ZkUsdEngine.compile()).verificationKey;
   }
 
   //Check whether we have the protocol admin account created
@@ -107,7 +107,9 @@ export async function deploy(
   //Think about what we are doing here
   const engineDeployProps: ZkUsdEngineDeployProps = {
     admin: networkKeys.protocolAdmin.publicKey,
-    oracleFlatFee: UInt64.from(1e9),
+    validPriceBlockCount: UInt32.from(
+      validPriceBlockCount[currentNetwork.network().chainId]
+    ),
     emergencyStop: Bool(false),
     vaultVerificationKeyHash: vaultVerificationKeyHash!,
   };
@@ -122,6 +124,7 @@ export async function deploy(
     console.log('Token contract already deployed');
   } catch {
     console.log('Not found - deploying Token contract');
+    console.log('Deploying engine with vk hash', engineVk!.hash.toString());
     await transaction(
       deployer,
       async () => {
@@ -142,7 +145,6 @@ export async function deploy(
           networkKeys.token.privateKey,
           networkKeys.engine.privateKey,
           networkKeys.protocolAdmin.privateKey,
-          networkKeys.oracleFundsTracker.privateKey,
         ],
         fee,
       }
@@ -163,6 +165,9 @@ export async function deploy(
     if (!engineTokenAccount) throw new Error('Engine contract not found');
     console.log('Engine contract already deployed');
   } catch {
+    //should get the latest nonce
+    await fetchAccount({ publicKey: networkKeys.engine.publicKey });
+
     await transaction(
       deployer,
       async () => {

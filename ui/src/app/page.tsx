@@ -3,6 +3,7 @@
 import React from "react";
 import { useVaultManager } from "@/lib/context/vault-manager";
 import { VaultCard } from "@/lib/components";
+import { useAccount } from "@/lib/context/account";
 
 export default function VaultsPage() {
   const { vaultAddresses, createNewVault } = useVaultManager();

@@ -19,19 +19,19 @@ import {
  */
 export class ProtocolData extends Struct({
   admin: PublicKey,
-  oracleFlatFee: UInt64,
+  validPriceBlockCount: UInt32,
   emergencyStop: Bool,
 }) {
   static new(
     params: {
       admin?: PublicKey;
-      oracleFlatFee?: UInt64;
+      validPriceBlockCount?: UInt32;
       emergencyStop?: Bool;
     } = {}
   ): ProtocolData {
     return new ProtocolData({
       admin: params.admin ?? PublicKey.empty(),
-      oracleFlatFee: params.oracleFlatFee ?? UInt64.zero,
+      validPriceBlockCount: params.validPriceBlockCount ?? UInt32.from(0),
       emergencyStop: params.emergencyStop ?? Bool(false),
     });
   }
@@ -40,7 +40,7 @@ export class ProtocolData extends Struct({
     return new ProtocolDataPacked({
       adminX: this.admin.x,
       packedData: Field.fromBits([
-        ...this.oracleFlatFee.value.toBits(64),
+        ...this.validPriceBlockCount.value.toBits(32),
         this.emergencyStop,
         this.admin.isOdd,
       ]),
@@ -48,19 +48,19 @@ export class ProtocolData extends Struct({
   }
 
   static unpack(packed: ProtocolDataPacked) {
-    const bits = packed.packedData.toBits(64 + 2);
-    const oracleFlatFee = UInt64.Unsafe.fromField(
-      Field.fromBits(bits.slice(0, 64))
+    const bits = packed.packedData.toBits(32 + 2);
+    const validPriceBlockCount = UInt32.Unsafe.fromField(
+      Field.fromBits(bits.slice(0, 32))
     );
-    const emergencyStop = Bool(bits[64]);
-    const adminIsOdd = Bool(bits[64 + 1]);
+    const emergencyStop = Bool(bits[32]);
+    const adminIsOdd = Bool(bits[32 + 1]);
     const admin = PublicKey.from({
       x: packed.adminX,
       isOdd: adminIsOdd,
     });
     return new ProtocolData({
       admin: admin,
-      oracleFlatFee: oracleFlatFee,
+      validPriceBlockCount: validPriceBlockCount,
       emergencyStop: emergencyStop,
     });
   }
@@ -143,16 +143,3 @@ export interface KeyPair {
 export interface ContractInstance<T> {
   contract: T extends new (...args: any[]) => infer R ? R : T;
 }
-
-// ============================================================================
-// Oracle Proof Types
-// ============================================================================
-
-/**
- * A struct combining a price and a flag telling us whether
- * this item is from a “real” oracle or just fallback.
- */
-export class PriceWithFlag extends Struct({
-  price: UInt64,
-  isOracle: Bool,
-}) {}

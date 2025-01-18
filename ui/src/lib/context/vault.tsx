@@ -10,6 +10,8 @@ import { useAccount } from "./account";
 import { useTransaction } from "./transaction";
 import { useContracts } from "./contracts";
 import { useVaultManager } from "./vault-manager";
+import { useLatestProof } from "../hooks/useLatestProof";
+import { MinaPriceInput, oracleAggregationVk } from "zkusd";
 
 /**
  * This context provides only the contract calls for creating and interacting with vaults,
@@ -35,6 +37,7 @@ export const VaultProvider = ({ children }: { children: React.ReactNode }) => {
   const { engine } = useContracts();
   const { executeTransaction } = useCloudWorker();
   const { prepareTransaction, serializeTransaction } = useTransaction();
+  const { data: latestProof } = useLatestProof();
   const { account } = useAccount();
   /*
     addVaultAddress (or createAndTrackVault) is from the vault-manager.
@@ -196,9 +199,16 @@ export const VaultProvider = ({ children }: { children: React.ReactNode }) => {
           publicKey: engine.address,
         });
 
+        const minaPriceInput = new MinaPriceInput({
+          proof: latestProof!,
+          verificationKey: oracleAggregationVk,
+        });
+
+        console.time("preparing transaction with proof");
         const tx = await prepareTransaction(async () => {
-          await engine.mintZkUsd(vaultAddress, amount);
+          await engine.mintZkUsd(vaultAddress, amount, minaPriceInput);
         }, memo);
+        console.timeEnd("preparing transaction with proof");
 
         const response = await signAndProve({
           task: "mintZkUsd",
@@ -207,15 +217,15 @@ export const VaultProvider = ({ children }: { children: React.ReactNode }) => {
           args: {
             vaultAddress: vaultAddress.toBase58(),
             amount: amount.toString(),
+            minaPriceProof: latestProof?.toJSON() || {},
           },
         });
-
-        console.log("response", response);
 
         // Same note as depositCollateral about invalidating queries
 
         return response;
       } catch (error) {
+        console.error("Error minting zkUSD", error);
         throw error;
       }
     },

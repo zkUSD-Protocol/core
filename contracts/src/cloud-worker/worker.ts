@@ -24,11 +24,18 @@ import {
   ZkUsdEngineContract,
   ZkUsdVault,
   FungibleTokenContract,
+  validPriceBlockCount,
+  AggregateOraclePrices,
+  MinaPriceInput,
 } from '../index.js';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
 import { ContractInstance } from '../types.js';
-import verificationKeys from '../config/verification-keys.json';
-import { deserializeTransaction, transactionParams } from './transaction.js';
+import { verificationKeys } from '../config/verification-keys.js';
+import {
+  deserializeTransaction,
+  getMinaPriceInputFromJsonProof,
+  transactionParams,
+} from './transaction.js';
 
 type ContractMethod =
   | 'createVault'
@@ -44,16 +51,12 @@ interface TransactionConfig {
   requiresNewAccounts?: boolean;
 }
 
-const validPriceBlockCount: Record<string, number> = {
-  local: 1,
-  lightnet: 30,
-  devnet: 30, // Added devnet configuration
-};
-
 export class zkUsdWorker extends zkCloudWorker {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
   keys: NetworkKeyPairs;
+  oracleAggregationVk: VerificationKey;
+  vaultVk: VerificationKey;
 
   readonly cache: Cache;
 
@@ -63,14 +66,14 @@ export class zkUsdWorker extends zkCloudWorker {
   > = {
     createVault: {
       method: 'createVault',
-      buildTx: async (contract, args) => {
+      buildTx: async (contract: typeof this.engine.contract, args) => {
         await contract.createVault(PublicKey.fromBase58(args.vaultAddress));
       },
       requiresNewAccounts: true,
     },
     depositCollateral: {
       method: 'depositCollateral',
-      buildTx: async (contract, args) => {
+      buildTx: async (contract: typeof this.engine.contract, args) => {
         await contract.depositCollateral(
           PublicKey.fromBase58(args.vaultAddress),
           UInt64.from(args.amount)
@@ -79,26 +82,31 @@ export class zkUsdWorker extends zkCloudWorker {
     },
     withdrawCollateral: {
       method: 'withdrawCollateral',
-      buildTx: async (contract, args) => {
-        await contract.withdrawCollateral(
+      buildTx: async (contract: typeof this.engine.contract, args) => {
+        await contract.redeemCollateral(
           PublicKey.fromBase58(args.vaultAddress),
-          UInt64.from(args.amount)
+          UInt64.from(args.amount),
+          args.minaPriceInput
         );
       },
     },
     mintZkUsd: {
       method: 'mintZkUsd',
-      buildTx: async (contract, args) => {
+      buildTx: async (contract: typeof this.engine.contract, args) => {
         await contract.mintZkUsd(
           PublicKey.fromBase58(args.vaultAddress),
-          UInt64.from(args.amount)
+          UInt64.from(args.amount),
+          args.minaPriceInput as MinaPriceInput
         );
       },
     },
     liquidate: {
       method: 'liquidate',
-      buildTx: async (contract, args) => {
-        await contract.liquidate(PublicKey.fromBase58(args.vaultAddress));
+      buildTx: async (contract: typeof this.engine.contract, args) => {
+        await contract.liquidate(
+          PublicKey.fromBase58(args.vaultAddress),
+          args.minaPriceInput
+        );
       },
     },
   };
@@ -113,38 +121,34 @@ export class zkUsdWorker extends zkCloudWorker {
     console.log('Compiling contracts');
 
     try {
-      const vaultKey: VerificationKey = {
-        data: verificationKeys.vault.data,
-        hash: Field(verificationKeys.vault.hash),
-      };
+      this.vaultVk = new VerificationKey(
+        (await ZkUsdVault.compile()).verificationKey
+      );
 
-      const oracleAggregationKey: VerificationKey = {
-        data: verificationKeys.oracleAggregation.data,
-        hash: Field(verificationKeys.oracleAggregation.hash),
-      };
+      console.log('Compiling oracle aggregation');
 
-      if (!vaultKey || !oracleAggregationKey) {
+      this.oracleAggregationVk = new VerificationKey(
+        (await AggregateOraclePrices.compile()).verificationKey
+      );
+
+      console.log('Compiled oracle aggregation');
+
+      if (!this.vaultVk || !this.oracleAggregationVk) {
         throw new Error('Verification keys not found');
       }
-
       const ZkUsdEngine = ZkUsdEngineContract({
-        oracleFundTrackerAddress: this.keys.oracleFundsTracker.publicKey,
         zkUsdTokenAddress: this.keys.token.publicKey,
-        minaPriceInputZkProgramVkHash: oracleAggregationKey.hash,
-        validPriceBlockCount: UInt32.from(
-          validPriceBlockCount[this.cloud.chain]
-        ),
-        vaultVerificationKey: vaultKey,
+        minaPriceInputZkProgramVkHash: this.oracleAggregationVk.hash,
+        vaultVerificationKey: this.vaultVk,
       });
 
       const FungibleToken = ZkUsdEngine.FungibleToken;
 
       if (!ZkUsdEngine._provers) {
         console.time('compiled zkUSD Contracts');
-
-        await ZkUsdVault.compile();
         await FungibleToken.compile();
-        await ZkUsdEngine.compile();
+        const engineVk = await ZkUsdEngine.compile();
+        console.log('engineVk', engineVk.verificationKey.hash.toString());
         console.timeEnd('compiled zkUSD Contracts');
       } else {
         console.log('Contracts already compiled');
@@ -192,6 +196,7 @@ export class zkUsdWorker extends zkCloudWorker {
     await this.compile();
 
     try {
+      console.log('First');
       const { serializedTx, signedData } = JSON.parse(txs[0]);
       const signedJson = JSON.parse(signedData);
       const { fee, sender, nonce, memo } = transactionParams(
@@ -201,10 +206,12 @@ export class zkUsdWorker extends zkCloudWorker {
 
       console.log('Creating transaction');
 
-      console.log('with args', args);
-
-      console.log('sender', sender.toBase58());
-      console.log('pub key', sender.x);
+      if (args.minaPriceProof) {
+        args.minaPriceInput = await getMinaPriceInputFromJsonProof(
+          args.minaPriceProof as JsonProof,
+          this.oracleAggregationVk as VerificationKey
+        );
+      }
 
       await fetchMinaAccount({
         publicKey: this.keys.engine.publicKey,
@@ -220,6 +227,8 @@ export class zkUsdWorker extends zkCloudWorker {
         force: true,
       });
 
+      console.log('args', args);
+
       const txNew = await Mina.transaction(
         { sender, fee, nonce, memo },
         async () => {
@@ -230,7 +239,6 @@ export class zkUsdWorker extends zkCloudWorker {
         }
       );
 
-      console.log('Transaction created');
       console.log('txNew', txNew.toPretty());
 
       return await this.proveAndSendTx(serializedTx, txNew, signedJson);

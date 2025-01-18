@@ -43,7 +43,7 @@
   "dependencies": {
     "@minatokens/token": "^0.5.5",
     "mina-signer": "^3.0.7",
-    "o1js": "^2.*",
+    "o1js": "2.2.0",
     "redis": "^4.7.0",
     "zkcloudworker": "^0.23.11"
   }

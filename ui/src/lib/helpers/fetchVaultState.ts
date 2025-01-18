@@ -19,16 +19,16 @@ export async function fetchVaultState(
 ): Promise<VaultOnChainState> {
   // 1) Make sure we’ve fetched the account (so we can read up-to-date contract state).
 
-  console.log(vaultAddress.toBase58());
-
-  const account = await fetchMinaAccount({
-    publicKey: vaultAddress,
-    tokenId: engine.deriveTokenId(),
+  const engineAccount = await fetchMinaAccount({
+    publicKey: engine.address,
   });
 
-  //   "B62qkWNywoY6QrugwGdax19tumYXUpBJwFhGmnyeEd1Sctz1nWuwKt3"
+  console.log(
+    "engineAccount",
+    engineAccount.account.zkapp.verificationKey.hash.toString()
+  );
 
-  console.log("account", account);
+  //   "B62qkWNywoY6QrugwGdax19tumYXUpBJwFhGmnyeEd1Sctz1nWuwKt3"
 
   // 2) Instantiate the vault on the client side.
   //    For example, in your code, you might do something like:
@@ -36,26 +36,14 @@ export async function fetchVaultState(
   //    Or if you have an exposed method from your engine that returns the vault instance, use that.
   const vault = new ZkUsdVault(vaultAddress, engine.deriveTokenId());
 
-  console.log("vault", vault);
-
   if (!vault) {
     throw new Error("Vault not found");
   }
-
-  // 3) Now read the vault’s app state. Each field is a @state() in your ZkUsdVault contract:
-  console.log("Fetching vault state...");
-  console.log("Collateral amount", await vault.collateralAmount.fetch());
-  console.log("Debt amount", await vault.debtAmount.fetch());
-  console.log("Owner", await vault.owner.fetch());
 
   const collateralAmount = (await vault.collateralAmount.fetch())!.toString();
   const debtAmount = (await vault.debtAmount.fetch())!.toString();
   const ownerPublicKey = await vault.owner.fetch();
   const owner = ownerPublicKey?.toBase58() ?? "Not Found";
-
-  console.log("collateralAmount", collateralAmount);
-  console.log("debtAmount", debtAmount);
-  console.log("owner", owner);
 
   // Return these in the shape your UI expects:
   return {

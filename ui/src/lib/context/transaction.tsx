@@ -36,18 +36,23 @@ export const TransactionProvider = ({
       throw new Error("Mina not found");
     }
 
-    const tx = await Mina.transaction(
-      {
-        sender: account,
-        fee: await fee(),
-        memo,
-      },
-      async () => {
-        await callback();
-      }
-    );
+    try {
+      const tx = await Mina.transaction(
+        {
+          sender: account,
+          fee: await fee(),
+          memo,
+        },
+        async () => {
+          await callback();
+        }
+      );
 
-    return tx;
+      return tx;
+    } catch (error) {
+      console.error("Error preparing transaction", error);
+      throw error;
+    }
   };
 
   const serializeTransaction = (tx: Mina.Transaction<false, false>) => {

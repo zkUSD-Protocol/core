@@ -1,4 +1,4 @@
-import { Struct, PublicKey, UInt64, Field, Bool } from 'o1js';
+import { Struct, PublicKey, UInt64, Field, Bool, UInt32 } from 'o1js';
 
 export class VaultOwnerUpdatedEvent extends Struct({
   vaultAddress: PublicKey,
@@ -64,6 +64,11 @@ export class MinaPriceSubmissionEvent extends Struct({
 
 export class EmergencyStopToggledEvent extends Struct({
   emergencyStop: Bool,
+}) {}
+
+export class ValidPriceBlockCountUpdatedEvent extends Struct({
+  previousCount: UInt32,
+  newCount: UInt32,
 }) {}
 
 export class AdminUpdatedEvent extends Struct({

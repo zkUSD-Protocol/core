@@ -1,4 +1,17 @@
-import { Field, PublicKey, Transaction, Mina, UInt64 } from 'o1js';
+import {
+  AggregateOraclePricesProof,
+  MinaPriceInput,
+} from '../proofs/oracle-price-aggregation/index.js';
+import {
+  Field,
+  PublicKey,
+  Transaction,
+  Mina,
+  UInt64,
+  JsonProof,
+  VerificationKey,
+  verify,
+} from 'o1js';
 
 export function transactionParams(
   serializedTransaction: string,
@@ -86,4 +99,25 @@ export function serializeTransaction(
     2
   );
   return serializedTransaction;
+}
+
+export async function getMinaPriceInputFromJsonProof(
+  jsonProof: JsonProof,
+  oracleAggregationVk: VerificationKey
+): Promise<MinaPriceInput> {
+  const proof: AggregateOraclePricesProof =
+    (await AggregateOraclePricesProof.fromJSON(
+      jsonProof as JsonProof
+    )) as AggregateOraclePricesProof;
+
+  const ok = await verify(proof, oracleAggregationVk);
+
+  if (!ok) {
+    throw new Error('Proof verification failed');
+  }
+
+  return new MinaPriceInput({
+    proof: proof,
+    verificationKey: oracleAggregationVk,
+  });
 }

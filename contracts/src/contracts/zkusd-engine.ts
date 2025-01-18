@@ -22,6 +22,7 @@ import {
   Int64,
   UInt32,
   Provable,
+  Mina,
 } from 'o1js';
 import { ZkUsdVault } from './zkusd-vault.js';
 
@@ -49,12 +50,13 @@ import {
   BurnZkUsdEvent,
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
+  ValidPriceBlockCountUpdatedEvent,
 } from '../events.js';
 import {
   MinaPriceInput,
-  PriceAggregationProofPublicOutput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
 } from '../proofs/oracle-price-aggregation/verify.js';
+import { PriceAggregationProofPublicOutput } from '@/proofs/oracle-price-aggregation/common.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -82,23 +84,19 @@ export const ZkUsdEngineErrors = {
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
-  oracleFlatFee: UInt64;
+  validPriceBlockCount: UInt32;
   emergencyStop: Bool;
   vaultVerificationKeyHash: Field;
 }
 
 export function ZkUsdEngineContract(args: {
-  oracleFundTrackerAddress: PublicKey;
   zkUsdTokenAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
-  validPriceBlockCount: UInt32;
   vaultVerificationKey: VerificationKey;
 }) {
   const {
-    oracleFundTrackerAddress,
     zkUsdTokenAddress,
     minaPriceInputZkProgramVkHash,
-    validPriceBlockCount,
     vaultVerificationKey,
   } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
@@ -123,7 +121,7 @@ export function ZkUsdEngineContract(args: {
       AdminUpdated: AdminUpdatedEvent,
       VerificationKeyUpdated: VerificationKeyUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
-      OracleFeeUpdated: OracleFeeUpdated,
+      ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
       NewVault: NewVaultEvent,
       DepositCollateral: DepositCollateralEvent,
@@ -155,7 +153,7 @@ export function ZkUsdEngineContract(args: {
       this.protocolDataPacked.set(
         ProtocolData.new({
           admin: args.admin,
-          oracleFlatFee: args.oracleFlatFee,
+          validPriceBlockCount: args.validPriceBlockCount,
           emergencyStop: args.emergencyStop,
         }).pack()
       );
@@ -199,20 +197,6 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       ).account;
       const balance = account.balance.getAndRequireEquals();
-      return balance;
-    }
-
-    /**
-     * @notice  Returns the total amount of funds available to the oracle
-     * @returns The total amount of funds available to the oracle
-     */
-    public async getAvailableOracleFunds(): Promise<UInt64> {
-      const account = AccountUpdate.create(
-        oracleFundTrackerAddress,
-        this.deriveTokenId()
-      ).account;
-      const balance = account.balance.getAndRequireEquals();
-
       return balance;
     }
 
@@ -261,19 +245,26 @@ export function ZkUsdEngineContract(args: {
     verifyMinaPriceInput(
       minaPriceInput: MinaPriceInput
     ): PriceAggregationProofPublicOutput {
-      const blockForPrice =
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+
+      const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
+      const lastValidBlock = firstValidBlock.add(
+        protocolData.validPriceBlockCount
+      );
 
       this.network.blockchainLength.requireBetween(
-        blockForPrice,
-        blockForPrice.add(validPriceBlockCount)
+        firstValidBlock,
+        lastValidBlock
       );
 
       verifyMinaPriceInputProof({
         input: minaPriceInput,
         oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
         proofVkHash: minaPriceInputZkProgramVkHash,
-        currentBlockHeight: blockForPrice,
+        currentBlockHeight: firstValidBlock,
       });
 
       minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
@@ -430,6 +421,10 @@ export function ZkUsdEngineContract(args: {
      * @param   amount The amount of collateral to deposit
      */
     @method async depositCollateral(vaultAddress: PublicKey, amount: UInt64) {
+      Provable.log('Depositing collateral');
+
+      Provable.log('Called While Proving');
+
       //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
@@ -531,6 +526,7 @@ export function ZkUsdEngineContract(args: {
      * @notice  Mints zkUSD for a vault
      * @param   vaultAddress The address of the vault to mint zkUSD for
      * @param   amount The amount of zkUSD to mint
+     * @param   minaPriceInput The mina price input
      */
     @method async mintZkUsd(
       vaultAddress: PublicKey,
@@ -749,33 +745,33 @@ export function ZkUsdEngineContract(args: {
       });
     }
 
-    async getOracleFee() {
+    async getValidPriceBlockCount() {
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
-      return protocolData.oracleFlatFee;
+      return protocolData.validPriceBlockCount;
     }
 
     /**
-     * @notice  Updates the oracle fee
-     * @param   fee The new oracle fee
+     * @notice  Updates the valid price block count
+     * @param   count The new valid price block count
      */
-    @method async updateOracleFee(fee: UInt64) {
+    @method async updateValidPriceBlockCount(count: UInt32) {
       //Precondition
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
 
-      const previousFee = protocolData.oracleFlatFee;
+      const previousCount = protocolData.validPriceBlockCount;
       //Ensure admin signature
       await this.ensureAdminSignature();
 
-      protocolData.oracleFlatFee = fee;
+      protocolData.validPriceBlockCount = count;
       this.protocolDataPacked.set(protocolData.pack());
 
-      this.emitEvent('OracleFeeUpdated', {
-        previousFee: previousFee,
-        newFee: fee,
+      this.emitEvent('ValidPriceBlockCountUpdated', {
+        previousCount: previousCount,
+        newCount: count,
       });
     }
 
@@ -799,34 +795,6 @@ export function ZkUsdEngineContract(args: {
       this.emitEvent('AdminUpdated', {
         previousAdmin,
         newAdmin,
-      });
-    }
-
-    /**
-     * @notice  Deposits funds into the oracle account
-     * @param   amount The amount of funds to deposit
-     */
-    @method async depositOracleFunds(amount: UInt64) {
-      //We track the funds in the token account of the engine address
-      const oracleFundsTrackerUpdate = AccountUpdate.create(
-        oracleFundTrackerAddress,
-        this.deriveTokenId()
-      );
-
-      oracleFundsTrackerUpdate.balanceChange = Int64.fromUnsigned(amount);
-
-      //Create the account update for the deposit
-      const depositUpdate = AccountUpdate.createSigned(
-        this.sender.getUnconstrained()
-      );
-
-      depositUpdate.send({
-        to: this.address,
-        amount: amount,
-      });
-
-      this.emitEvent('OracleFundsDeposited', {
-        amount: amount,
       });
     }
 
