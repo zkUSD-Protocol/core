@@ -6,10 +6,10 @@ import { transaction } from '../../../utils/transaction.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Ownership Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
   let priceOneUsd: MinaPriceInput;
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie']);
     await testHelper.createVaults(['alice']);

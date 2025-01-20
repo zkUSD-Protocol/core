@@ -5,10 +5,10 @@ import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
 
 describe('zkUSD Deployment Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie', 'david', 'eve']);
   });
@@ -16,7 +16,7 @@ describe('zkUSD Deployment Test Suite', () => {
   it('should create vaults', async () => {
     await testHelper.createVaults(['alice']);
 
-    const aliceVault = testHelper.chain.getAccount(
+    const aliceVault = testHelper.mina.getAccount(
       testHelper.agents.alice.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
@@ -77,19 +77,19 @@ describe('zkUSD Deployment Test Suite', () => {
   it('should create multiple vaults', async () => {
     await testHelper.createVaults(['bob', 'charlie', 'david', 'eve']);
 
-    const bobVault = testHelper.chain.getAccount(
+    const bobVault = testHelper.mina.getAccount(
       testHelper.agents.bob.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
-    const charlieVault = testHelper.chain.getAccount(
+    const charlieVault = testHelper.mina.getAccount(
       testHelper.agents.charlie.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
-    const davidVault = testHelper.chain.getAccount(
+    const davidVault = testHelper.mina.getAccount(
       testHelper.agents.david.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );
-    const eveVault = testHelper.chain.getAccount(
+    const eveVault = testHelper.mina.getAccount(
       testHelper.agents.eve.vault?.publicKey!,
       testHelper.engine.contract.deriveTokenId()
     );

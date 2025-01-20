@@ -84,14 +84,14 @@ export class NewFungibleTokenAdmin
 }
 
 describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
   const newAdminContract = PrivateKey.randomKeypair();
   const newAdmin = PrivateKey.randomKeypair();
   const adminContract = new NewFungibleTokenAdmin(newAdminContract.publicKey);
   let priceOneUsd: MinaPriceInput;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
 
     await testHelper.createAgents(['alice']);

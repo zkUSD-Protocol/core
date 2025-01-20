@@ -1,13 +1,11 @@
 import {
   AccountUpdate,
   Bool,
-  DynamicProof,
   Field,
   Mina,
   PrivateKey,
   PublicKey,
   Signature,
-  UInt32,
   UInt64,
   VerificationKey,
 } from 'o1js';
@@ -20,7 +18,7 @@ import {
   OracleWhitelist,
 } from '../types.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { MinaChain } from '../mina/mina-network-interface.js';
+import { IMinaNetworkInterface, MinaNetworkInterface } from '../mina/mina-network-interface.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
 import { deploy } from '../services/deployment.js';
@@ -29,9 +27,9 @@ import {
   AggregateOraclePrices,
   OraclePriceSubmissions,
   PriceSubmission,
-  AggregateOraclePricesProof,
   MinaPriceInput,
 } from '../proofs/oracle-price-aggregation/index.js';
+import { TransactionManager } from '@/mina/transaction-manager.js';
 
 const client = new Client({
   network: 'testnet',
@@ -86,7 +84,8 @@ interface Agent {
 }
 
 export class TestHelper {
-  chain = MinaChain;
+  mina: IMinaNetworkInterface;
+  _transactionManager: TransactionManager;
 
   deployer: KeyPair;
   agents: Record<string, Agent> = {};
@@ -103,34 +102,33 @@ export class TestHelper {
   whitelistedOracles: Map<string, number> = new Map();
 
   get networkKeys(): NetworkKeyPairs {
-    return getNetworkKeys(this.chain.network().chainId);
+    return getNetworkKeys(this.mina.network.chainId);
   }
 
   createVaultKeyPair(): { publicKey: PublicKey; privateKey: PrivateKey } {
     return PrivateKey.randomKeypair();
   }
 
-  async initLocalChain(opts?: {
-    proofsEnabled?: boolean | undefined;
-    enforceTransactionLimits?: boolean | undefined;
-  }) {
-    await this.chain.initLocal(opts);
-    this.deployer = await this.chain.newAccount();
+  static async initLocalChain(opts?: { proofsEnabled?: boolean | undefined; enforceTransactionLimits?: boolean | undefined; }) {
+    const mina = await MinaNetworkInterface.initLocal(opts);
+    const deployer = await mina.newAccount();
+    return new TestHelper(mina, deployer);
   }
 
-  async initLightnetChain() {
-    await this.chain.initLightnet();
-    this.deployer = await this.chain.newAccount();
+  static async initLightnetChain() {
+    const mina = await MinaNetworkInterface.initLightnet();
+    const deployer = await mina.newAccount();
+    return new TestHelper(mina, deployer);
   }
 
   async deployTokenContracts() {
-    const deployedContracts = await deploy(this.chain, this.deployer);
+    const deployedContracts = await deploy(this.mina, this.deployer);
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
     this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
 
-    if (this.chain.network().chainId === 'local') {
+    if (this.mina.network.chainId === 'local') {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
         const oracleName = 'oracle' + (i + 1);
         this.oracles[oracleName] = this.networkKeys.oracles![i];
@@ -151,10 +149,13 @@ export class TestHelper {
   }
 
   async createAgents(names: string[]) {
+    const ret: Agent[] = [];
     for (const name of names) {
-      const keys = await this.chain.newAccount();
+      const keys = await this.mina.newAccount();
       this.agents[name] = { keys };
+      ret.push(this.agents[name]);
     }
+    return ret;
   }
 
   async createVaults(names: string[]) {
@@ -278,5 +279,13 @@ export class TestHelper {
     });
 
     return minaPriceInput;
+  }
+
+  private constructor(
+    mina: IMinaNetworkInterface,
+    deployer: KeyPair,
+  ) {
+    this.mina = mina;
+    this.deployer = deployer;
   }
 }

@@ -1,4 +1,4 @@
-import { MinaChain } from '../../mina/mina-network-interface.js';
+import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
 import { deploy } from '../../services/deployment.js';
 import { transaction } from '../../utils/transaction.js';
 import { receiveMina } from './receive-mina.js';
@@ -7,11 +7,11 @@ import { OracleWhitelist } from '../../types.js';
 import { fetchMinaAccount } from 'zkcloudworker';
 
 async function main() {
-  await MinaChain.initLightnet();
+  const MinaChain = await MinaNetworkInterface.initLightnet();
   const deployer = await MinaChain.newAccount();
   const deployedContracts = await deploy(MinaChain, deployer);
 
-  const networkKeys = getNetworkKeys(MinaChain.network().chainId);
+  const networkKeys = getNetworkKeys(MinaChain.network.chainId);
 
   console.log('Contracts deployed');
 

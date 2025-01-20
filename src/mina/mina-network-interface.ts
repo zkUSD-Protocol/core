@@ -1,6 +1,14 @@
-import { Mina, Lightnet, UInt32 } from 'o1js';
+import { Mina, Lightnet, UInt32, fetchAccount } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types.js';
+import { INonceManager, LocalNonceManager, NonceManager } from './nonce-manager.js';
+import { GqlData, GqlQuery, GqlQueryCall, GqlVars, queryGraphQL } from './graphql.js';
+
+type LocalOnlyApi = {
+  // add more as needed
+  setBlockchainLength(height: UInt32): void;
+}
+
 
 /**
  * This type captures whatever methods come back from `Mina.Network()`.
@@ -8,10 +16,6 @@ import { KeyPair } from './../types.js';
  */
 type MinaApi = Awaited<ReturnType<typeof Mina.Network>>;
 
-export type LocalOnlyApi = {
-  // add more as needed
-  setBlockchainLength(height: UInt32): void;
-}
 
 class LocalBlockchain {
   kind: 'local' = 'local';
@@ -36,13 +40,13 @@ class LocalBlockchain {
     };
   }
 
-  async moveChainForward(n: number=1): Promise<void> {
+  async moveChainForward(n: number = 1): Promise<void> {
     this.instance.setBlockchainLength(
       this.instance.getNetworkState().blockchainLength.add(n)
     );
   }
 
-  network(): MinaNetwork {
+  get network(): MinaNetwork {
     return Local;
   }
 }
@@ -56,28 +60,44 @@ class LightnetChain {
   instance: MinaApi;
 
   async init(): Promise<void> {
-    this.instance = Mina.Network(this.network());
+    this.instance = Mina.Network(this.network);
   }
 
   async newAccount(): Promise<KeyPair> {
     return Lightnet.acquireKeyPair();
   }
 
-  async moveChainForward(_: number=1): Promise<void> {
+  async moveChainForward(_: number = 1): Promise<void> {
     throw new Error('moveChainForward not implemented for Lightnet (TODO)');
   }
 
-  network(): MinaNetwork {
+  get network(): MinaNetwork {
     return LightnetNetwork;
   }
 }
 
+interface IMinaNetworkInterface extends MinaApi {
+  get nonceManager(): INonceManager;
+  get network(): MinaNetwork;
+  get local(): LocalOnlyApi | undefined;
+  newAccount(): Promise<KeyPair>;
+  moveChainForward(n?: number): Promise<void>;
+}
+
 // exported singleton mina api helper that works with both local and lightnet
-export class MinaChainInstance implements MinaApi {
+// to be the go-to class for interacting with the Mina blockchain (any network)
+class MinaNetworkInterface implements IMinaNetworkInterface {
   private instance: MinaApi;
   private backend: LocalBlockchain | LightnetChain;
+  private _nonceManager: INonceManager;
+  private _local?: LocalOnlyApi;
 
-  public local?: LocalOnlyApi;
+  public get local(): LocalOnlyApi | undefined {
+    return this._local;
+  }
+
+  // The constructor is private to prevent direct instantiation.
+  private constructor() {}
 
   // We "declare" each property from MinaApi so TS knows we implement them.
   declare transaction: MinaApi['transaction'];
@@ -93,50 +113,110 @@ export class MinaChainInstance implements MinaApi {
   declare getNetworkId: MinaApi['getNetworkId'];
   declare proofsEnabled: MinaApi['proofsEnabled'];
 
-  // ----------- Init local blockchain -----------
-  async initLocal(opts?: {
+  private set nonceManager(nm: INonceManager) {
+    this._nonceManager = nm;
+  }
+
+  public get nonceManager(): INonceManager {
+    if (!this._nonceManager) {
+      throw new Error('nonceManager not set');
+    }
+    return this._nonceManager;
+  }
+
+  /**
+   * Create and initialize an instance of MinaNetworkInterface with a LocalBlockchain backend.
+   * @param opts
+   * @returns A newly initialized MinaNetworkInterface instance (local backend).
+   */
+  public static async initLocal(opts?: {
     proofsEnabled?: boolean;
     enforceTransactionLimits?: boolean;
-  }): Promise<void> {
+  }): Promise<MinaNetworkInterface> {
+    // Create and initialize the LocalBlockchain
     const local = new LocalBlockchain();
     await local.init(opts);
 
-    // The local .instance is your real MinaApi
-    this.backend = local;
-    this.instance = local.instance;
-    this.local = local.instance;
+    // Create the new network interface instance
+    const networkInterface = new MinaNetworkInterface();
+    networkInterface.backend = local;
+    networkInterface.instance = local.instance;
+    networkInterface._local = local.instance;
 
-    // Switch the global "active" instance so .transaction calls, etc. refer to it
-    Mina.setActiveInstance(this.instance);
+    // Set the nonce manager
+    networkInterface._nonceManager = new LocalNonceManager({
+      fetchAccount: async (publicKey, tokenId) => {
+        await fetchAccount({publicKey, tokenId});
+      },
+      getAccount: async (publicKey, tokenId) => {
+        return networkInterface.getAccount(publicKey, tokenId);
+      }
+    });
 
-    // Now dynamically copy all methods from local.instance => this
-    this.bindMethods();
+    // Switch the global "active" Mina instance
+    Mina.setActiveInstance(networkInterface.instance);
+
+    // Dynamically copy all methods from local.instance to this
+    networkInterface.bindMethods();
+
+    return networkInterface;
   }
 
-  // ----------- Init/connect to the lightnet -----------
-  async initLightnet(): Promise<void> {
+  /**
+   * Create and initialize an instance of MinaNetworkInterface with a LightnetChain backend.
+   * @returns A newly initialized MinaNetworkInterface instance (lightnet backend).
+   */
+  public static async initLightnet(): Promise<MinaNetworkInterface> {
+    // Create and initialize the LightnetChain
     const ln = new LightnetChain();
     await ln.init();
 
-    this.backend = ln;
-    this.instance = ln.instance;
+    // Create the new network interface instance
+    const networkInterface = new MinaNetworkInterface();
+    networkInterface.backend = ln;
+    networkInterface.instance = ln.instance;
 
-    Mina.setActiveInstance(this.instance);
+    // Set the nonce manager
+    networkInterface._nonceManager = new NonceManager({
+      fetchAccount: async (publicKey, tokenId) => {
+        await fetchAccount({publicKey, tokenId});
+      },
+      getAccount: async (publicKey, tokenId) => {
+        return networkInterface.getAccount(publicKey, tokenId);
+      },
+      queryGraphQL: async (q) => {
+        return networkInterface.queryGraphQL(q);
+      },
+    });
 
-    this.bindMethods();
+    // Switch the global "active" Mina instance
+    Mina.setActiveInstance(networkInterface.instance);
+
+    // Dynamically copy all methods from ln.instance to this
+    networkInterface.bindMethods();
+
+    return networkInterface;
   }
+  // ----------- queryGraphQL -----------
+
+  async queryGraphQL<T extends GqlQuery<any, any>>(
+    queryCall: GqlQueryCall<GqlData<T>, GqlVars<T>>,
+  ): Promise<GqlData<T>> {
+    return queryGraphQL(queryCall, this.network.mina[0]);
+  }
+
 
   // ----------- Extra “backend” methods -----------
   async newAccount(): Promise<KeyPair> {
     return this.backend.newAccount();
   }
 
-  async moveChainForward(n: number=1): Promise<void> {
+  async moveChainForward(n: number = 1): Promise<void> {
     return this.backend.moveChainForward(n);
   }
 
-  network(): MinaNetwork {
-    return this.backend.network();
+  get network(): MinaNetwork {
+    return this.backend.network;
   }
 
   // ----------- Bind all MinaApi methods -----------
@@ -170,8 +250,11 @@ export class MinaChainInstance implements MinaApi {
       }
     }
   }
-
 }
 
-// Export a singleton you can import anywhere
-export const MinaChain = new MinaChainInstance();
+export {
+  MinaApi,
+  LocalOnlyApi,
+  IMinaNetworkInterface,
+  MinaNetworkInterface,
+}

@@ -6,13 +6,13 @@ import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
 
 describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
   let whitelist: OracleWhitelist;
   let previousWhitelistHash: Field;
   let newWhitelistHash: Field;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     whitelist = testHelper.whitelist;
   });

@@ -1,19 +1,16 @@
-// import { deploy } from '../../deploy.js';
-// import { MinaChain } from '../../mina.js';
-// import { TestHelper } from '../test-helper.js';
+import { TestHelper } from '../test-helper.js';
 
-// import { describe, it, before } from 'node:test';
+import { describe, before } from 'node:test';
 
-// before(async () => {
-//   await MinaChain.initLightnet();
-//   const deployer = await MinaChain.newAccount()
-//   await deploy(MinaChain, deployer);
-// });
 
-// describe('zkUSD Lightnet Test Suite', () => {
-//   const testHelper = new TestHelper();
+describe('zkUSD Lightnet Test Suite', () => {
+  let testHelper: TestHelper;
 
-//   before(async () => {
-//     await testHelper.initLightnetChain();
-//   });
-// });
+  before(async () => {
+    testHelper = await TestHelper.initLightnetChain();
+  });
+
+  it('can deploy contracts', async () => {
+    await testHelper.deployTokenContracts();
+  });
+});

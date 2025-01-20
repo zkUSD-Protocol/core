@@ -18,11 +18,11 @@ import { transaction } from '../../../utils/transaction.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Mint Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
   let oneUsdPrice: MinaPriceInput;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob']);
 
