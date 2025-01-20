@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { Mutex } from './mutex.js';
+import { Mutex } from '../../../utils/mutex.js';
 
 test('should lock and release without errors', async () => {
   const mutex = new Mutex();
