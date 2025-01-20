@@ -43,6 +43,7 @@
   "dependencies": {
     "@minatokens/token": "^0.5.5",
     "mina-signer": "^3.0.7",
+    "node-fetch": "^3.3.2",
     "o1js": "^2.*",
     "redis": "^4.7.0"
   }

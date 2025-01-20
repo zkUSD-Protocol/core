@@ -1,7 +1,14 @@
-import { Mina, Lightnet, UInt32 } from 'o1js';
+import { Mina, Lightnet, UInt32, fetchAccount } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types.js';
-import { INonceManager, LocalNonceManager } from './nonce-manager.js';
+import { INonceManager, LocalNonceManager, NonceManager } from './nonce-manager.js';
+import { GqlData, GqlQuery, GqlQueryCall, GqlVars, queryGraphQL } from './graphql.js';
+
+type LocalOnlyApi = {
+  // add more as needed
+  setBlockchainLength(height: UInt32): void;
+}
+
 
 /**
  * This type captures whatever methods come back from `Mina.Network()`.
@@ -9,10 +16,6 @@ import { INonceManager, LocalNonceManager } from './nonce-manager.js';
  */
 type MinaApi = Awaited<ReturnType<typeof Mina.Network>>;
 
-type LocalOnlyApi = {
-  // add more as needed
-  setBlockchainLength(height: UInt32): void;
-}
 
 class LocalBlockchain {
   kind: 'local' = 'local';
@@ -37,7 +40,7 @@ class LocalBlockchain {
     };
   }
 
-  async moveChainForward(n: number=1): Promise<void> {
+  async moveChainForward(n: number = 1): Promise<void> {
     this.instance.setBlockchainLength(
       this.instance.getNetworkState().blockchainLength.add(n)
     );
@@ -64,7 +67,7 @@ class LightnetChain {
     return Lightnet.acquireKeyPair();
   }
 
-  async moveChainForward(_: number=1): Promise<void> {
+  async moveChainForward(_: number = 1): Promise<void> {
     throw new Error('moveChainForward not implemented for Lightnet (TODO)');
   }
 
@@ -89,7 +92,7 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   private _nonceManager: INonceManager;
   private _local?: LocalOnlyApi;
 
-  public get local(): LocalOnlyApi | undefined{
+  public get local(): LocalOnlyApi | undefined {
     return this._local;
   }
 
@@ -109,6 +112,10 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   declare getNetworkConstants: MinaApi['getNetworkConstants'];
   declare getNetworkId: MinaApi['getNetworkId'];
   declare proofsEnabled: MinaApi['proofsEnabled'];
+
+  private set nonceManager(nm: INonceManager) {
+    this._nonceManager = nm;
+  }
 
   public get nonceManager(): INonceManager {
     if (!this._nonceManager) {
@@ -137,7 +144,14 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     networkInterface._local = local.instance;
 
     // Set the nonce manager
-    networkInterface._nonceManager = new LocalNonceManager();
+    networkInterface._nonceManager = new LocalNonceManager({
+      fetchAccount: async (publicKey, tokenId) => {
+        await fetchAccount({publicKey, tokenId});
+      },
+      getAccount: async (publicKey, tokenId) => {
+        return networkInterface.getAccount(publicKey, tokenId);
+      }
+    });
 
     // Switch the global "active" Mina instance
     Mina.setActiveInstance(networkInterface.instance);
@@ -162,6 +176,19 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     networkInterface.backend = ln;
     networkInterface.instance = ln.instance;
 
+    // Set the nonce manager
+    networkInterface._nonceManager = new NonceManager({
+      fetchAccount: async (publicKey, tokenId) => {
+        await fetchAccount({publicKey, tokenId});
+      },
+      getAccount: async (publicKey, tokenId) => {
+        return networkInterface.getAccount(publicKey, tokenId);
+      },
+      queryGraphQL: async (q) => {
+        return networkInterface.queryGraphQL(q);
+      },
+    });
+
     // Switch the global "active" Mina instance
     Mina.setActiveInstance(networkInterface.instance);
 
@@ -170,6 +197,14 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
 
     return networkInterface;
   }
+  // ----------- queryGraphQL -----------
+
+  async queryGraphQL<T extends GqlQuery<any, any>>(
+    queryCall: GqlQueryCall<GqlData<T>, GqlVars<T>>,
+  ): Promise<GqlData<T>> {
+    return queryGraphQL(queryCall, this.network.mina[0]);
+  }
+
 
   // ----------- Extra “backend” methods -----------
   async newAccount(): Promise<KeyPair> {

@@ -17,7 +17,6 @@ import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
 
-
 /**
  * Default configuration options for constructing transactions.
  */
@@ -97,7 +96,7 @@ export interface TransactionHandle {
 /**
  * Type guard: Checks whether a transaction is rejected.
  */
-export function isRejectedTransaction(
+export function statusIsRejectedTransaction(
   tx: PendingTransaction | IncludedTransaction | RejectedTransaction
 ): tx is RejectedTransaction {
   return tx.status === 'rejected';
@@ -144,9 +143,26 @@ export type FailedBeforeSending = {
   errors: string[];
 };
 
-export type Rejected = {
-  kind: 'Rejected';
+export type RejectedOnReceive = {
+  kind: 'RejectedOnReceive';
   errors: string[];
+}
+
+export type RejectedOnInclusion = {
+  kind: 'RejectedOnInclusion';
+  errors: string[];
+}
+
+export const statusIsOfKind = (status: TransactionStatus, ...kind: string[]): boolean => {
+  if (typeof status === 'object' && status !== null) {
+    return kind.includes(status.kind);
+  }
+  return kind.includes(status);
+}
+
+export const statusIsRejected = (status: TransactionStatus):
+  status is RejectedOnReceive | RejectedOnInclusion => {
+  return statusIsOfKind(status, 'RejectedOnReceive', 'RejectedOnInclusion');
 }
 
 /**
@@ -163,7 +179,8 @@ type ProcessingTxStatus =
  * Failure states for a transaction that cannot progress further.
  */
 type FailedTxStatus =
-  | Rejected
+  | RejectedOnInclusion
+  | RejectedOnReceive
   | FailedBeforeSending
   | 'Cancelled'
   | 'DroppedFromMempool'
@@ -186,11 +203,7 @@ export function statusShouldBeWaitedFor(status: TransactionStatus): status is Pr
     'ScheduledForCancellation',
     'RetryingWithHigherFee',
   ];
-
-  if (typeof status === 'object' && status !== null) {
-    return inProgressStates.includes(status.kind);
-  }
-  return inProgressStates.includes(status);
+  return statusIsOfKind(status, ...inProgressStates);
 }
 
 /**
@@ -198,17 +211,14 @@ export function statusShouldBeWaitedFor(status: TransactionStatus): status is Pr
  */
 export function statusIsFailed(status: TransactionStatus): status is FailedTxStatus {
   const failureStates = [
-    'Rejected',
+    'RejectedOnInclusion',
+    'RejectedOnReceive',
     'FailedBeforeSending',
     'Cancelled',
     'DroppedFromMempool',
     'DependencyRejectedFailedOrDropped',
   ];
-
-  if (typeof status === 'object' && status !== null) {
-    return failureStates.includes(status.kind);
-  }
-  return failureStates.includes(status);
+  return statusIsOfKind(status, ...failureStates);
 }
 
 /**
@@ -234,9 +244,8 @@ export class TransactionInternal {
   public status: TransactionStatus = 'Scheduled';
 
   private _sendingPromise?: TrackedPromise<PendingTransaction | RejectedTransaction>;
-  private _waitingPromise?: TrackedPromise<IncludedTransaction | RejectedTransaction>;
+  private _waitingPromise?: TrackedPromise<IncludedTransaction | RejectedTransaction | undefined>;
   private _provingPromise?: TrackedPromise<ProvenTransaction>;
-  // private _sendingPromiseMaker?: (fee: UInt64) => TrackedPromise<PendingTransaction | RejectedTransaction>;
 
   /**
    * Retrieves the most up-to-date transaction state from whichever promise has been fulfilled.
@@ -247,7 +256,7 @@ export class TransactionInternal {
     | RejectedTransaction
     | IncludedTransaction
     | undefined {
-    if (this._waitingPromise?.state === 'fulfilled') {
+    if (this._waitingPromise?.state === 'fulfilled' && this._waitingPromise.result) {
       return this._waitingPromise.result;
     }
     if (this._sendingPromise?.state === 'fulfilled') {
@@ -337,7 +346,7 @@ export class TransactionInternal {
    */
   public installPromises(args: {
     provingPromise: TrackedPromise<Transaction<true, false>>;
-    waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction>;
+    waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction | undefined>;
     sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction>;
     mkSendingPromise: (fee: UInt64) => TrackedPromise<PendingTransaction | RejectedTransaction>;
   }): void {
@@ -515,15 +524,15 @@ export class TransactionManager {
     function failed_before_sending(phase: string, error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const err = `${tx.getId()} - error during ${phase}: ${errorMessage}`;
-      tx.status = { kind: 'FailedBeforeSending', errors: [err] };
-      console.error(err);
-      return new Error(err);
+      const status = { kind: 'FailedBeforeSending', errors: [err] }
+      return status;
     }
 
 
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
       try {
+        console.log(`${tx.getId()} - Proving transaction ...`);
         return await transactionBuildAndProve(
           mgr._provingMutex,
           mgr.mina, sender, callback, options);
@@ -545,13 +554,15 @@ export class TransactionManager {
             timeout: options?.dependencyStatusPollTimeout
           });
           if (depStatus !== "Included") {
-            tx.status = { kind: "DependencyRejectedFailedOrDropped", depId: dep.getId(), depStatus };
-            throw new Error(`Transaction dependency ${dep.getId()} has failed status ${JSON.stringify(depStatus, null, 2)}`);
+            throw { kind: "DependencyRejectedFailedOrDropped", depId: dep.getId(), depStatus };
           }
           return;
         }));
         tx.status = "Scheduled";
       } catch (error) {
+        if (typeof error === 'object' && error !== null && 'kind' in error) {
+          throw error;
+        }
         throw failed_before_sending("awaiting for the tx dependencies", error);
       }
     });
@@ -560,23 +571,20 @@ export class TransactionManager {
     const mkSigningPromise = function (fee: UInt64) {
       return (ptx: Transaction<true, false>) => new TrackedPromise(async () => {
         try {
-          let nonce;
+          let nonceLock;
           try {
-            nonce = await mgr.mina.nonceManager.getAccountNonce(sender.publicKey);
+            nonceLock = await mgr.mina.nonceManager.getAccountNonce(sender.publicKey);
           } catch (error) {
             const err = `Error during getting the tx nonce: ${error}`;
             console.error(err);
             throw err;
           }
-          if (nonce !== null) {
-            console.log("set the nonce");
-            ptx.transaction.feePayer.body.nonce = nonce;
-          }
+          ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
           ptx.transaction.feePayer.body.fee = fee;
-          console.log("Signing transaction  ...");
+          console.log(`${tx.getId()} - Signing transaction ...`);
           // TODO use signing service instead, do not pass private keys around
           const signers = options?.extraSigners ? [sender.privateKey, ...options.extraSigners] : [sender.privateKey];
-          return ptx.sign(signers);
+          return { signedTx: ptx.sign(signers), nonceLock };
         } catch (error) {
           throw failed_before_sending("signing the tx", error);
         }
@@ -591,14 +599,17 @@ export class TransactionManager {
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
         try {
-          const sentTx = await signedTx.safeSend();
+          const { signedTx: signedTxResult, nonceLock } = signedTx;
+          const sentTx = await signedTxResult.safeSend();
+          // unlock the nonce after sending
+          await nonceLock.unlock();
           switch (sentTx.status) {
             case "pending": {
               tx.status = "Pending";
               break;
             }
             case "rejected": {
-              tx.status = { kind: "Rejected", errors: ["error when the tx has been sent", ...sentTx.errors] };
+              tx.status = { kind: "RejectedOnReceive", errors: ["error when the tx has been sent", ...sentTx.errors] };
               break;
             }
           }
@@ -612,24 +623,32 @@ export class TransactionManager {
     const sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction> = mkSendingPromise(options?.startingFee ?? defaultOptions.startingFee);
 
     // schedule waiting for the transaction to be included
-    const waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction> = new TrackedPromise(async () => {
-      const sentTx = await sendingPromise;
-      if (isRejectedTransaction(sentTx)) return sentTx;
-      const awaitedTx = await sentTx.safeWait();
-      if (awaitedTx.status === "included") {
-        tx.status = "Included";
-      }
-      else {
-        // TODO check if actually rejected or stuck in mempool
-        // if stuck then retry with higher fee
-        console.log("TODO - rejected or stuck in mempool");
-        const actualStatus = "rejected";
-
-        if (actualStatus === "rejected") {
-          tx.status = { kind: "Rejected", errors: ["error during awaiting for inclusion", ...awaitedTx.errors] };
+    const waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction | undefined> = new TrackedPromise(async () => {
+      try {
+        const sentTx = await sendingPromise;
+        if (statusIsRejectedTransaction(sentTx)) return sentTx;
+        const awaitedTx = await sentTx.safeWait();
+        if (awaitedTx.status === "included") {
+          tx.status = "Included";
         }
+        else {
+          // TODO check if actually rejected or stuck in mempool
+          // if stuck then retry with higher fee
+          console.log("TODO - rejected or stuck in mempool");
+          const actualStatus = "rejected";
+
+          if (actualStatus === "rejected") {
+            tx.status = { kind: "RejectedOnInclusion", errors: ["error during awaiting for inclusion", ...awaitedTx.errors] };
+          }
+        }
+        return awaitedTx;
+      } catch (error) {
+        if (typeof error === 'object' && error !== null && 'kind' in error) {
+          const status = error as TransactionStatus;
+          tx.status = status
+        }
+        return undefined;
       }
-      return awaitedTx;
     });
 
     // TODO later install timestamps in the tx
@@ -701,8 +720,6 @@ export async function transactionBuildAndProve(
     nonce
   } = options;
 
-  console.log('the nonce', nonce);
-
   const tx = await mutex.runExclusive(async () => await chain.transaction(
     {
       sender: sender.publicKey,
@@ -751,11 +768,9 @@ export async function transactionBuildAndProve(
   }
 
   try {
-    console.log("Proving transaction  ...");
     return await tx.prove();
   } catch (error) {
     console.error("Error during transaction processing:", error);
     throw error; // Propagate the error to the caller
   }
-
 }
