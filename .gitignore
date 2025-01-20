@@ -19,3 +19,6 @@ keys
 # npm
 *.tgz
 *.tar.gz
+
+# cache
+**/cache/**
