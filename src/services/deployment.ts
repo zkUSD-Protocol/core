@@ -1,27 +1,24 @@
-import { MinaChainInstance } from './mina.js';
+import { MinaChainInstance } from '../mina/mina-network-interface.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
-} from './contracts/zkusd-engine.js';
-import { ZkUsdVault } from './contracts/zkusd-vault.js';
+} from '../contracts/zkusd-engine.js';
+import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { getNetworkKeys } from './config/keys.js';
+import { getNetworkKeys } from '../config/keys.js';
 import {
   AccountUpdate,
   Bool,
   fetchAccount,
-  Mina,
   UInt32,
-  UInt64,
   UInt8,
   VerificationKey,
 } from 'o1js';
-import { ContractInstance, KeyPair } from './types.js';
-import { transaction } from './utils/transaction.js';
-import { AggregateOraclePrices } from './proofs/oracle-price-aggregation/prove.js';
-import { FileSystemCache } from './utils/cache.js';
-import { updateVerificationKeys } from './utils/update-verification-keys.js';
-import { validPriceBlockCount } from './index.js';
+import { ContractInstance, KeyPair } from '../types.js';
+import { transaction } from '../utils/transaction.js';
+import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
+import { updateVerificationKeys } from '../utils/update-verification-keys.js';
+import { validPriceBlockCount } from '../index.js';
 import { fetchMinaAccount } from 'zkcloudworker';
 
 interface DeployedContracts {
@@ -39,7 +36,6 @@ export async function deploy(
   console.log('Deploying contracts on', chainId);
 
   const fee = chainId !== 'local' ? 1e8 : 0;
-  const cache = new FileSystemCache();
 
   const networkKeys = getNetworkKeys(chainId);
 

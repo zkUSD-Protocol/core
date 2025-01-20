@@ -1,5 +1,5 @@
 import { PrivateKey, PublicKey } from 'o1js';
-import { blockchain } from '../networks.js';
+import { blockchain } from '../mina/networks.js';
 import { KeyPair, OracleWhitelist } from '../types.js';
 
 export interface NetworkKeyPairs {

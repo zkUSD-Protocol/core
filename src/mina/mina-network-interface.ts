@@ -1,6 +1,6 @@
 import { Mina, Lightnet, UInt32 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
-import { KeyPair } from './types.js';
+import { KeyPair } from './../types.js';
 
 /**
  * This type captures whatever methods come back from `Mina.Network()`.

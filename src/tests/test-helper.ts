@@ -20,10 +20,10 @@ import {
   OracleWhitelist,
 } from '../types.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { MinaChain } from '../mina.js';
+import { MinaChain } from '../mina/mina-network-interface.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
-import { deploy } from '../deploy.js';
+import { deploy } from '../services/deployment.js';
 import Client from 'mina-signer';
 import {
   AggregateOraclePrices,
