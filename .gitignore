@@ -11,3 +11,16 @@ coverage
 
 # Never commit keys to Git!
 keys
+
+# Local env files
+.env*.local
+.env
+
+
+
+# npm
+*.tgz
+*.tar.gz
+
+# cache
+**/cache/**

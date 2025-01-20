@@ -227,7 +227,9 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     // which is defined by ratio, e.g. ratio 110 is 10% bonus
     const collateralValue = aliceVaultDebtPreLiq!.value
       .mul(Field.from(1e9))
-      .div(priceFourtyCent.proof.publicOutput.minaPrice.priceNanoUSD);
+      .div(
+        priceFourtyCent.proof.publicOutput.minaPrice.priceNanoUSD.toBigInt()
+      );
     const valueWithLiquidationBonus = UInt64.Unsafe.fromField(
       collateralValue.mul(ratio.value).div(Field.from(100))
     );

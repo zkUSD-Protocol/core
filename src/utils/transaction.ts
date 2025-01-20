@@ -68,6 +68,7 @@ export async function transaction(
   }
 
   await tx.prove();
+
   tx.sign([sender.privateKey, ...extraSigners]);
   const sentTx = await tx.send();
   const txResult = await sentTx.wait();

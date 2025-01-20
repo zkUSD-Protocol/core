@@ -4,29 +4,16 @@ import {
   Struct,
   UInt32,
   VerificationKey,
+  verify,
 } from 'o1js';
 
-import {
-  PriceAggregationProofPublicInput,
-  PriceAggregationProofPublicOutput
-} from './common.js';
-
-/**
- * @notice The proof type of the oracle price aggregation program.
- */
-class PriceAggregationProof extends DynamicProof<
-  PriceAggregationProofPublicInput,
-  PriceAggregationProofPublicOutput
-> {
-  static publicInputType = PriceAggregationProofPublicInput;
-  static publicOutputType = PriceAggregationProofPublicOutput;
-}
+import { AggregateOraclePricesProof } from './prove.js';
 
 /**
  * @notice Input structure for Mina price verification
  */
 class MinaPriceInput extends Struct({
-  proof: PriceAggregationProof,
+  proof: AggregateOraclePricesProof,
   verificationKey: VerificationKey,
 }) {}
 
@@ -39,12 +26,7 @@ const verifyMinaPriceInput = async (args: {
   currentBlockHeight: UInt32;
   proofVkHash: Field;
 }) => {
-  const {
-    input,
-    oracleWhitelistHash,
-    proofVkHash,
-    currentBlockHeight,
-  } = args;
+  const { input, oracleWhitelistHash, proofVkHash, currentBlockHeight } = args;
 
   input.verificationKey.hash.assertEquals(
     proofVkHash,
@@ -54,18 +36,10 @@ const verifyMinaPriceInput = async (args: {
     oracleWhitelistHash,
     'Invalid oracle whitelist hash'
   );
-  input.proof.publicInput.currentBlockHeight.assertEquals(
-    currentBlockHeight,
-    'Invalid current block height'
-  );
 
-  input.proof.verify(input.verificationKey);
+  input.proof.publicInput.currentBlockHeight.assertEquals(currentBlockHeight);
+
+  input.proof.verify();
 };
 
-export {
-  PriceAggregationProofPublicInput,
-  PriceAggregationProofPublicOutput,
-  PriceAggregationProof,
-  MinaPriceInput,
-  verifyMinaPriceInput,
-};
+export { MinaPriceInput, verifyMinaPriceInput };

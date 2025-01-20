@@ -1,6 +1,8 @@
 import {
   FungibleTokenAdminBase,
   FungibleTokenContract,
+  FungibleTokenAdmin,
+  FungibleToken,
 } from '@minatokens/token';
 import {
   AccountUpdate,
@@ -20,6 +22,7 @@ import {
   Int64,
   UInt32,
   Provable,
+  Mina,
 } from 'o1js';
 import { ZkUsdVault } from './zkusd-vault.js';
 
@@ -47,12 +50,13 @@ import {
   BurnZkUsdEvent,
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
+  ValidPriceBlockCountUpdatedEvent,
 } from '../events.js';
 import {
   MinaPriceInput,
-  PriceAggregationProofPublicOutput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
 } from '../proofs/oracle-price-aggregation/verify.js';
+import { PriceAggregationProofPublicOutput } from '@/proofs/oracle-price-aggregation/common.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -80,32 +84,33 @@ export const ZkUsdEngineErrors = {
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
-  oracleFlatFee: UInt64;
+  validPriceBlockCount: UInt32;
   emergencyStop: Bool;
   vaultVerificationKeyHash: Field;
 }
 
 export function ZkUsdEngineContract(args: {
-  oracleFundTrackerAddress: PublicKey;
   zkUsdTokenAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
-  validPriceBlockCount: UInt32;
+  vaultVerificationKey: VerificationKey;
 }) {
   const {
-    oracleFundTrackerAddress,
     zkUsdTokenAddress,
     minaPriceInputZkProgramVkHash,
-    validPriceBlockCount,
+    vaultVerificationKey,
   } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     @state(Field) oracleWhitelistHash = State<Field>(); // Merkle root of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>();
     @state(Field) vaultVerificationKeyHash = State<Field>(); // Hash of the vault verification key
-    @state(Bool) interactionFlag = State<Bool>(); // Flag to prevent reentrancy
+    @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
+
+    static zkUsdTokenAddress = zkUsdTokenAddress;
 
     static FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
     static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3);
+    static vaultVerificationKey = vaultVerificationKey;
 
     readonly events = {
       MinaPriceUpdate: MinaPriceUpdateEvent,
@@ -116,7 +121,7 @@ export function ZkUsdEngineContract(args: {
       AdminUpdated: AdminUpdatedEvent,
       VerificationKeyUpdated: VerificationKeyUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
-      OracleFeeUpdated: OracleFeeUpdated,
+      ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
       NewVault: NewVaultEvent,
       DepositCollateral: DepositCollateralEvent,
@@ -137,6 +142,7 @@ export function ZkUsdEngineContract(args: {
         ...Permissions.default(),
         setVerificationKey:
           Permissions.VerificationKey.impossibleDuringCurrentVersion(),
+
         setPermissions: Permissions.impossible(),
         editState: Permissions.proof(),
         send: Permissions.proof(),
@@ -147,7 +153,7 @@ export function ZkUsdEngineContract(args: {
       this.protocolDataPacked.set(
         ProtocolData.new({
           admin: args.admin,
-          oracleFlatFee: args.oracleFlatFee,
+          validPriceBlockCount: args.validPriceBlockCount,
           emergencyStop: args.emergencyStop,
         }).pack()
       );
@@ -191,20 +197,6 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       ).account;
       const balance = account.balance.getAndRequireEquals();
-      return balance;
-    }
-
-    /**
-     * @notice  Returns the total amount of funds available to the oracle
-     * @returns The total amount of funds available to the oracle
-     */
-    public async getAvailableOracleFunds(): Promise<UInt64> {
-      const account = AccountUpdate.create(
-        oracleFundTrackerAddress,
-        this.deriveTokenId()
-      ).account;
-      const balance = account.balance.getAndRequireEquals();
-
       return balance;
     }
 
@@ -253,19 +245,26 @@ export function ZkUsdEngineContract(args: {
     verifyMinaPriceInput(
       minaPriceInput: MinaPriceInput
     ): PriceAggregationProofPublicOutput {
-      const blockForPrice =
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+
+      const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
+      const lastValidBlock = firstValidBlock.add(
+        protocolData.validPriceBlockCount
+      );
 
       this.network.blockchainLength.requireBetween(
-        blockForPrice,
-        blockForPrice.add(validPriceBlockCount)
+        firstValidBlock,
+        lastValidBlock
       );
 
       verifyMinaPriceInputProof({
         input: minaPriceInput,
         oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
         proofVkHash: minaPriceInputZkProgramVkHash,
-        currentBlockHeight: blockForPrice,
+        currentBlockHeight: firstValidBlock,
       });
 
       minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
@@ -294,7 +293,9 @@ export function ZkUsdEngineContract(args: {
       await vault.updateOwner(newOwner, owner);
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
       await zkUSD.getBalanceOf(newOwner);
@@ -328,7 +329,9 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getAndRequireSignature();
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
       await zkUSD.getBalanceOf(owner);
@@ -347,18 +350,15 @@ export function ZkUsdEngineContract(args: {
         .getAndRequireEquals()
         .assertTrue(ZkUsdEngineErrors.VAULT_EXISTS);
 
-      //Get the verification key for the vault
-      const vaultVerificationKey = new VerificationKey(
-        ZkUsdVault._verificationKey!
-      );
-
       //Ensure that the verification key is the correct one for the vault
-      vaultVerificationKey.hash.assertEquals(vaultVerificationKeyHash);
+      ZkUsdEngine.vaultVerificationKey.hash.assertEquals(
+        vaultVerificationKeyHash
+      );
 
       //Set the verification key for the vault
       vault.body.update.verificationKey = {
         isSome: Bool(true),
-        value: vaultVerificationKey,
+        value: ZkUsdEngine.vaultVerificationKey,
       };
 
       //Set the permissions for the vault
@@ -522,6 +522,7 @@ export function ZkUsdEngineContract(args: {
      * @notice  Mints zkUSD for a vault
      * @param   vaultAddress The address of the vault to mint zkUSD for
      * @param   amount The amount of zkUSD to mint
+     * @param   minaPriceInput The mina price input
      */
     @method async mintZkUsd(
       vaultAddress: PublicKey,
@@ -535,7 +536,9 @@ export function ZkUsdEngineContract(args: {
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //Get the owner of the zkUSD
       const owner = this.sender.getAndRequireSignature();
@@ -584,7 +587,9 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getUnconstrained();
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       //Manage the debt in the vault
       const { collateralAmount, debtAmount } = await vault.burnZkUsd(
@@ -607,6 +612,82 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    // /**
+    //  * @notice  Liquidates a vault as long as the health factor is below 100
+    //  *          The liquidator receives the collateral in value of the repaid debt
+    //  *          plus a bonus. The rest is sent to the vault owner.
+    //  * @param   vaultAddress The address of the vault to liquidate
+    //  */
+    // @method async liquidate(
+    //   vaultAddress: PublicKey,
+    //   minaPriceInput: MinaPriceInput
+    // ) {
+    //   //Ensure the protocol is not stopped
+    //   await this.ensureProtocolNotStopped();
+
+    //   //Get the vault
+    //   const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+
+    //   //Get the zkUSD token contract
+    //   const zkUSD = new ZkUsdEngine.FungibleToken(
+    //     ZkUsdEngine.zkUsdTokenAddress
+    //   );
+
+    //   // Get the liquidator
+    //   // NOTE. we have sender signature from zkUSD.burn
+    //   //       so we can use unconstrained
+    //   const liquidator = this.sender.getUnconstrained();
+
+    //   // Get the vault owner
+    //   const vaultOwner = vault.owner.getAndRequireEquals();
+
+    //   // verify the price input
+    //   const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
+
+    //   const { oldVaultState, liquidatorCollateral, vaultOwnerCollateral } =
+    //     await vault.liquidate(minaPrice);
+
+    //   oldVaultState.collateralAmount.assertEquals(
+    //     liquidatorCollateral.add(vaultOwnerCollateral)
+    //   );
+
+    //   //Burn the debt from the liquidator
+    //   await zkUSD.burn(liquidator, oldVaultState.debtAmount);
+
+    //   //Send the collateral to the liquidator
+    //   this.send({
+    //     to: liquidator,
+    //     amount: liquidatorCollateral,
+    //   });
+
+    //   //Send the collateral to the vault owner
+    //   this.send({
+    //     to: vaultOwner,
+    //     amount: vaultOwnerCollateral,
+    //   });
+
+    //   //Update the total deposited collateral
+    //   const totalDepositedCollateral = AccountUpdate.create(
+    //     this.address,
+    //     this.deriveTokenId()
+    //   );
+    //   totalDepositedCollateral.balanceChange = Int64.fromUnsigned(
+    //     oldVaultState.collateralAmount
+    //   ).neg();
+
+    //   //Emit the Liquidate event
+    //   this.emitEvent(
+    //     'Liquidate',
+    //     new LiquidateEvent({
+    //       vaultAddress,
+    //       liquidator: this.sender.getUnconstrained(),
+    //       vaultCollateralLiquidated: oldVaultState.collateralAmount,
+    //       vaultDebtRepaid: oldVaultState.debtAmount,
+    //       minaPrice: minaPrice.priceNanoUSD,
+    //     })
+    //   );
+    // }
+
     /**
      * @notice  Liquidates a vault as long as the health factor is below 100
      *          The liquidator receives the collateral in value of the repaid debt
@@ -620,19 +701,18 @@ export function ZkUsdEngineContract(args: {
       //Ensure the protocol is not stopped
       await this.ensureProtocolNotStopped();
 
-      //Get the vault
+      // //Get the vault
       const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
 
-      //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(zkUsdTokenAddress);
+      // //Get the zkUSD token contract
+      const zkUSD = new ZkUsdEngine.FungibleToken(
+        ZkUsdEngine.zkUsdTokenAddress
+      );
 
       // Get the liquidator
       // NOTE. we have sender signature from zkUSD.burn
       //       so we can use unconstrained
       const liquidator = this.sender.getUnconstrained();
-
-      // Get the vault owner
-      const vaultOwner = vault.owner.getAndRequireEquals();
 
       // verify the price input
       const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
@@ -655,7 +735,7 @@ export function ZkUsdEngineContract(args: {
 
       //Send the collateral to the vault owner
       this.send({
-        to: vaultOwner,
+        to: oldVaultState.owner,
         amount: vaultOwnerCollateral,
       });
 
@@ -734,33 +814,33 @@ export function ZkUsdEngineContract(args: {
       });
     }
 
-    async getOracleFee() {
+    async getValidPriceBlockCount() {
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
-      return protocolData.oracleFlatFee;
+      return protocolData.validPriceBlockCount;
     }
 
     /**
-     * @notice  Updates the oracle fee
-     * @param   fee The new oracle fee
+     * @notice  Updates the valid price block count
+     * @param   count The new valid price block count
      */
-    @method async updateOracleFee(fee: UInt64) {
+    @method async updateValidPriceBlockCount(count: UInt32) {
       //Precondition
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
 
-      const previousFee = protocolData.oracleFlatFee;
+      const previousCount = protocolData.validPriceBlockCount;
       //Ensure admin signature
       await this.ensureAdminSignature();
 
-      protocolData.oracleFlatFee = fee;
+      protocolData.validPriceBlockCount = count;
       this.protocolDataPacked.set(protocolData.pack());
 
-      this.emitEvent('OracleFeeUpdated', {
-        previousFee: previousFee,
-        newFee: fee,
+      this.emitEvent('ValidPriceBlockCountUpdated', {
+        previousCount: previousCount,
+        newCount: count,
       });
     }
 
@@ -784,34 +864,6 @@ export function ZkUsdEngineContract(args: {
       this.emitEvent('AdminUpdated', {
         previousAdmin,
         newAdmin,
-      });
-    }
-
-    /**
-     * @notice  Deposits funds into the oracle account
-     * @param   amount The amount of funds to deposit
-     */
-    @method async depositOracleFunds(amount: UInt64) {
-      //We track the funds in the token account of the engine address
-      const oracleFundsTrackerUpdate = AccountUpdate.create(
-        oracleFundTrackerAddress,
-        this.deriveTokenId()
-      );
-
-      oracleFundsTrackerUpdate.balanceChange = Int64.fromUnsigned(amount);
-
-      //Create the account update for the deposit
-      const depositUpdate = AccountUpdate.createSigned(
-        this.sender.getUnconstrained()
-      );
-
-      depositUpdate.send({
-        to: this.address,
-        amount: amount,
-      });
-
-      this.emitEvent('OracleFundsDeposited', {
-        amount: amount,
       });
     }
 
@@ -871,5 +923,6 @@ export function ZkUsdEngineContract(args: {
       return Bool(true);
     }
   }
+
   return ZkUsdEngine;
 }

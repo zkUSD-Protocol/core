@@ -19,7 +19,7 @@ import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.
 
 describe('zkUSD Vault Mint Test Suite', () => {
   const testHelper = new TestHelper();
-  let minaPriceInput: MinaPriceInput;
+  let oneUsdPrice: MinaPriceInput;
 
   before(async () => {
     await testHelper.initLocalChain({ proofsEnabled: false });
@@ -37,23 +37,17 @@ describe('zkUSD Vault Mint Test Suite', () => {
       );
     });
 
-    minaPriceInput = await testHelper.getMinaPriceInput(
-      TestAmounts.PRICE_1_USD
-    );
+    oneUsdPrice = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
   });
 
   it('should allow alice to mint zkUSD', async () => {
-    await transaction(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.engine.contract.mintZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_5_ZKUSD,
-          minaPriceInput
-        );
-      },
-      { printTx: true }
-    );
+    await transaction(testHelper.agents.alice.keys, async () => {
+      await testHelper.engine.contract.mintZkUsd(
+        testHelper.agents.alice.vault!.publicKey,
+        TestAmounts.DEBT_5_ZKUSD,
+        oneUsdPrice
+      );
+    });
 
     const aliceBalance = await testHelper.token.contract.getBalanceOf(
       testHelper.agents.alice.keys.publicKey
@@ -107,7 +101,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
         await testHelper.engine.contract.mintZkUsd(
           testHelper.agents.alice.vault!.publicKey,
           TestAmounts.DEBT_1_ZKUSD,
-          minaPriceInput
+          oneUsdPrice
         );
       });
     }
@@ -127,7 +121,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
           await testHelper.engine.contract.mintZkUsd(
             testHelper.agents.alice.vault!.publicKey,
             TestAmounts.ZERO,
-            minaPriceInput
+            oneUsdPrice
           );
         });
       },
@@ -143,7 +137,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
         await testHelper.engine.contract.mintZkUsd(
           testHelper.agents.alice.vault!.publicKey,
           UInt64.from(-1),
-          minaPriceInput
+          oneUsdPrice
         );
       });
     });
@@ -156,7 +150,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
           await testHelper.engine.contract.mintZkUsd(
             testHelper.agents.alice.vault!.publicKey,
             TestAmounts.DEBT_5_ZKUSD,
-            minaPriceInput
+            oneUsdPrice
           );
         });
       },
@@ -176,7 +170,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
           await testHelper.engine.contract.mintZkUsd(
             testHelper.agents.alice.vault!.publicKey,
             LARGE_ZKUSD_AMOUNT,
-            minaPriceInput
+            oneUsdPrice
           );
         });
       },
@@ -198,7 +192,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
         testHelper.agents.alice.vault?.contract.calculateHealthFactor(
           initialCollateral!,
           currentDebt!.add(TestAmounts.DEBT_1_ZKUSD),
-          minaPriceInput.proof.publicOutput.minaPrice
+          oneUsdPrice.proof.publicOutput.minaPrice
         );
 
       // Only mint if health factor would remain above minimum
@@ -207,7 +201,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
           await testHelper.engine.contract.mintZkUsd(
             testHelper.agents.alice.vault!.publicKey,
             TestAmounts.DEBT_1_ZKUSD,
-            minaPriceInput
+            oneUsdPrice
           );
         });
         currentDebt = currentDebt?.add(TestAmounts.DEBT_1_ZKUSD);
@@ -218,7 +212,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       testHelper.agents.alice.vault?.contract.calculateHealthFactor(
         initialCollateral!,
         currentDebt!,
-        minaPriceInput.proof.publicOutput.minaPrice
+        oneUsdPrice.proof.publicOutput.minaPrice
       );
 
     assert.strictEqual(
@@ -258,7 +252,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
           await testHelper.engine.contract.mintZkUsd(
             testHelper.agents.alice.vault!.publicKey,
             TestAmounts.DEBT_5_ZKUSD,
-            minaPriceInput
+            oneUsdPrice
           );
         });
       },
@@ -276,7 +270,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       await testHelper.engine.contract.mintZkUsd(
         testHelper.agents.alice.vault!.publicKey,
         TestAmounts.DEBT_5_ZKUSD,
-        minaPriceInput
+        oneUsdPrice
       );
     });
   });

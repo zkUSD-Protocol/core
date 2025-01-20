@@ -29,12 +29,9 @@ import {
   AggregateOraclePrices,
   OraclePriceSubmissions,
   PriceSubmission,
-} from '../proofs/oracle-price-aggregation/prove.js';
-import {
+  AggregateOraclePricesProof,
   MinaPriceInput,
-  PriceAggregationProofPublicInput,
-  PriceAggregationProofPublicOutput,
-} from '../proofs/oracle-price-aggregation/verify.js';
+} from '../proofs/oracle-price-aggregation/index.js';
 
 const client = new Client({
   network: 'testnet',
@@ -136,7 +133,7 @@ export class TestHelper {
     if (this.chain.network().chainId === 'local') {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
         const oracleName = 'oracle' + (i + 1);
-        this.oracles[oracleName] = PrivateKey.randomKeypair();
+        this.oracles[oracleName] = this.networkKeys.oracles![i];
         this.whitelist.addresses[i] = this.oracles[oracleName].publicKey;
         this.whitelistedOracles.set(oracleName, i);
       }
@@ -275,16 +272,8 @@ export class TestHelper {
       }
     );
 
-    const proof = {
-      publicInput: programOutput.proof.publicInput,
-      publicOutput: programOutput.proof.publicOutput,
-    } as DynamicProof<
-      PriceAggregationProofPublicInput,
-      PriceAggregationProofPublicOutput
-    >;
-
     const minaPriceInput = new MinaPriceInput({
-      proof: proof,
+      proof: programOutput.proof,
       verificationKey: this.oracleAggregationVk,
     });
 

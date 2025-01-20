@@ -1,12 +1,3 @@
-import {
-  AccountUpdate,
-  fetchEvents,
-  Field,
-  Mina,
-  PublicKey,
-  TokenId,
-  UInt64,
-} from 'o1js';
 import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
 import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
