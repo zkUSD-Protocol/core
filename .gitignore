@@ -1,4 +1,21 @@
-**/cache/**
-**/build/**
-**/node_modules/**
-**/*.tgz
+# NodeJS
+build
+node_modules
+coverage
+
+# Editor
+.vscode
+
+# System
+.DS_Store
+
+# Never commit keys to Git!
+keys
+
+# Local env files
+.env*.local
+
+
+# npm
+*.tgz
+*.tar.gz
