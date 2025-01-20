@@ -4,7 +4,7 @@ import { transaction } from '../../utils/transaction.js';
 import { receiveMina } from './receive-mina.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { OracleWhitelist } from '../../types.js';
-import { fee } from 'zkcloudworker';
+import { fee, fetchMinaAccount } from 'zkcloudworker';
 import { fetchAccount } from 'o1js';
 
 async function main() {
@@ -26,7 +26,7 @@ async function main() {
     whitelist.addresses.push(key.publicKey);
   }
 
-  await fetchAccount({ publicKey: networkKeys.engine.publicKey });
+  await fetchMinaAccount({ publicKey: networkKeys.engine.publicKey });
 
   await transaction(
     deployer,

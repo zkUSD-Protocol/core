@@ -19,6 +19,7 @@ import {
   Field,
   UInt64,
   UInt32,
+  Account,
 } from 'o1js';
 import {
   ZkUsdEngineContract,
@@ -29,7 +30,17 @@ import {
   MinaPriceInput,
 } from '../index.js';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { ContractInstance } from '../types.js';
+import {
+  CollateralAmountAndPriceProofArgs,
+  CollateralAmountArgs,
+  ContractInstance,
+  CreateVaultArgs,
+  PriceProofArgs,
+  VaultTransactionArgs,
+  VaultTransactionType,
+  ZkUSDAmountAndPriceProofArgs,
+  ZkUSDAmountArgs,
+} from '../types.js';
 import { verificationKeys } from '../config/verification-keys.js';
 import {
   deserializeTransaction,
@@ -37,19 +48,14 @@ import {
   transactionParams,
 } from './transaction.js';
 
-type ContractMethod =
-  | 'createVault'
-  | 'depositCollateral'
-  | 'redeemCollateral'
-  | 'mintZkUsd'
-  | 'liquidate'
-  | 'burnZkUsd';
-type TransactionArgs = Record<string, any>;
-
-interface TransactionConfig {
-  method: ContractMethod;
-  buildTx: (contract: any, args: TransactionArgs) => Promise<void>;
+interface TransactionConfig<T extends VaultTransactionType> {
+  method: T;
+  buildTx: (
+    args: VaultTransactionArgs[T],
+    minaPriceInput?: MinaPriceInput
+  ) => Promise<void>;
   requiresNewAccounts?: boolean;
+  requiresPriceProof?: boolean;
 }
 
 export class zkUsdWorker extends zkCloudWorker {
@@ -61,63 +67,76 @@ export class zkUsdWorker extends zkCloudWorker {
 
   readonly cache: Cache;
 
-  private readonly transactionConfigs: Record<
-    ContractMethod,
-    TransactionConfig
-  > = {
-    createVault: {
-      method: 'createVault',
-      buildTx: async (contract: typeof this.engine.contract, args) => {
-        await contract.createVault(PublicKey.fromBase58(args.vaultAddress));
+  private readonly transactionConfigs: {
+    [K in VaultTransactionType]: TransactionConfig<K>;
+  } = {
+    [VaultTransactionType.CREATE_VAULT]: {
+      method: VaultTransactionType.CREATE_VAULT,
+      buildTx: async (args: CreateVaultArgs) => {
+        await this.engine.contract.createVault(
+          PublicKey.fromBase58(args.vaultAddress)
+        );
       },
       requiresNewAccounts: true,
     },
-    depositCollateral: {
-      method: 'depositCollateral',
-      buildTx: async (contract: typeof this.engine.contract, args) => {
-        await contract.depositCollateral(
+    [VaultTransactionType.DEPOSIT_COLLATERAL]: {
+      method: VaultTransactionType.DEPOSIT_COLLATERAL,
+      buildTx: async (args: CollateralAmountArgs) => {
+        await this.engine.contract.depositCollateral(
           PublicKey.fromBase58(args.vaultAddress),
-          UInt64.from(args.amount)
+          UInt64.from(args.collateralAmount)
         );
       },
     },
-    redeemCollateral: {
-      method: 'redeemCollateral',
-      buildTx: async (contract: typeof this.engine.contract, args) => {
-        await contract.redeemCollateral(
+    [VaultTransactionType.REDEEM_COLLATERAL]: {
+      method: VaultTransactionType.REDEEM_COLLATERAL,
+      buildTx: async (
+        args: CollateralAmountAndPriceProofArgs,
+        minaPriceInput?: MinaPriceInput
+      ) => {
+        await this.engine.contract.redeemCollateral(
           PublicKey.fromBase58(args.vaultAddress),
-          UInt64.from(args.amount),
-          args.minaPriceInput as MinaPriceInput
+          UInt64.from(args.collateralAmount),
+          minaPriceInput!
+        );
+      },
+      requiresPriceProof: true,
+    },
+    [VaultTransactionType.BURN_ZKUSD]: {
+      method: VaultTransactionType.BURN_ZKUSD,
+      buildTx: async (args: ZkUSDAmountArgs) => {
+        await this.engine.contract.burnZkUsd(
+          PublicKey.fromBase58(args.vaultAddress),
+          UInt64.from(args.zkusdAmount)
         );
       },
     },
-    burnZkUsd: {
-      method: 'burnZkUsd',
-      buildTx: async (contract: typeof this.engine.contract, args) => {
-        await contract.burnZkUsd(
+    [VaultTransactionType.MINT_ZKUSD]: {
+      method: VaultTransactionType.MINT_ZKUSD,
+      buildTx: async (
+        args: ZkUSDAmountAndPriceProofArgs,
+        minaPriceInput?: MinaPriceInput
+      ) => {
+        await this.engine.contract.mintZkUsd(
           PublicKey.fromBase58(args.vaultAddress),
-          UInt64.from(args.amount)
+          UInt64.from(args.zkusdAmount),
+          minaPriceInput!
         );
       },
+      requiresPriceProof: true,
     },
-    mintZkUsd: {
-      method: 'mintZkUsd',
-      buildTx: async (contract: typeof this.engine.contract, args) => {
-        await contract.mintZkUsd(
+    [VaultTransactionType.LIQUIDATE]: {
+      method: VaultTransactionType.LIQUIDATE,
+      buildTx: async (
+        args: PriceProofArgs,
+        minaPriceInput?: MinaPriceInput
+      ) => {
+        await this.engine.contract.liquidate(
           PublicKey.fromBase58(args.vaultAddress),
-          UInt64.from(args.amount),
-          args.minaPriceInput as MinaPriceInput
+          minaPriceInput!
         );
       },
-    },
-    liquidate: {
-      method: 'liquidate',
-      buildTx: async (contract: typeof this.engine.contract, args) => {
-        await contract.liquidate(
-          PublicKey.fromBase58(args.vaultAddress),
-          args.minaPriceInput as MinaPriceInput
-        );
-      },
+      requiresPriceProof: true,
     },
   };
 
@@ -187,26 +206,30 @@ export class zkUsdWorker extends zkCloudWorker {
     if (!this.cloud.args) throw new Error('this.cloud.args is undefined');
     if (transactions.length === 0) throw new Error('No transactions provided');
 
-    const args = JSON.parse(this.cloud.args);
-    const config = this.transactionConfigs[this.cloud.task as ContractMethod];
+    const task = this.cloud.task as VaultTransactionType;
+    const config = this.transactionConfigs[task] as TransactionConfig<
+      typeof task
+    >;
+    const args = JSON.parse(
+      this.cloud.args
+    ) as VaultTransactionArgs[typeof task];
 
     if (!config) {
-      throw new Error(`Unknown task: ${this.cloud.task}`);
+      throw new Error(`Unknown task: ${task}`);
     }
 
     return await this.processTransaction(config, args, transactions);
   }
 
-  private async processTransaction(
-    config: TransactionConfig,
-    args: TransactionArgs,
+  private async processTransaction<T extends VaultTransactionType>(
+    config: TransactionConfig<T>,
+    args: VaultTransactionArgs[T],
     txs: string[]
   ): Promise<string> {
     if (txs.length === 0) return 'No transactions to send';
     await this.compile();
 
     try {
-      console.log('First');
       const { serializedTx, signedData } = JSON.parse(txs[0]);
       const signedJson = JSON.parse(signedData);
       const { fee, sender, nonce, memo } = transactionParams(
@@ -214,42 +237,29 @@ export class zkUsdWorker extends zkCloudWorker {
         signedJson
       );
 
-      console.log('Creating transaction');
+      let minaPriceInput: MinaPriceInput | undefined;
 
-      if (args.minaPriceProof) {
-        args.minaPriceInput = await getMinaPriceInputFromJsonProof(
-          args.minaPriceProof as JsonProof,
-          this.oracleAggregationVk as VerificationKey
+      if (config.requiresPriceProof) {
+        minaPriceInput = await getMinaPriceInputFromJsonProof(
+          (args as PriceProofArgs).minaPriceProof,
+          this.oracleAggregationVk
         );
       }
 
-      await fetchMinaAccount({
-        publicKey: this.keys.engine.publicKey,
-        force: true,
-      });
-      await fetchMinaAccount({
-        publicKey: sender,
-        force: true,
-      });
-      await fetchMinaAccount({
-        publicKey: PublicKey.fromBase58(args.vaultAddress),
-        tokenId: this.engine.contract.deriveTokenId(),
-        force: true,
-      });
-
-      console.log('args', args);
+      await this.fetchLatestAccounts(sender, args.vaultAddress);
 
       const txNew = await Mina.transaction(
         { sender, fee, nonce, memo },
         async () => {
-          if (config.requiresNewAccounts && args.newAccounts > 0) {
-            AccountUpdate.fundNewAccount(sender, args.newAccounts);
+          if (config.requiresNewAccounts) {
+            AccountUpdate.fundNewAccount(
+              sender,
+              (args as CreateVaultArgs).newAccounts
+            );
           }
-          await config.buildTx(this.engine.contract, args);
+          await config.buildTx(args, minaPriceInput);
         }
       );
-
-      console.log('txNew', txNew.toPretty());
 
       return await this.proveAndSendTx(serializedTx, txNew, signedJson);
     } catch (error) {
@@ -303,5 +313,21 @@ export class zkUsdWorker extends zkCloudWorker {
         } as any,
       });
     return txSent?.hash ?? 'Error sending transaction';
+  }
+
+  private async fetchLatestAccounts(sender: PublicKey, vaultAddress: string) {
+    await fetchMinaAccount({
+      publicKey: this.keys.engine.publicKey,
+      force: true,
+    });
+    await fetchMinaAccount({
+      publicKey: sender,
+      force: true,
+    });
+    await fetchMinaAccount({
+      publicKey: PublicKey.fromBase58(vaultAddress),
+      tokenId: this.engine.contract.deriveTokenId(),
+      force: true,
+    });
   }
 }

@@ -13,7 +13,12 @@ import {
   PriceSubmission,
   AggregateOraclePricesProof,
 } from './proofs/oracle-price-aggregation/index.js';
-import { OracleWhitelist, computeOracleWhitelistHash } from './types.js';
+import {
+  OracleWhitelist,
+  computeOracleWhitelistHash,
+  VaultTransactionType,
+  VaultTransactionArgs,
+} from './types.js';
 import { getNetworkKeys } from './config/keys.js';
 
 export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
@@ -49,4 +54,6 @@ export {
   computeOracleWhitelistHash,
   MinaPriceInput,
   getNetworkKeys,
+  VaultTransactionType,
+  VaultTransactionArgs,
 };

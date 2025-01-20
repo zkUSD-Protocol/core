@@ -22,6 +22,7 @@ import { AggregateOraclePrices } from './proofs/oracle-price-aggregation/prove.j
 import { FileSystemCache } from './utils/cache.js';
 import { updateVerificationKeys } from './utils/update-verification-keys.js';
 import { validPriceBlockCount } from './index.js';
+import { fetchMinaAccount } from 'zkcloudworker';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -118,7 +119,7 @@ export async function deploy(
 
   try {
     const tokenAccount = (
-      await fetchAccount({ publicKey: networkKeys.token.publicKey })
+      await fetchMinaAccount({ publicKey: networkKeys.token.publicKey })
     ).account;
     if (!tokenAccount) throw new Error('Token contract not found');
     console.log('Token contract already deployed');
@@ -159,7 +160,7 @@ export async function deploy(
 
   try {
     const engineTokenAccount = (
-      await fetchAccount({
+      await fetchMinaAccount({
         publicKey: networkKeys.engine.publicKey,
         tokenId: engine.contract.deriveTokenId(),
       })
@@ -168,7 +169,7 @@ export async function deploy(
     console.log('Engine contract already deployed');
   } catch {
     //should get the latest nonce
-    await fetchAccount({ publicKey: networkKeys.engine.publicKey });
+    await fetchMinaAccount({ publicKey: networkKeys.engine.publicKey });
 
     await transaction(
       deployer,
