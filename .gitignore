@@ -14,6 +14,8 @@ keys
 
 # Local env files
 .env*.local
+.env
+
 
 
 # npm
