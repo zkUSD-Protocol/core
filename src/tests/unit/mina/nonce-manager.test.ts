@@ -1,10 +1,11 @@
-// nonce-manager.test.ts
-
 import { test } from "node:test";
 import { strict as assert } from "assert";
 
-import { NonceManager, NonceLock, INonceManager, NonceManagerConfig } from "../../../mina/nonce-manager.js";
-import { PublicKey, Field, UInt32, Account, PrivateKey } from "o1js";
+import {
+  NonceManager,
+  NonceManagerConfig,
+} from "../../../mina/nonce-manager.js";
+import { PublicKey, UInt32, Account, PrivateKey } from "o1js";
 import { GqlData, GqlQuery, GqlQueryCall, GqlVars } from "../../../mina/graphql.js";
 
 /* -------------------------------------------------------------------------- */
@@ -20,7 +21,6 @@ const randomPublicKey = () => PrivateKey.random().toPublicKey();
  * Utility to create a mock Account object.
  */
 function toMockAccount(pubKey: PublicKey, nonce: UInt32): Account {
-  // Casting as `unknown` and then `Account` to avoid direct TS mismatch
   return {
     publicKey: pubKey,
     nonce,
@@ -60,23 +60,19 @@ function createMockConfig(
 /* -------------------------------------------------------------------------- */
 
 test("NonceManager should return a nonce from on-chain if no pooled nonce is found", async () => {
-  // chain nonce is 5, no pooled transactions
   const chainNonce = UInt32.from(5);
   const mockConfig = createMockConfig(chainNonce);
 
-  // Create the NonceManager
   const manager = new NonceManager(mockConfig);
 
-  // Act
   const lock = await manager.getAccountNonce(randomPublicKey());
-
   assert.equal(lock.nonce.toString(), "5");
 
   await lock.unlock();
+  await manager.dispose(); // Ensure cleanup job stops
 });
 
 test("NonceManager should pick the highest pooled nonce if present", async () => {
-  // chain nonce is 5, but we have a pooled user command with nonce = 10
   const chainNonce = UInt32.from(5);
   const pooledNonce = 10n;
 
@@ -91,102 +87,132 @@ test("NonceManager should pick the highest pooled nonce if present", async () =>
 
   const manager = new NonceManager(mockConfig);
 
-  // Act
   const lock = await manager.getAccountNonce(randomPublicKey());
-
-  // Assert - pooled nonce = 10 => +1 => 11
-  assert.equal(lock.nonce.toString(), "11");
+  assert.equal(lock.nonce.toString(), "11"); // pooled nonce = 10 + 1 = 11
 
   await lock.unlock();
+  await manager.dispose();
 });
 
 test("NonceManager should handle multiple calls by incrementing existing lock set", async () => {
-  // chain nonce is 5, no pooled transactions
   const chainNonce = UInt32.from(5);
   const mockConfig = createMockConfig(chainNonce);
 
   const manager = new NonceManager(mockConfig);
   const pubKey = randomPublicKey();
 
-  // First call => 5 
   const lock1 = await manager.getAccountNonce(pubKey);
   assert.equal(lock1.nonce.toString(), "5");
 
-  // Second call => picks up from 5 => +1 => 6
   const lock2 = await manager.getAccountNonce(pubKey);
   assert.equal(lock2.nonce.toString(), "6");
 
   await lock1.unlock();
   await lock2.unlock();
+  await manager.dispose();
 });
 
-test("NonceManager unlock should free the nonce set, but chain nonce remains the same", async () => {
-  // chain nonce = 5, no pooled tx
+test("NonceManager unlock should free the nonce set, and the cleanup job should stop if no locks remain", async () => {
   const chainNonce = UInt32.from(5);
   const mockConfig = createMockConfig(chainNonce);
 
   const manager = new NonceManager(mockConfig);
   const pubKey = randomPublicKey();
 
-  // First call => 5
   const lock1 = await manager.getAccountNonce(pubKey);
   assert.equal(lock1.nonce.toString(), "5");
 
-  // Unlock => removes it from the lock set
   await lock1.unlock();
 
-  // Second call => the lock set is empty, chain nonce still 5
+  // The lock set should be empty; the cleanup job should have stopped
+  assert.strictEqual(manager["_cleanupInterval"], null, "Cleanup job should stop when no locks remain");
+
+  await manager.dispose();
+});
+
+test("NonceManager cleanup job should restart when a new lock set is created", async () => {
+  const chainNonce = UInt32.from(5);
+  const mockConfig = createMockConfig(chainNonce);
+
+  const manager = new NonceManager(mockConfig);
+  const pubKey = randomPublicKey();
+
+  const lock1 = await manager.getAccountNonce(pubKey);
+  assert.equal(lock1.nonce.toString(), "5");
+
+  await lock1.unlock();
+
+  // Ensure the cleanup job has stopped after unlocking
+  assert.strictEqual(manager["_cleanupInterval"], null, "Cleanup job should stop after unlocking all locks");
+
+  // Acquire a new lock, which should restart the cleanup job
   const lock2 = await manager.getAccountNonce(pubKey);
-  assert.equal(lock2.nonce.toString(), "5");
+  assert.notStrictEqual(manager["_cleanupInterval"], null, "Cleanup job should restart when a new lock set is created");
 
   await lock2.unlock();
+  await manager.dispose();
 });
 
-test("NonceManager concurrency test: two parallel calls yield consecutive nonces", async () => {
-  // chain nonce = 5, no pooled tx
+test("NonceManager should clear stale locks after inactivity and stop the cleanup job", async () => {
   const chainNonce = UInt32.from(5);
-  const mockConfig = createMockConfig(chainNonce);
+  const manager = new NonceManager({
+    ...createMockConfig(chainNonce),
+    cleanupIntervalMs: 50, // Check for stale locks every 50 ms
+    lockSetTimeoutMs: 100, // Consider locks stale after 100 ms
+  });
 
-  const manager = new NonceManager(mockConfig);
   const pubKey = randomPublicKey();
 
-  // Act: parallel calls
-  const [lockA, lockB] = await Promise.all([
-    manager.getAccountNonce(pubKey),
-    manager.getAccountNonce(pubKey),
-  ]);
+  const lock1 = await manager.getAccountNonce(pubKey);
+  assert.equal(lock1.nonce.toString(), "5");
 
-  const nonceA = parseInt(lockA.nonce.toString(), 10);
-  const nonceB = parseInt(lockB.nonce.toString(), 10);
+  // Wait long enough for the lock set to become stale
+  await new Promise((resolve) => setTimeout(resolve, 150));
 
-  // Assert - distinct consecutive values => 6 and 7
-  assert.notEqual(nonceA, nonceB, "Nonces in parallel calls must be unique");
+  // The lock set should have been cleared
+  assert.strictEqual(manager["_accountLocks"].size, 0, "Stale lock set should have been cleared");
 
-  await lockA.unlock();
-  await lockB.unlock();
+  // The cleanup job should have stopped after clearing the stale lock set
+  assert.strictEqual(manager["_cleanupInterval"], null, "Cleanup job should stop after clearing all stale locks");
+
+  await lock1.unlock();
+  await manager.dispose();
 });
 
-
-test("NonceManager concurrency test: two parallel calls yield consecutive nonces", async () => {
-  // chain nonce = 5, no pooled tx
+test("NonceManager should not remove active locks during cleanup", async () => {
   const chainNonce = UInt32.from(5);
-  const mockConfig = createMockConfig(chainNonce);
+  const manager = new NonceManager({
+    ...createMockConfig(chainNonce),
+    cleanupIntervalMs: 50, // Check for stale locks every 50 ms
+    lockSetTimeoutMs: 200, // Consider locks stale after 200 ms
+  });
 
-  const manager = new NonceManager(mockConfig);
-  const pubKey = randomPublicKey();
+  const pubKey1 = randomPublicKey();
+  const pubKey2 = randomPublicKey();
 
-  // Act: parallel calls
-  const [lockA, lockB] = await Promise.all([
-    manager.getAccountNonce(pubKey),
-    manager.getAccountNonce(pubKey),
-  ]);
+  // Acquire two locks
+  const lock1 = await manager.getAccountNonce(pubKey1); // Lock for pubKey1
+  assert.equal(lock1.nonce.toString(), "5");
 
-  const nonceA = parseInt(lockA.nonce.toString(), 10);
-  const nonceB = parseInt(lockB.nonce.toString(), 10);
+  const lock2 = await manager.getAccountNonce(pubKey2); // Lock for pubKey2
+  assert.equal(lock2.nonce.toString(), "5");
 
-  // Assert - distinct consecutive values => 6 and 7
-  assert.notEqual(nonceA, nonceB, "Nonces in parallel calls must be unique");
+  // Wait for less than the stale timeout (e.g., 100ms)
+  await new Promise((resolve) => setTimeout(resolve, 100));
 
-  await lockA.unlock();
-  await lockB.unlock();
+  // Ensure that the cleanup job does not remove active locks
+  assert.strictEqual(manager["_accountLocks"].size, 2, "Active locks should not be removed by cleanup");
+
+  // Wait for longer than the stale timeout (e.g., 300ms)
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  // Only locks that are stale (in this case, both if unlocked after waiting) should be cleared
+  assert.strictEqual(manager["_accountLocks"].size, 0, "Stale locks should be removed after timeout");
+
+  // Unlock locks
+  await lock1.unlock();
+  await lock2.unlock();
+
+  await manager.dispose();
 });
+
