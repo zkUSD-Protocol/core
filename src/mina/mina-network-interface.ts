@@ -1,8 +1,9 @@
-import { Mina, Lightnet, UInt32, fetchAccount } from 'o1js';
+import { Mina, Lightnet, UInt32, PublicKey, Field, fetchAccount, Account } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types.js';
 import { INonceManager, LocalNonceManager, NonceManager } from './nonce-manager.js';
 import { GqlData, GqlQuery, GqlQueryCall, GqlVars, queryGraphQL } from './graphql.js';
+import { fetchMinaAccount as zkCWfetchMinaAccount  } from 'zkcloudworker';
 
 type LocalOnlyApi = {
   // add more as needed
@@ -15,6 +16,7 @@ type LocalOnlyApi = {
  * For example, transaction(...), currentSlot(), etc.
  */
 type MinaApi = Awaited<ReturnType<typeof Mina.Network>>;
+type ZkusdMinaApi = Omit<Awaited<ReturnType<typeof Mina.Network>>, "getAccount">;
 
 
 class LocalBlockchain {
@@ -76,10 +78,14 @@ class LightnetChain {
   }
 }
 
-interface IMinaNetworkInterface extends MinaApi {
+interface IMinaNetworkInterface extends ZkusdMinaApi {
   get nonceManager(): INonceManager;
   get network(): MinaNetwork;
   get local(): LocalOnlyApi | undefined;
+  fetchMinaAccount(
+    publicKey: string | PublicKey,
+    options?: {tokenId?: Field | string, force?: boolean}
+  ): Promise<Account | undefined>
   newAccount(): Promise<KeyPair>;
   moveChainForward(n?: number): Promise<void>;
 }
@@ -103,7 +109,6 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   declare transaction: MinaApi['transaction'];
   declare currentSlot: MinaApi['currentSlot'];
   declare hasAccount: MinaApi['hasAccount'];
-  declare getAccount: MinaApi['getAccount'];
   declare fetchEvents: MinaApi['fetchEvents'];
   declare fetchActions: MinaApi['fetchActions'];
   declare getActions: MinaApi['getActions'];
@@ -145,12 +150,9 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
 
     // Set the nonce manager
     networkInterface._nonceManager = new LocalNonceManager({
-      fetchAccount: async (publicKey, tokenId) => {
-        await fetchAccount({publicKey, tokenId});
+      fetchMinaAccount: async (publicKey, tokenId) => {
+        return networkInterface.fetchMinaAccount(publicKey, {tokenId, force: true});
       },
-      getAccount: async (publicKey, tokenId) => {
-        return networkInterface.getAccount(publicKey, tokenId);
-      }
     });
 
     // Switch the global "active" Mina instance
@@ -160,6 +162,24 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     networkInterface.bindMethods();
 
     return networkInterface;
+  }
+
+  /* Fetch the Mina account for a given public key with error handling
+   * via a zkCloudWorker's function.
+   */
+  public async fetchMinaAccount(
+    publicKey: string | PublicKey,
+    options?: {tokenId?: Field | string, force?: boolean}
+  ): Promise<Account | undefined> {
+        const ret = await zkCWfetchMinaAccount({publicKey, tokenId: options?.tokenId, force: options?.force});
+        if ('account' in ret && ret.account) {
+          return ret.account;
+        }
+        else{
+          const pubkey = typeof publicKey === 'string' ? PublicKey.fromBase58(publicKey) : publicKey;
+          const tokenId: Field | undefined = typeof options?.tokenId === 'string' ? Field.from(options?.tokenId) : options?.tokenId;
+          return this.instance.getAccount(pubkey, tokenId);
+        }
   }
 
   /**
@@ -178,11 +198,8 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
 
     // Set the nonce manager
     networkInterface._nonceManager = new NonceManager({
-      fetchAccount: async (publicKey, tokenId) => {
-        await fetchAccount({publicKey, tokenId});
-      },
-      getAccount: async (publicKey, tokenId) => {
-        return networkInterface.getAccount(publicKey, tokenId);
+      fetchMinaAccount: async (publicKey, tokenId) => {
+        return networkInterface.fetchMinaAccount(publicKey, {tokenId, force: true});
       },
       queryGraphQL: async (q) => {
         return networkInterface.queryGraphQL(q);
