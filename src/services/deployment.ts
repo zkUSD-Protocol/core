@@ -1,4 +1,4 @@
-import { MinaChainInstance } from '../mina/mina-network-interface.js';
+import { IMinaNetworkInterface } from '../mina/mina-network-interface.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
@@ -28,11 +28,11 @@ interface DeployedContracts {
 }
 
 export async function deploy(
-  currentNetwork: MinaChainInstance,
+  currentNetwork: IMinaNetworkInterface,
   deployer: KeyPair
 ): Promise<DeployedContracts> {
   let engineVk: VerificationKey;
-  const chainId = currentNetwork.network().chainId;
+  const chainId = currentNetwork.network.chainId;
   console.log('Deploying contracts on', chainId);
 
   const fee = chainId !== 'local' ? 1e8 : 0;
@@ -105,7 +105,7 @@ export async function deploy(
   const engineDeployProps: ZkUsdEngineDeployProps = {
     admin: networkKeys.protocolAdmin.publicKey,
     validPriceBlockCount: UInt32.from(
-      validPriceBlockCount[currentNetwork.network().chainId]
+      validPriceBlockCount[currentNetwork.network.chainId]
     ),
     emergencyStop: Bool(false),
     vaultVerificationKeyHash: vaultVerificationKeyHash!,

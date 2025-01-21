@@ -5,13 +5,13 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
 
-describe('zkUSD Protocol Vault Administration Test Suite', () => {
-  const testHelper = new TestHelper();
+describe('zkUSD Protocol Vault Administration Test Suite', async () => {
+  let testHelper: TestHelper;
 
   const newAdmin = PrivateKey.randomKeypair();
 
   before(async () => {
-    await testHelper.initLocalChain({proofsEnabled: false})
+    testHelper = await TestHelper.initLocalChain({proofsEnabled: false})
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice']);
     await testHelper.createVaults(['alice']);

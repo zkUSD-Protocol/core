@@ -4,14 +4,13 @@ import { ZkUsdVaultErrors } from '../../../contracts/zkusd-vault.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { transaction } from '../../../utils/transaction.js';
-import { MinaPrice } from '../../../types.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Burn Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob', 'charlie']);
 

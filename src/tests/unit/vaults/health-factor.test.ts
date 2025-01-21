@@ -2,15 +2,14 @@ import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { UInt64 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 import { MinaPrice } from '../../../types.js';
 
 describe('zkUSD Vault Health Factor Calculations Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
   let price: MinaPrice;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
     await testHelper.createAgents(['alice', 'bob']);
     await testHelper.createVaults(['alice', 'bob']);

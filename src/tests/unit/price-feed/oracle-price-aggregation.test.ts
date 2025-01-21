@@ -68,10 +68,10 @@ async function getDynamicPriceSubmissions(
 }
 
 describe('Oracle Price Aggregation Test Suite', () => {
-  const testHelper = new TestHelper();
+  let testHelper: TestHelper;
 
   before(async () => {
-    await testHelper.initLocalChain({ proofsEnabled: false });
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
   });
 
