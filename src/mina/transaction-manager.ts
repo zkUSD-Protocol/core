@@ -183,7 +183,7 @@ type FailedTxStatus =
   | RejectedOnReceive
   | FailedBeforeSending
   | 'Cancelled'
-  | 'DroppedFromMempool'
+  | 'DroppedFromMempool' // still not "implemented"
   | 'StuckInMempool' // Timed out while waiting; treated as failed
   | DependencyRejectedFailedOrDropped;
 
@@ -616,6 +616,8 @@ export class TransactionManager {
           return sentTx;
         } catch (error) {
           throw failed_before_sending("sending the tx", error);
+        } finally {
+          // TODO need to release the nonce lock
         }
       });
     }

@@ -43,7 +43,7 @@ export interface INonceManager {
  */
 export interface NonceManagerConfig {
   /**
-   * Fetches the account details from the network or other service. 
+   * Fetches the account details from the network or other service.
    * Typically triggers a side-effect such as loading the account state into a cache.
    */
   fetchAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<void>;
