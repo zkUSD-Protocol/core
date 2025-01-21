@@ -1,11 +1,10 @@
-import { MinaChain } from '../../mina.js';
-import { deploy } from '../../deploy.js';
+import { MinaChain } from '../../mina/mina-network-interface.js';
+import { deploy } from '../../services/deployment.js';
 import { transaction } from '../../utils/transaction.js';
 import { receiveMina } from './receive-mina.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { OracleWhitelist } from '../../types.js';
-import { fee, fetchMinaAccount } from 'zkcloudworker';
-import { fetchAccount } from 'o1js';
+import { fetchMinaAccount } from 'zkcloudworker';
 
 async function main() {
   await MinaChain.initLightnet();

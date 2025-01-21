@@ -5,7 +5,7 @@ import { Field, initializeBindings, VerificationKey } from 'o1js';
 import { Cloud, zkCloudWorker, initBlockchain } from 'zkcloudworker';
 import { verificationKeys } from './config/verification-keys.js';
 import { zkUsdWorker } from './cloud-worker/worker.js';
-import { validPriceBlockCount } from './networks.js';
+import { validPriceBlockCount } from './mina/networks.js';
 import {
   MinaPriceInput,
   AggregateOraclePrices,
