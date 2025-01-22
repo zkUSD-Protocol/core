@@ -43,15 +43,9 @@ export interface INonceManager {
  */
 export interface NonceManagerConfig {
   /**
-   * Fetches the account details from the network or other service.
-   * Typically triggers a side-effect such as loading the account state into a cache.
+   * Fetches the account details from the network. The account may not exist.
    */
-  fetchAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<void>;
-
-  /**
-   * Retrieves the in-memory (or locally cached) representation of the account.
-   */
-  getAccount(publicKey: PublicKey, tokenId?: Field): Promise<Account>;
+  fetchMinaAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<Account | undefined>;
 
   /**
    * Performs a GraphQL query to fetch pooled transactions.
@@ -66,8 +60,7 @@ export interface NonceManagerConfig {
  * to fetch and get account details, but mocks out the GraphQL behavior.
  */
 export interface LocalNonceManagerConfig {
-  fetchAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<void>;
-  getAccount(publicKey: PublicKey, tokenId?: Field): Promise<Account>;
+  fetchMinaAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<Account | undefined>;
 }
 
 /**
@@ -81,8 +74,7 @@ export class LocalNonceManager implements INonceManager {
 
   public constructor(config: LocalNonceManagerConfig) {
     const mockConfig: NonceManagerConfig = {
-      fetchAccount: config.fetchAccount,
-      getAccount: config.getAccount,
+      fetchMinaAccount: config.fetchMinaAccount,
       // Mock GraphQL queries to return empty results
       queryGraphQL: async () =>
         ({
@@ -163,8 +155,7 @@ export class NonceManager implements INonceManager {
    */
   public constructor(options: NonceManagerOptions) {
     this._config = {
-      fetchAccount: options.fetchAccount,
-      getAccount: options.getAccount,
+      fetchMinaAccount: options.fetchMinaAccount,
       queryGraphQL: options.queryGraphQL,
     };
 
@@ -261,13 +252,17 @@ export class NonceManager implements INonceManager {
     let highNonce: UInt32;
 
     if (!pooledNonce) {
+      let account: Account | undefined;
       try {
         // Load account data from the network/cache
-        await this._config.fetchAccount(publicKey, tokenId);
-        const account = await this._config.getAccount(pubKey, tokenId);
-        highNonce = account.nonce;
+        account = await this._config.fetchMinaAccount(pubKey, tokenId);
       } catch (error) {
         throw new Error(`Failed to fetch account nonce: ${error}`);
+      } finally {
+        if (!account) {
+          throw new Error("Account not found");
+        }
+        highNonce = account.nonce;
       }
     } else {
       highNonce = new UInt32(pooledNonce + 1n);

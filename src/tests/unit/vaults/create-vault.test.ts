@@ -16,9 +16,9 @@ describe('zkUSD Deployment Test Suite', () => {
   it('should create vaults', async () => {
     await testHelper.createVaults(['alice']);
 
-    const aliceVault = testHelper.mina.getAccount(
+    const aliceVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.alice.vault?.publicKey!,
-      testHelper.engine.contract.deriveTokenId()
+      { tokenId: testHelper.engine.contract.deriveTokenId()}
     );
 
     assert.notStrictEqual(aliceVault, null);
@@ -77,21 +77,21 @@ describe('zkUSD Deployment Test Suite', () => {
   it('should create multiple vaults', async () => {
     await testHelper.createVaults(['bob', 'charlie', 'david', 'eve']);
 
-    const bobVault = testHelper.mina.getAccount(
+    const bobVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.bob.vault?.publicKey!,
-      testHelper.engine.contract.deriveTokenId()
+      { tokenId: testHelper.engine.contract.deriveTokenId() }
     );
-    const charlieVault = testHelper.mina.getAccount(
+    const charlieVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.charlie.vault?.publicKey!,
-      testHelper.engine.contract.deriveTokenId()
+      { tokenId: testHelper.engine.contract.deriveTokenId() }
     );
-    const davidVault = testHelper.mina.getAccount(
+    const davidVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.david.vault?.publicKey!,
-      testHelper.engine.contract.deriveTokenId()
+      { tokenId: testHelper.engine.contract.deriveTokenId() }
     );
-    const eveVault = testHelper.mina.getAccount(
+    const eveVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.eve.vault?.publicKey!,
-      testHelper.engine.contract.deriveTokenId()
+      {tokenId: testHelper.engine.contract.deriveTokenId()}
     );
 
     assert.notStrictEqual(bobVault, null);
