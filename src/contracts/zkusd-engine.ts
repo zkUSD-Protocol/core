@@ -56,7 +56,7 @@ import {
   MinaPriceInput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
 } from '../proofs/oracle-price-aggregation/verify.js';
-import { PriceAggregationProofPublicOutput } from '@/proofs/oracle-price-aggregation/common.js';
+import { PriceAggregationProofPublicOutput } from '../proofs/oracle-price-aggregation/common.js';
 
 /**
  * @title   zkUSD Engine contract

@@ -1,6 +1,6 @@
 import { AccountUpdate, fetchAccount, PublicKey } from 'o1js';
 import { transaction } from '../../utils/transaction.js';
-import { MinaNetworkInterface } from '@/mina/mina-network-interface.js';
+import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
 
 export async function receiveMina() {
   const receiver = PublicKey.fromBase58(

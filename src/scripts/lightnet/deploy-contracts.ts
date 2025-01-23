@@ -5,13 +5,15 @@ import { receiveMina } from './receive-mina.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { OracleWhitelist } from '../../types.js';
 import { fetchMinaAccount } from 'zkcloudworker';
+import { TransactionManager } from '../../mina/transaction-manager.js';
 
 async function main() {
   const MinaChain = await MinaNetworkInterface.initLightnet();
-  const deployer = await MinaChain.newAccount();
-  const deployedContracts = await deploy(MinaChain, deployer);
+  const txMgr = TransactionManager.new(MinaChain);
+  const deployer = await txMgr.mina.newAccount();
+  const deployedContracts = await deploy(txMgr, deployer);
 
-  const networkKeys = getNetworkKeys(MinaChain.network.chainId);
+  const networkKeys = getNetworkKeys(txMgr.mina.network.chainId);
 
   console.log('Contracts deployed');
 
@@ -25,19 +27,19 @@ async function main() {
     whitelist.addresses.push(key.publicKey);
   }
 
-  await fetchMinaAccount({ publicKey: networkKeys.engine.publicKey });
-
-  await transaction(
+  const txHandle = await txMgr.tx(
     deployer,
     async () => {
       await deployedContracts.engine.contract.updateOracleWhitelist(whitelist);
     },
     {
+      name: 'Update Oracle Whitelist',
       extraSigners: [networkKeys.protocolAdmin.privateKey],
-      printTx: true,
-      fee: 1e8,
     }
   );
+
+  await txHandle.awaitIncluded();
+
   console.log('Whitelist updated');
 
   console.log('Receiving Mina');

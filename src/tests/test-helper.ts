@@ -18,7 +18,10 @@ import {
   OracleWhitelist,
 } from '../types.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { IMinaNetworkInterface, MinaNetworkInterface } from '../mina/mina-network-interface.js';
+import {
+  IMinaNetworkInterface,
+  MinaNetworkInterface,
+} from '../mina/mina-network-interface.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
 import { deploy } from '../services/deployment.js';
@@ -29,7 +32,7 @@ import {
   PriceSubmission,
   MinaPriceInput,
 } from '../proofs/oracle-price-aggregation/index.js';
-import { TransactionManager } from '@/mina/transaction-manager.js';
+import { TransactionManager } from '../mina/transaction-manager.js';
 
 const client = new Client({
   network: 'testnet',
@@ -109,7 +112,10 @@ export class TestHelper {
     return PrivateKey.randomKeypair();
   }
 
-  static async initLocalChain(opts?: { proofsEnabled?: boolean | undefined; enforceTransactionLimits?: boolean | undefined; }) {
+  static async initLocalChain(opts?: {
+    proofsEnabled?: boolean | undefined;
+    enforceTransactionLimits?: boolean | undefined;
+  }) {
     const mina = await MinaNetworkInterface.initLocal(opts);
     const deployer = await mina.newAccount();
     return new TestHelper(mina, deployer);
@@ -122,7 +128,10 @@ export class TestHelper {
   }
 
   async deployTokenContracts() {
-    const deployedContracts = await deploy(this.mina, this.deployer);
+    const deployedContracts = await deploy(
+      this._transactionManager,
+      this.deployer
+    );
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
@@ -281,10 +290,7 @@ export class TestHelper {
     return minaPriceInput;
   }
 
-  private constructor(
-    mina: IMinaNetworkInterface,
-    deployer: KeyPair,
-  ) {
+  private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
     this.mina = mina;
     this.deployer = deployer;
   }

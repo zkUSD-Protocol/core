@@ -261,6 +261,8 @@ export class zkUsdWorker extends zkCloudWorker {
         }
       );
 
+      console.log('txNew', txNew.toPretty());
+
       return await this.proveAndSendTx(serializedTx, txNew, signedJson);
     } catch (error) {
       console.error('Transaction failed:', error);
@@ -281,9 +283,28 @@ export class zkUsdWorker extends zkCloudWorker {
 
     console.log('Proving the transaction');
     console.time('proved');
-    await tx.prove();
-    console.timeEnd('proved');
 
+    try {
+      // Create a promise that rejects after 2 minutes
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error('Proving timed out after 2 minutes')),
+          2 * 60 * 1000
+        );
+      });
+
+      // Race between the proof generation and timeout
+      await Promise.race([tx.prove(), timeoutPromise]);
+    } catch (error) {
+      console.timeEnd('proved');
+      console.error('Proving failed:', error);
+      return (
+        'Error: Transaction proving failed - ' +
+        (error instanceof Error ? error.message : 'Unknown error')
+      );
+    }
+
+    console.timeEnd('proved');
     const txSent = await tx.safeSend();
     if (txSent.status === 'pending') {
       console.log(`tx sent: hash: ${txSent.hash} status: ${txSent.status}`);
