@@ -62,7 +62,7 @@ export type TransactionRequest = {
   /**
    * Transactions that must be included before this one can proceed.
    */
-  waitForIncluded: string[];
+  waitForIncluded: (string | TransactionHandle)[];
   callSite: string;
 };
 
@@ -301,7 +301,9 @@ export class TransactionInternal {
     const tx = new TransactionInternal();
     tx._request = request;
     tx._callSiteNonce = callSiteNonce;
-    tx._dependentTxIds = request.waitForIncluded;
+    tx._dependentTxIds = request.waitForIncluded.map((dep) =>
+      typeof dep === 'string' ? dep : dep.txId
+    );
     return tx;
   }
 
@@ -499,7 +501,7 @@ export class TransactionManager {
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
-      waitForIncluded?: string[];
+      waitForIncluded?: (string | TransactionHandle)[];
     }
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
@@ -518,7 +520,9 @@ export class TransactionManager {
     // dependencies must be met
     const deps: TransactionInternal[] = [];
     for (const depId of request.waitForIncluded) {
-      const dep = this.transactions.get(depId);
+      const dep = this.transactions.get(
+        typeof depId === 'string' ? depId : depId.txId
+      );
       if (!dep) {
         throw new Error(`Transaction ${depId} does not exist`);
       }
@@ -743,7 +747,7 @@ function getCallSite(depth: number): string {
     const functionName = match[1] || 'anonymous';
     const filePath = match[2];
     const line = match[3];
-    const column = match[4];
+    // const column = match[4];
 
     // Generate a unique ID string
     ret = `${functionName}_${filePath}:${line}`;

@@ -160,9 +160,14 @@ export class TestHelper {
   async createAgents(names: string[]) {
     const ret: Agent[] = [];
     for (const name of names) {
-      const keys = await this.mina.newAccount();
-      this.agents[name] = { keys };
-      ret.push(this.agents[name]);
+      if (name in this.agents) {
+        ret.push(this.agents[name]);
+      }
+      else {
+        const keys = await this.mina.newAccount();
+        this.agents[name] = { keys };
+        ret.push(this.agents[name]);
+      }
     }
     return ret;
   }

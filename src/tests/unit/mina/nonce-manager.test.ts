@@ -5,7 +5,7 @@ import {
   NonceManager,
   NonceManagerConfig,
 } from "../../../mina/nonce-manager.js";
-import { PublicKey, UInt32, Account, PrivateKey } from "o1js";
+import { PublicKey, UInt32, Account, PrivateKey, Field } from "o1js";
 import { GqlData, GqlQuery, GqlQueryCall, GqlVars } from "../../../mina/graphql.js";
 
 /* -------------------------------------------------------------------------- */
@@ -37,10 +37,7 @@ function createMockConfig(
   pooledZkappCommands: Array<{ zkappCommand: { feePayer: { body: { nonce: bigint } } } }> = []
 ): NonceManagerConfig {
   return {
-    async fetchAccount(_publicKey: string | PublicKey) {
-      // No-op by default
-    },
-    async getAccount(_publicKey: string | PublicKey) {
+    async fetchMinaAccount(_publicKey: string | PublicKey, _tokenId?: string | Field) {
       return toMockAccount(randomPublicKey(), chainNonce);
     },
     queryGraphQL: (async () => {
