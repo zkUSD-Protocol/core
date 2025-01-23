@@ -5,13 +5,15 @@ import { receiveMina } from './receive-mina.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { OracleWhitelist } from '../../types.js';
 import { fetchMinaAccount } from 'zkcloudworker';
+import { TransactionManager } from '../../mina/transaction-manager.js';
 
 async function main() {
-  const MinaChain = await MinaNetworkInterface.initLightnet();
-  const deployer = await MinaChain.newAccount();
-  const deployedContracts = await deploy(MinaChain, deployer);
+  const mina = await MinaNetworkInterface.initLightnet();
+  const txMgr = TransactionManager.new(mina)
+  const deployer = await mina.newAccount();
+  const deployedContracts = await deploy(txMgr, deployer);
 
-  const networkKeys = getNetworkKeys(MinaChain.network.chainId);
+  const networkKeys = getNetworkKeys(mina.network.chainId);
 
   console.log('Contracts deployed');
 

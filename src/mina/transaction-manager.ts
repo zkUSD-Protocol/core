@@ -47,7 +47,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 80000,
+  dependencyStatusPollTimeout: 120000,
 };
 
 /**
@@ -583,7 +583,7 @@ export class TransactionManager {
           }
           ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
           ptx.transaction.feePayer.body.fee = fee;
-          console.log(`${tx.getId()} - Signing transaction ...`);
+          console.log(`${tx.getId()} - Signing transaction: {nonce: ${nonceLock.nonce}, fee: ${fee}} ...`);
           // TODO use signing service instead, do not pass private keys around
           const signers = options?.extraSigners ? [sender.privateKey, ...options.extraSigners] : [sender.privateKey];
           return { signedTx: ptx.sign(signers), nonceLock };
@@ -602,6 +602,7 @@ export class TransactionManager {
         // send the transaction
         try {
           const { signedTx: signedTxResult, nonceLock } = signedTx;
+          console.log(`${tx.getId()} - Sending transaction ...`);
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();
@@ -631,6 +632,7 @@ export class TransactionManager {
       try {
         const sentTx = await sendingPromise;
         if (statusIsRejectedTransaction(sentTx)) return sentTx;
+        console.log(`${tx.getId()} - Awaiting inclusion ...`);
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === "included") {
           tx.status = "Included";
@@ -772,7 +774,7 @@ export async function transactionBuildAndProve(
   }
 
   try {
-    return await tx.prove();
+    return await mutex.runExclusive(async () => await tx.prove());
   } catch (error) {
     console.error("Error during transaction processing:", error);
     throw error; // Propagate the error to the caller

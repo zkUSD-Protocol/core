@@ -67,7 +67,10 @@ async function queryGraphQL<T extends GqlQuery<any, any>>(
     }),
   });
 
-  const json = (await response.json()) as GraphQLResponse<GqlData<T>>;
+  const resp_json = await response.json();
+  console.log(resp_json);
+
+  const json = resp_json as GraphQLResponse<GqlData<T>>;
 
   if (json.errors && json.errors.length > 0) {
     throw new Error(JSON.stringify(json.errors, null, 2));
@@ -108,11 +111,11 @@ interface PooledNoncesQuery {
  */
 function mkPooledNoncesQuery(variables: { pubkey: PublicKey }): GqlQueryCall<PooledNoncesQuery, { pubkey: PublicKey }> {
   const pk = variables.pubkey.toBase58();
-  const pk_desc = `${pk.slice(0, 4)}...${pk.slice(-4)}`;
+  const operationName = `PooledNoncesQuery_${pk}`;
   const query = {
-    operationName: `PooledNoncesQuery_${pk_desc}`,
+    operationName,
     query: `
-query MyQuery($pubkey: PublicKey) {
+query ${operationName}($pubkey: PublicKey) {
     version
     pooledZkappCommands(publicKey: $pubkey) {
       zkappCommand {

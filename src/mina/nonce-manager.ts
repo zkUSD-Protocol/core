@@ -228,7 +228,8 @@ export class NonceManager implements INonceManager {
       if (nonces.length === 0) return undefined;
       return nonces.reduce((max, num) => (num > max ? num : max), nonces[0]);
     } catch (error) {
-      console.error("Error fetching pooled nonces:", error);
+      const msg = error instanceof Error ? error.message : error;
+      console.error("Error fetching pooled nonces:", msg);
       return undefined; // Fallback in case of errors
     }
   }

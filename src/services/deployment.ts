@@ -1,4 +1,3 @@
-import { IMinaNetworkInterface } from '../mina/mina-network-interface.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
@@ -15,11 +14,11 @@ import {
   VerificationKey,
 } from 'o1js';
 import { ContractInstance, KeyPair } from '../types.js';
-import { transaction } from '../utils/transaction.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { updateVerificationKeys } from '../utils/update-verification-keys.js';
 import { validPriceBlockCount } from '../index.js';
 import { fetchMinaAccount } from 'zkcloudworker';
+import { TransactionManager } from '@/mina/transaction-manager.js';
 
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -28,11 +27,11 @@ interface DeployedContracts {
 }
 
 export async function deploy(
-  currentNetwork: IMinaNetworkInterface,
+  txManager: TransactionManager,
   deployer: KeyPair
 ): Promise<DeployedContracts> {
   let engineVk: VerificationKey;
-  const chainId = currentNetwork.network.chainId;
+  const chainId = txManager.mina.network.chainId;
   console.log('Deploying contracts on', chainId);
 
   const fee = chainId !== 'local' ? 1e8 : 0;
@@ -72,7 +71,7 @@ export async function deploy(
   };
 
   //We always need to compile these contracts
-  if (currentNetwork.proofsEnabled) {
+  if (txManager.mina.proofsEnabled) {
     await ZkUsdEngine.FungibleToken.compile();
     engineVk = (await ZkUsdEngine.compile()).verificationKey;
   }
@@ -81,6 +80,7 @@ export async function deploy(
 
   console.log('Creating Protocol Admin account');
 
+  let protocolAdminAccountCreationTx;
   try {
     const adminAccount = (
       await fetchAccount({ publicKey: networkKeys.protocolAdmin.publicKey })
@@ -88,15 +88,15 @@ export async function deploy(
     if (!adminAccount) throw new Error('Protocol Admin account not found');
     console.log('Protocol Admin account already created');
   } catch {
-    await transaction(
+    protocolAdminAccountCreationTx =  await txManager.tx(
       deployer,
       async () => {
         AccountUpdate.fundNewAccount(deployer.publicKey, 1);
         AccountUpdate.createSigned(networkKeys.protocolAdmin.publicKey);
       },
       {
+        name: 'Create Protocol Admin account',
         extraSigners: [networkKeys.protocolAdmin.privateKey],
-        fee,
       }
     );
   }
@@ -105,7 +105,7 @@ export async function deploy(
   const engineDeployProps: ZkUsdEngineDeployProps = {
     admin: networkKeys.protocolAdmin.publicKey,
     validPriceBlockCount: UInt32.from(
-      validPriceBlockCount[currentNetwork.network.chainId]
+      validPriceBlockCount[chainId]
     ),
     emergencyStop: Bool(false),
     vaultVerificationKeyHash: vaultVerificationKeyHash!,
@@ -113,6 +113,7 @@ export async function deploy(
 
   console.log('Checking Token contract');
 
+  let deployTokenContractTx;
   try {
     const tokenAccount = (
       await fetchMinaAccount({ publicKey: networkKeys.token.publicKey })
@@ -121,10 +122,10 @@ export async function deploy(
     console.log('Token contract already deployed');
   } catch {
     console.log('Not found - deploying Token contract');
-    if (currentNetwork.proofsEnabled) {
+    if (txManager.mina.proofsEnabled) {
       console.log('Deploying engine with vk hash', engineVk!.hash.toString());
     }
-    await transaction(
+    deployTokenContractTx = await txManager.tx(
       deployer,
       async () => {
         AccountUpdate.fundNewAccount(deployer.publicKey, 3);
@@ -140,20 +141,27 @@ export async function deploy(
         await engine.contract.deploy(engineDeployProps);
       },
       {
+        name: 'Deploy Token contract',
         extraSigners: [
           networkKeys.token.privateKey,
           networkKeys.engine.privateKey,
           networkKeys.protocolAdmin.privateKey,
         ],
-        fee,
       }
     );
   }
 
-  currentNetwork.local?.setBlockchainLength(UInt32.from(1000));
+  txManager.mina.local?.setBlockchainLength(UInt32.from(1000));
+
+  Promise.all([
+    protocolAdminAccountCreationTx?.awaitIncluded(),
+    deployTokenContractTx?.awaitIncluded(),
+  ]);
+
 
   console.log('Initializing Engine contract');
 
+  let deployEngineContractTx;
   try {
     const engineTokenAccount = (
       await fetchMinaAccount({
@@ -167,21 +175,23 @@ export async function deploy(
     //should get the latest nonce
     await fetchMinaAccount({ publicKey: networkKeys.engine.publicKey });
 
-    await transaction(
+    deployEngineContractTx = await txManager.tx(
       deployer,
       async () => {
         AccountUpdate.fundNewAccount(deployer.publicKey, 1);
         await engine.contract.initialize();
       },
       {
+        name: 'Initialize Engine contract',
         extraSigners: [
           networkKeys.protocolAdmin.privateKey,
           networkKeys.engine.privateKey,
         ],
-        fee,
       }
     );
   }
+
+  deployEngineContractTx?.awaitIncluded();
 
   return {
     token,
