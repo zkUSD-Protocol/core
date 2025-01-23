@@ -76,7 +76,7 @@ describe('Local tests of TransactionManager', async () => {
         to: bob_keys.publicKey,
         amount: 10000e9,
       });
-    }, { name: 'alice_to_bob_too_much' });
+    });
 
     const tx2Handle = await txMgr.tx(alice.keys, async () => {
       const au = AccountUpdate.createSigned(bob_keys.publicKey);
@@ -87,7 +87,7 @@ describe('Local tests of TransactionManager', async () => {
     },
       {
         name: "bob_will_not_return",
-        waitForIncluded: ['alice_to_bob_too_much'],
+        waitForIncluded: [txHandle],
         extraSigners: [bob_keys.privateKey]
       });
 
@@ -98,4 +98,47 @@ describe('Local tests of TransactionManager', async () => {
     assert(statusIsOfKind(tx2Handle.txStatus, "DependencyRejectedFailedOrDropped"));
 
   })
+
+  it('execute multiple txs from different accounts simultanously', async () => {
+    const names = ['alice', 'bob', 'charlie', 'david', 'eve', 'frank', 'george', 'harry', 'ian'];
+    const agents = await testHelper.createAgents(names);
+    // make 10
+    const txHandles = [];
+
+    for (let i = 0; i < agents.length; i++) {
+      const agent = agents[i];
+      const txHandle = await txMgr.tx(agent.keys, async () => {
+        const au = AccountUpdate.createSigned(agent.keys.publicKey);
+        au.send({
+          to: agents[(i + 1) % agents.length].keys.publicKey,
+          amount: 100,
+        });
+      });
+      txHandles.push(txHandle);
+    }
+    await Promise.all(txHandles.map(txHandle => txHandle.awaitIncluded()));
+  })
+
+  it('execute multiple txs from mixed accounts simultanously', async () => {
+    const names = ['alice', 'bob', 'charlie','david'];
+    const agents = await testHelper.createAgents(names);
+    // make 10
+    const txHandles = [];
+
+    for (let i = 0; i < agents.length; i++) {
+      for(let j = 1; j < agents.length; j++) {
+        if(i===j) continue;
+        const sender = agents[i];
+        const receiver = agents[j];
+        const txHandle = await txMgr.tx(sender.keys, async () => {
+          const au = AccountUpdate.createSigned(sender.keys.publicKey);
+          au.send({
+            to: receiver.keys.publicKey,
+            amount: 100,
+          });
+        }, { name: `${names[i]}_to_${names[j]}_${i}_${j}`});
+        txHandles.push(txHandle);
+      }
+    await Promise.all(txHandles.map(txHandle => txHandle.awaitIncluded()));
+    }})
 });
