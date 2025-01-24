@@ -23,7 +23,6 @@ import {
   MinaNetworkInterface,
 } from '../mina/mina-network-interface.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
-import { transaction } from '../utils/transaction.js';
 import { deploy } from '../services/deployment.js';
 import Client from 'mina-signer';
 import {
@@ -32,7 +31,11 @@ import {
   PriceSubmission,
   MinaPriceInput,
 } from '../proofs/oracle-price-aggregation/index.js';
-import { TransactionManager } from '../mina/transaction-manager.js';
+import {
+  TransactionHandle,
+  TransactionManager,
+  TransactionOptions,
+} from '../mina/transaction-manager.js';
 
 const client = new Client({
   network: 'testnet',
@@ -77,7 +80,7 @@ export class TestAmounts {
   static PRICE_10_USD = UInt64.from(1e10); // 10 USD
 }
 
-interface Agent {
+export interface Agent {
   keys: KeyPair;
   vault?: {
     contract: ZkUsdVault;
@@ -87,8 +90,10 @@ interface Agent {
 }
 
 export class TestHelper {
+  protocolResumeCounter = 0;
+  protocolStopCounter = 0;
   mina: IMinaNetworkInterface;
-  _transactionManager: TransactionManager;
+  txMgr: TransactionManager;
 
   deployer: KeyPair;
   agents: Record<string, Agent> = {};
@@ -112,6 +117,29 @@ export class TestHelper {
     return PrivateKey.randomKeypair();
   }
 
+  public tx(
+    sender: KeyPair, // TODO: future: avoid passing the private key
+    callback: () => Promise<void>,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    }
+  ) {
+    return this.txMgr.tx(sender, callback, options);
+  }
+
+  public async includeTx(
+    sender: KeyPair, // TODO: future: avoid passing the private key
+    callback: () => Promise<void>,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    }
+  ) {
+    const h = await this.txMgr.tx(sender, callback, options);
+    return await h.awaitIncluded();
+  }
+
   static async initLocalChain(opts?: {
     proofsEnabled?: boolean | undefined;
     enforceTransactionLimits?: boolean | undefined;
@@ -128,15 +156,13 @@ export class TestHelper {
   }
 
   async deployTokenContracts() {
-    const deployedContracts = await deploy(
-      this._transactionManager,
-      this.deployer
-    );
+    const deployedContracts = await deploy(this.txMgr, this.deployer);
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
     this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
 
+    let updateOracleWhitelistTx;
     if (this.mina.network.chainId === 'local') {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
         const oracleName = 'oracle' + (i + 1);
@@ -145,16 +171,18 @@ export class TestHelper {
         this.whitelistedOracles.set(oracleName, i);
       }
 
-      await transaction(
+      updateOracleWhitelistTx = await this.tx(
         this.deployer,
         async () => {
           await this.engine.contract.updateOracleWhitelist(this.whitelist);
         },
         {
+          name: `Update Oracle Whitelist`,
           extraSigners: [this.networkKeys.protocolAdmin.privateKey],
         }
       );
     }
+    await updateOracleWhitelistTx?.awaitIncluded();
   }
 
   async createAgents(names: string[]) {
@@ -164,6 +192,7 @@ export class TestHelper {
         ret.push(this.agents[name]);
       } else {
         const keys = await this.mina.newAccount();
+        await this.mina.fetchMinaAccount(keys.publicKey);
         this.agents[name] = { keys };
         ret.push(this.agents[name]);
       }
@@ -172,6 +201,7 @@ export class TestHelper {
   }
 
   async createVaults(names: string[]) {
+    const vaultCreationTxs = [];
     for (const name of names) {
       if (!this.agents[name]) {
         throw new Error(`Agent ${name} not found`);
@@ -188,7 +218,7 @@ export class TestHelper {
         privateKey: vaultKeyPair.privateKey,
       };
 
-      await transaction(
+      const tx = await this.tx(
         this.agents[name].keys,
         async () => {
           AccountUpdate.fundNewAccount(this.agents[name].keys.publicKey, 2);
@@ -197,31 +227,38 @@ export class TestHelper {
           );
         },
         {
+          name: `Create Vault for ${name}`,
           extraSigners: [this.agents[name].vault!.privateKey],
         }
       );
+      vaultCreationTxs.push(tx);
     }
+    await Promise.all(vaultCreationTxs.map((t) => t.awaitIncluded()));
   }
 
   async stopTheProtocol() {
-    await transaction(
+    this.protocolStopCounter++;
+    await this.includeTx(
       this.deployer,
       async () => {
         await this.engine.contract.toggleEmergencyStop(Bool(true));
       },
       {
+        name: `Stop the protocol #${this.protocolStopCounter}`,
         extraSigners: [this.networkKeys.protocolAdmin.privateKey],
       }
     );
   }
 
   async resumeTheProtocol() {
-    await transaction(
+    this.protocolResumeCounter++;
+    await this.includeTx(
       this.deployer,
       async () => {
         await this.engine.contract.toggleEmergencyStop(Bool(false));
       },
       {
+        name: `Resume the protocol #${this.protocolResumeCounter}`,
         extraSigners: [this.networkKeys.protocolAdmin.privateKey],
       }
     );
@@ -296,6 +333,7 @@ export class TestHelper {
 
   private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
     this.mina = mina;
+    this.txMgr = TransactionManager.new(mina);
     this.deployer = deployer;
   }
 }

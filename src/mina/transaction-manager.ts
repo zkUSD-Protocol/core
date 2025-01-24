@@ -420,7 +420,7 @@ export class TransactionInternal {
     });
     if (status !== 'Included') {
       throw new Error(
-        `Transaction was not included and ended with status ${JSON.stringify(
+        `Transaction ${this.getId()} was not included and ended with status ${JSON.stringify(
           status,
           null,
           2

@@ -1,4 +1,3 @@
-import { IMinaNetworkInterface } from '../mina/mina-network-interface.js';
 import {
   ZkUsdEngineContract,
   ZkUsdEngineDeployProps,
@@ -15,7 +14,6 @@ import {
   VerificationKey,
 } from 'o1js';
 import { ContractInstance, KeyPair } from '../types.js';
-import { transaction } from '../utils/transaction.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { updateVerificationKeys } from '../utils/update-verification-keys.js';
 import { validPriceBlockCount } from '../index.js';
@@ -82,46 +80,42 @@ export async function deploy(
 
   console.log('Creating Protocol Admin account');
 
+  let protocolAdminAccountCreationTx;
   try {
     const adminAccount = (
-      await fetchMinaAccount({
-        publicKey: networkKeys.protocolAdmin.publicKey,
-      })
+      await fetchAccount({ publicKey: networkKeys.protocolAdmin.publicKey })
     ).account;
     if (!adminAccount) throw new Error('Protocol Admin account not found');
     console.log('Protocol Admin account already created');
-  } catch (e) {
-    console.log(e);
-    const txHandle = await txMgr.tx(
+  } catch {
+    protocolAdminAccountCreationTx = await txMgr.tx(
       deployer,
       async () => {
         AccountUpdate.fundNewAccount(deployer.publicKey, 1);
         AccountUpdate.createSigned(networkKeys.protocolAdmin.publicKey);
       },
       {
+        name: 'Create Protocol Admin account',
         extraSigners: [networkKeys.protocolAdmin.privateKey],
       }
     );
-    await txHandle.awaitIncluded();
   }
+  await protocolAdminAccountCreationTx?.awaitIncluded();
 
   //Think about what we are doing here
   const engineDeployProps: ZkUsdEngineDeployProps = {
     admin: networkKeys.protocolAdmin.publicKey,
-    validPriceBlockCount: UInt32.from(
-      validPriceBlockCount[txMgr.mina.network.chainId]
-    ),
+    validPriceBlockCount: UInt32.from(validPriceBlockCount[chainId]),
     emergencyStop: Bool(false),
     vaultVerificationKeyHash: vaultVerificationKeyHash!,
   };
 
   console.log('Checking Token contract');
 
+  let deployTokenContractTx;
   try {
     const tokenAccount = (
-      await fetchMinaAccount({
-        publicKey: networkKeys.token.publicKey,
-      })
+      await fetchMinaAccount({ publicKey: networkKeys.token.publicKey })
     ).account;
     if (!tokenAccount) throw new Error('Token contract not found');
     console.log('Token contract already deployed');
@@ -130,7 +124,7 @@ export async function deploy(
     if (txMgr.mina.proofsEnabled) {
       console.log('Deploying engine with vk hash', engineVk!.hash.toString());
     }
-    const txHandle = await txMgr.tx(
+    deployTokenContractTx = await txMgr.tx(
       deployer,
       async () => {
         AccountUpdate.fundNewAccount(deployer.publicKey, 3);
@@ -146,6 +140,7 @@ export async function deploy(
         await engine.contract.deploy(engineDeployProps);
       },
       {
+        name: 'Deploy Token contract',
         extraSigners: [
           networkKeys.token.privateKey,
           networkKeys.engine.privateKey,
@@ -153,13 +148,15 @@ export async function deploy(
         ],
       }
     );
-    await txHandle.awaitIncluded();
   }
 
   txMgr.mina.local?.setBlockchainLength(UInt32.from(1000));
 
+  await deployTokenContractTx?.awaitIncluded(),
+
   console.log('Initializing Engine contract');
 
+  let deployEngineContractTx;
   try {
     const engineTokenAccount = (
       await fetchMinaAccount({
@@ -173,21 +170,23 @@ export async function deploy(
     //should get the latest nonce
     await fetchMinaAccount({ publicKey: networkKeys.engine.publicKey });
 
-    const txHandle = await txMgr.tx(
+    deployEngineContractTx = await txMgr.tx(
       deployer,
       async () => {
         AccountUpdate.fundNewAccount(deployer.publicKey, 1);
         await engine.contract.initialize();
       },
       {
+        name: 'Initialize Engine contract',
         extraSigners: [
           networkKeys.protocolAdmin.privateKey,
           networkKeys.engine.privateKey,
         ],
       }
     );
-    await txHandle.awaitIncluded();
   }
+
+  await deployEngineContractTx?.awaitIncluded();
 
   return {
     token,
