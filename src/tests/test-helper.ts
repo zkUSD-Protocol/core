@@ -6,6 +6,7 @@ import {
   PrivateKey,
   PublicKey,
   Signature,
+  UInt32,
   UInt64,
   VerificationKey,
 } from 'o1js';
@@ -24,7 +25,7 @@ import {
 } from '../mina/mina-network-interface.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { transaction } from '../utils/transaction.js';
-import { deploy } from '../services/deployment.js';
+import { DeploymentService } from '../services/deployment.js';
 import Client from 'mina-signer';
 import {
   AggregateOraclePrices,
@@ -89,6 +90,7 @@ interface Agent {
 export class TestHelper {
   mina: IMinaNetworkInterface;
   _transactionManager: TransactionManager;
+  _deploymentService: DeploymentService;
 
   deployer: KeyPair;
   agents: Record<string, Agent> = {};
@@ -128,10 +130,16 @@ export class TestHelper {
   }
 
   async deployTokenContracts() {
-    const deployedContracts = await deploy(
-      this._transactionManager,
-      this.deployer
+    this._deploymentService = await DeploymentService.create(
+      this._transactionManager
     );
+    const deployedContracts = await this._deploymentService.deploy();
+
+    if (this.mina.network.chainId === 'local') {
+      this._transactionManager.mina.local?.setBlockchainLength(
+        UInt32.from(1000)
+      );
+    }
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
@@ -162,8 +170,7 @@ export class TestHelper {
     for (const name of names) {
       if (name in this.agents) {
         ret.push(this.agents[name]);
-      }
-      else {
+      } else {
         const keys = await this.mina.newAccount();
         this.agents[name] = { keys };
         ret.push(this.agents[name]);
@@ -298,5 +305,6 @@ export class TestHelper {
   private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
     this.mina = mina;
     this.deployer = deployer;
+    this._transactionManager = TransactionManager.new(mina);
   }
 }
