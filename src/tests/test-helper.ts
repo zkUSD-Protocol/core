@@ -162,8 +162,7 @@ export class TestHelper {
     for (const name of names) {
       if (name in this.agents) {
         ret.push(this.agents[name]);
-      }
-      else {
+      } else {
         const keys = await this.mina.newAccount();
         this.agents[name] = { keys };
         ret.push(this.agents[name]);
