@@ -153,8 +153,7 @@ export async function deploy(
   txMgr.mina.local?.setBlockchainLength(UInt32.from(1000));
 
   await deployTokenContractTx?.awaitIncluded(),
-
-  console.log('Initializing Engine contract');
+    console.log('Initializing Engine contract');
 
   let deployEngineContractTx;
   try {
