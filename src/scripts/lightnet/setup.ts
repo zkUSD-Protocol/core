@@ -32,6 +32,7 @@ async function main() {
 
   // Fetch the engine account for the latest nonce
   await txMgr.mina.fetchMinaAccount(networkKeys.engine.publicKey);
+  await txMgr.mina.fetchMinaAccount(networkKeys.protocolAdmin.publicKey);
 
   const updateOracleWhitelistTx = await txMgr.tx(
     deploymentService.deployer,

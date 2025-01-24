@@ -201,8 +201,11 @@ export class DeploymentService {
       console.log('Token and Engine contracts already deployed');
     }
 
-    // Initialize engine contract if not already initialized
+    // fetch the latest nonce for the accounts
     await this._mina.fetchMinaAccount(this._networkKeys.engine.publicKey);
+    await this._mina.fetchMinaAccount(
+      this._networkKeys.protocolAdmin.publicKey
+    );
 
     const engineTokenAccount = await this._mina.fetchMinaAccount(
       this._networkKeys.engine.publicKey,
