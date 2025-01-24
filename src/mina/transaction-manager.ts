@@ -615,8 +615,8 @@ export class TransactionManager {
     const mkSigningPromise = function (fee: UInt64) {
       return (ptx: Transaction<true, false>) =>
         new TrackedPromise(async () => {
+          let nonceLock;
           try {
-            let nonceLock;
             try {
               nonceLock = await mgr.mina.nonceManager.getAccountNonce(
                 sender.publicKey
@@ -639,6 +639,7 @@ export class TransactionManager {
               : [sender.privateKey];
             return { signedTx: ptx.sign(signers), nonceLock };
           } catch (error) {
+            nonceLock?.unlock();
             throw failed_before_sending('signing the tx', error);
           }
         });
@@ -654,8 +655,10 @@ export class TransactionManager {
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
+        let nonceLock;
         try {
-          const { signedTx: signedTxResult, nonceLock } = signedTx;
+          const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
+          nonceLock = lock;
           console.log(`${tx.getId()} - Sending transaction ...`);
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
@@ -675,9 +678,8 @@ export class TransactionManager {
           }
           return sentTx;
         } catch (error) {
+          await nonceLock?.unlock();
           throw failed_before_sending('sending the tx', error);
-        } finally {
-          // TODO need to release the nonce lock
         }
       });
     };
