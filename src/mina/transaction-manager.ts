@@ -420,7 +420,7 @@ export class TransactionInternal {
     });
     if (status !== 'Included') {
       throw new Error(
-        `Transaction was not included and ended with status ${JSON.stringify(
+        `Transaction ${this.getId()} was not included and ended with status ${JSON.stringify(
           status,
           null,
           2
@@ -615,8 +615,8 @@ export class TransactionManager {
     const mkSigningPromise = function (fee: UInt64) {
       return (ptx: Transaction<true, false>) =>
         new TrackedPromise(async () => {
+          let nonceLock;
           try {
-            let nonceLock;
             try {
               nonceLock = await mgr.mina.nonceManager.getAccountNonce(
                 sender.publicKey
@@ -628,13 +628,18 @@ export class TransactionManager {
             }
             ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
             ptx.transaction.feePayer.body.fee = fee;
-            console.log(`${tx.getId()} - Signing transaction ...`);
+            console.log(
+              `${tx.getId()} - Signing transaction: {nonce: ${
+                nonceLock.nonce
+              }, fee: ${fee}} ...`
+            );
             // TODO use signing service instead, do not pass private keys around
             const signers = options?.extraSigners
               ? [sender.privateKey, ...options.extraSigners]
               : [sender.privateKey];
             return { signedTx: ptx.sign(signers), nonceLock };
           } catch (error) {
+            nonceLock?.unlock();
             throw failed_before_sending('signing the tx', error);
           }
         });
@@ -650,8 +655,11 @@ export class TransactionManager {
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
+        let nonceLock;
         try {
-          const { signedTx: signedTxResult, nonceLock } = signedTx;
+          const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
+          nonceLock = lock;
+          console.log(`${tx.getId()} - Sending transaction ...`);
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();
@@ -670,9 +678,8 @@ export class TransactionManager {
           }
           return sentTx;
         } catch (error) {
+          await nonceLock?.unlock();
           throw failed_before_sending('sending the tx', error);
-        } finally {
-          // TODO need to release the nonce lock
         }
       });
     };
@@ -688,6 +695,7 @@ export class TransactionManager {
       try {
         const sentTx = await sendingPromise;
         if (statusIsRejectedTransaction(sentTx)) return sentTx;
+        console.log(`${tx.getId()} - Awaiting inclusion ...`);
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === 'included') {
           tx.status = 'Included';
@@ -837,7 +845,7 @@ export async function transactionBuildAndProve(
   }
 
   try {
-    return await tx.prove();
+    return await mutex.runExclusive(async () => await tx.prove());
   } catch (error) {
     console.error('Error during transaction processing:', error);
     throw error; // Propagate the error to the caller

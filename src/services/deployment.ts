@@ -1,7 +1,5 @@
-import { IMinaNetworkInterface } from '../mina/mina-network-interface.js';
 import {
   ZkUsdEngineContract,
-  ZkUsdEngineDeployProps,
 } from '../contracts/zkusd-engine.js';
 import { ZkUsdVault } from '../contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
@@ -9,19 +7,16 @@ import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
 import {
   AccountUpdate,
   Bool,
-  fetchAccount,
-  PublicKey,
   UInt32,
   UInt8,
   VerificationKey,
 } from 'o1js';
 import { ContractInstance, KeyPair } from '../types.js';
-import { transaction } from '../utils/transaction.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { updateVerificationKeys } from '../utils/update-verification-keys.js';
 import { validPriceBlockCount } from '../index.js';
-import { fetchMinaAccount } from 'zkcloudworker';
 import { TransactionManager } from '../mina/transaction-manager.js';
+import { IMinaNetworkInterface } from '../mina/mina-network-interface.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
