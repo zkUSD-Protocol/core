@@ -11,13 +11,13 @@ import {
 import { AccountUpdate, PrivateKey } from 'o1js';
 
 describe('Local tests of TransactionManager', async () => {
-  const testHelper = await TestHelper.initLocalChain();
-  const txMgr = TransactionManager.new(testHelper.mina);
+  const helper = await TestHelper.initLocalChain();
+  const txMgr = TransactionManager.new(helper.mina);
 
   before(async () => {});
 
   it('can create a tx and await until it is included', async () => {
-    const [alice, bob] = await testHelper.createAgents(['alice', 'bob']);
+    const [alice, bob] = await helper.createAgents(['alice', 'bob']);
 
     const txHandle = await txMgr.tx(alice.keys, async () => {
       const au = AccountUpdate.createSigned(alice.keys.publicKey);
@@ -34,7 +34,7 @@ describe('Local tests of TransactionManager', async () => {
   });
 
   it('can create a tx with dependencies and await until it is included', async () => {
-    const [alice] = await testHelper.createAgents(['alice']);
+    const [alice] = await helper.createAgents(['alice']);
 
     const bob_keys = PrivateKey.randomKeypair();
 
@@ -74,7 +74,7 @@ describe('Local tests of TransactionManager', async () => {
   });
 
   it('tx with dependencies will fail if a dep failed', async () => {
-    const [alice] = await testHelper.createAgents(['alice']);
+    const [alice] = await helper.createAgents(['alice']);
 
     const bob_keys = PrivateKey.randomKeypair();
 
@@ -125,7 +125,7 @@ describe('Local tests of TransactionManager', async () => {
       'harry',
       'ian',
     ];
-    const agents = await testHelper.createAgents(names);
+    const agents = await helper.createAgents(names);
     // make 10
     const txHandles = [];
 
@@ -145,7 +145,7 @@ describe('Local tests of TransactionManager', async () => {
 
   it('execute multiple txs from mixed accounts simultanously', async () => {
     const names = ['alice', 'bob', 'charlie', 'david'];
-    const agents = await testHelper.createAgents(names);
+    const agents = await helper.createAgents(names);
     // make 10
     const txHandles = [];
 
@@ -170,4 +170,125 @@ describe('Local tests of TransactionManager', async () => {
       await Promise.all(txHandles.map((txHandle) => txHandle.awaitIncluded()));
     }
   });
+
+// TODO: this will not work because Transaction is not a class
+// but maybe a library as `ts-mockito` might help
+// or when we switch to using signing service we can test
+// the catch block in the signing promise mocking the sign service
+// describe('Testing nonceLock unlock behavior', () => {
+//   let alice: Agent;
+
+//   before(async () => {
+//     [alice] = await helper.createAgents(['alice', 'bob']);
+//     // Give alice some balance if you want to ensure it can pay fees
+//     // or leave it with 0 if you want “insufficient funds” to cause an error, etc.
+//     // In local tests, you can always fund it:
+//   });
+
+//   it('unlocks nonceLock if transaction fails during SIGNING', async () => {
+//     // We will override the sign() method to force an error when it is called
+//     const originalSign = Transaction.prototype.sign;
+//     Transaction.prototype.sign = function () {
+//       throw new Error('Forcing sign error');
+//     };
+
+//     let failedTxHandle;
+//     try {
+//       failedTxHandle = await helper.tx(
+//         alice,
+//         async () => {
+//           // Create a normal AccountUpdate; the sign() call will be mocked to throw
+//           const au = AccountUpdate.createSigned(alice.keys.publicKey);
+//           au.send({
+//             to: PrivateKey.randomKeypair().publicKey,
+//             amount: 123,
+//           });
+//         },
+//         {
+//           name: 'failing-tx-sign',
+//         }
+//       );
+//       // We expect awaitIncluded() to reject because sign() threw
+//       await assert.rejects(failedTxHandle.awaitIncluded(), /Forcing sign error/);
+//       // Now the TransactionManager should have caught that error,
+//       // unlocked the nonceLock, and marked the transaction as failed.
+//       assert(statusIsFailed(failedTxHandle.txStatus));
+//     } finally {
+//       // Restore the original .sign method so it doesn't affect other tests
+//       Transaction.prototype.sign = originalSign;
+//     }
+
+//     // Now create a second transaction from the same account.
+//     // If the nonceLock was *not* unlocked, this transaction would hang or fail
+//     const successTxHandle = await helper.tx(
+//       alice,
+//       async () => {
+//         const au = AccountUpdate.createSigned(alice.keys.publicKey);
+//         au.send({
+//           to: PrivateKey.randomKeypair().publicKey,
+//           amount: 99,
+//         });
+//       },
+//       {
+//         name: 'subsequent-tx-after-sign-failure',
+//       }
+//     );
+//     // If we get here and can await until included, that means the nonceLock
+//     // was properly released.
+//     await successTxHandle.awaitIncluded();
+//     assert(successTxHandle.txStatus === 'Included');
+//   });
+
+//   it('unlocks nonceLock if transaction fails during SENDING (safeSend)', async () => {
+//     // We will override the safeSend() method to force an error when it is called
+//     const originalSafeSend = Transaction.prototype.safeSend;
+//     Transaction.prototype.safeSend = async function () {
+//       throw new Error('Forcing safeSend error');
+//     };
+
+//     let failedTxHandle;
+//     try {
+//       failedTxHandle = await helper.tx(
+//         alice,
+//         async () => {
+//           const au = AccountUpdate.createSigned(alice.keys.publicKey);
+//           au.send({
+//             to: PrivateKey.randomKeypair().publicKey,
+//             amount: 500,
+//           });
+//         },
+//         {
+//           name: 'failing-tx-send',
+//         }
+//       );
+//       // We expect awaitIncluded() to reject because safeSend() threw
+//       await assert.rejects(failedTxHandle.awaitIncluded(), /Forcing safeSend error/);
+//       assert(statusIsFailed(failedTxHandle.txStatus));
+//     } finally {
+//       // Restore the original .safeSend method so it doesn't affect other tests
+//       Transaction.prototype.safeSend = originalSafeSend;
+//     }
+
+//     // Now create a second transaction from the same account to confirm the lock is freed
+//     const successTxHandle = await helper.tx(
+//       alice,
+//       async () => {
+//         const au = AccountUpdate.createSigned(alice.keys.publicKey);
+//         au.send({
+//           to: PrivateKey.randomKeypair().publicKey,
+//           amount: 250,
+//         });
+//       },
+//       {
+//         name: 'subsequent-tx-after-send-failure',
+//       }
+//     );
+//     await successTxHandle.awaitIncluded();
+//     assert(successTxHandle.txStatus === 'Included');
+//   });
+// });
+
+
 });
+
+

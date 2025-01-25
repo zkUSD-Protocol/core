@@ -7,8 +7,6 @@ export async function updateVerificationKeys(args: {
   vaultVk: VerificationKey;
   oracleAggregationVk: VerificationKey;
 }) {
-  console.log('Updating verification keys...');
-
   const keys = {
     vault: {
       data: args.vaultVk.data,
@@ -41,5 +39,4 @@ export const verificationKeys: {
 
   const keysPath = path.join(process.cwd(), 'src/config/verification-keys.ts');
   fs.writeFileSync(keysPath, tsContent);
-  console.log('✅ Verification keys updated successfully');
 }

@@ -209,7 +209,12 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
         typeof options?.tokenId === 'string'
           ? Field.from(options?.tokenId)
           : options?.tokenId;
-      return this.instance.getAccount(pubkey, tokenId);
+
+      try {
+        return this.instance.getAccount(pubkey, tokenId);
+      } catch {
+        return undefined;
+      }
     }
   }
 

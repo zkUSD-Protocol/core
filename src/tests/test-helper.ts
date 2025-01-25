@@ -6,6 +6,7 @@ import {
   PrivateKey,
   PublicKey,
   Signature,
+  UInt32,
   UInt64,
   VerificationKey,
 } from 'o1js';
@@ -23,7 +24,7 @@ import {
   MinaNetworkInterface,
 } from '../mina/mina-network-interface.js';
 import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
-import { deploy } from '../services/deployment.js';
+import { DeploymentService } from '../services/deployment.js';
 import Client from 'mina-signer';
 import {
   AggregateOraclePrices,
@@ -93,7 +94,8 @@ export class TestHelper {
   protocolResumeCounter = 0;
   protocolStopCounter = 0;
   mina: IMinaNetworkInterface;
-  txMgr: TransactionManager;
+  _txMgr: TransactionManager;
+  _deploymentService: DeploymentService;
 
   deployer: KeyPair;
   agents: Record<string, Agent> = {};
@@ -109,6 +111,11 @@ export class TestHelper {
 
   whitelistedOracles: Map<string, number> = new Map();
 
+  public get txMgr() {
+    return this._txMgr;
+  }
+
+
   get networkKeys(): NetworkKeyPairs {
     return getNetworkKeys(this.mina.network.chainId);
   }
@@ -118,25 +125,26 @@ export class TestHelper {
   }
 
   public tx(
-    sender: KeyPair, // TODO: future: avoid passing the private key
+    sender: Agent | KeyPair,
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     }
   ) {
-    return this.txMgr.tx(sender, callback, options);
+    const keys = 'keys' in sender ? sender.keys : sender;
+    return this.txMgr.tx(keys, callback, options);
   }
 
   public async includeTx(
-    sender: KeyPair, // TODO: future: avoid passing the private key
+    sender: Agent | KeyPair, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     }
   ) {
-    const h = await this.txMgr.tx(sender, callback, options);
+    const h = await this.tx(sender, callback, options);
     return await h.awaitIncluded();
   }
 
@@ -156,7 +164,16 @@ export class TestHelper {
   }
 
   async deployTokenContracts() {
-    const deployedContracts = await deploy(this.txMgr, this.deployer);
+    this._deploymentService = await DeploymentService.create(
+      this.txMgr,
+    );
+    const deployedContracts = await this._deploymentService.deploy();
+
+    if (this.mina.network.chainId === 'local') {
+      this.txMgr.mina.local?.setBlockchainLength(
+        UInt32.from(1000)
+      );
+    }
 
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
@@ -333,7 +350,7 @@ export class TestHelper {
 
   private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
     this.mina = mina;
-    this.txMgr = TransactionManager.new(mina);
+    this._txMgr = TransactionManager.new(mina);
     this.deployer = deployer;
   }
 }
