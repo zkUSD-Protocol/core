@@ -21,7 +21,10 @@ import {
   GqlVars,
   queryGraphQL,
 } from './graphql.js';
-import { fetchMinaAccount as zkCWfetchMinaAccount } from 'zkcloudworker';
+import {
+  blockchain,
+  fetchMinaAccount as zkCWfetchMinaAccount,
+} from 'zkcloudworker';
 
 type LocalOnlyApi = {
   // add more as needed
@@ -184,6 +187,14 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     networkInterface.bindMethods();
 
     return networkInterface;
+  }
+
+  public static async initChain(chain: blockchain) {
+    if (chain === 'local') {
+      return await MinaNetworkInterface.initLocal();
+    } else if (chain === 'lightnet') {
+      return await MinaNetworkInterface.initLightnet();
+    }
   }
 
   /* Fetch the Mina account for a given public key with error handling

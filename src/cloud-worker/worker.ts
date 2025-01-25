@@ -28,6 +28,7 @@ import {
   validPriceBlockCount,
   AggregateOraclePrices,
   MinaPriceInput,
+  AggregateOraclePricesProof,
 } from '../index.js';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
 import {
@@ -41,12 +42,8 @@ import {
   ZkUSDAmountAndPriceProofArgs,
   ZkUSDAmountArgs,
 } from '../types.js';
-import { verificationKeys } from '../config/verification-keys.js';
-import {
-  deserializeTransaction,
-  getMinaPriceInputFromJsonProof,
-  transactionParams,
-} from './transaction.js';
+import { TransactionManager } from '../mina/transaction-manager.js';
+import { MinaNetworkInterface } from '../mina/mina-network-interface.js';
 
 interface TransactionConfig<T extends VaultTransactionType> {
   method: T;
@@ -58,31 +55,56 @@ interface TransactionConfig<T extends VaultTransactionType> {
   requiresPriceProof?: boolean;
 }
 
-export class zkUsdWorker extends zkCloudWorker {
-  token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
-  engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  keys: NetworkKeyPairs;
-  oracleAggregationVk: VerificationKey;
-  vaultVk: VerificationKey;
+type ZkUsdEngine = ReturnType<typeof ZkUsdEngineContract>;
+type FungibleToken = ReturnType<typeof FungibleTokenContract>;
+
+/**
+ * ZkUsdCloudWorker extends the base zkCloudWorker to handle ZkUSD-specific operations.
+ * It manages vault operations, token operations, and transaction processing from the frontend
+ * through a cloud serverless environment.
+ */
+export class ZkUsdCloudWorker extends zkCloudWorker {
+  private _engine: InstanceType<ZkUsdEngine>;
+  private _token: InstanceType<FungibleToken>;
+  private _keys: NetworkKeyPairs;
+
+  // Static verification keys and contract instances are shared across all worker instances
+  static vaultVk: VerificationKey | undefined = undefined;
+  static oracleAggregationVk: VerificationKey | undefined = undefined;
+  static engineVk: VerificationKey | undefined = undefined;
+  static tokenVk: VerificationKey | undefined = undefined;
+
+  // Contract class definitions
+  static ZkUsdEngine: ZkUsdEngine | undefined = undefined;
+  static FungibleToken: FungibleToken | undefined = undefined;
+
+  // Transaction manager instance for handling all Mina transactions
+  static txMgr: TransactionManager | undefined = undefined;
 
   readonly cache: Cache;
 
+  /**
+   * Configuration map for different vault transaction types.
+   * Each configuration defines:
+   * - method: The transaction type
+   * - buildTx: Function to construct the transaction
+   * - requiresNewAccounts: Whether new accounts need to be created
+   * - requiresPriceProof: Whether a price proof is needed for the operation
+   */
   private readonly transactionConfigs: {
     [K in VaultTransactionType]: TransactionConfig<K>;
   } = {
     [VaultTransactionType.CREATE_VAULT]: {
       method: VaultTransactionType.CREATE_VAULT,
       buildTx: async (args: CreateVaultArgs) => {
-        await this.engine.contract.createVault(
-          PublicKey.fromBase58(args.vaultAddress)
-        );
+        await this._engine.createVault(PublicKey.fromBase58(args.vaultAddress));
       },
       requiresNewAccounts: true,
     },
     [VaultTransactionType.DEPOSIT_COLLATERAL]: {
       method: VaultTransactionType.DEPOSIT_COLLATERAL,
       buildTx: async (args: CollateralAmountArgs) => {
-        await this.engine.contract.depositCollateral(
+        await this._engine.depositCollateral(
           PublicKey.fromBase58(args.vaultAddress),
           UInt64.from(args.collateralAmount)
         );
@@ -94,7 +116,7 @@ export class zkUsdWorker extends zkCloudWorker {
         args: CollateralAmountAndPriceProofArgs,
         minaPriceInput?: MinaPriceInput
       ) => {
-        await this.engine.contract.redeemCollateral(
+        await this._engine.redeemCollateral(
           PublicKey.fromBase58(args.vaultAddress),
           UInt64.from(args.collateralAmount),
           minaPriceInput!
@@ -105,7 +127,7 @@ export class zkUsdWorker extends zkCloudWorker {
     [VaultTransactionType.BURN_ZKUSD]: {
       method: VaultTransactionType.BURN_ZKUSD,
       buildTx: async (args: ZkUSDAmountArgs) => {
-        await this.engine.contract.burnZkUsd(
+        await this._engine.burnZkUsd(
           PublicKey.fromBase58(args.vaultAddress),
           UInt64.from(args.zkusdAmount)
         );
@@ -117,7 +139,7 @@ export class zkUsdWorker extends zkCloudWorker {
         args: ZkUSDAmountAndPriceProofArgs,
         minaPriceInput?: MinaPriceInput
       ) => {
-        await this.engine.contract.mintZkUsd(
+        await this._engine.mintZkUsd(
           PublicKey.fromBase58(args.vaultAddress),
           UInt64.from(args.zkusdAmount),
           minaPriceInput!
@@ -131,7 +153,7 @@ export class zkUsdWorker extends zkCloudWorker {
         args: PriceProofArgs,
         minaPriceInput?: MinaPriceInput
       ) => {
-        await this.engine.contract.liquidate(
+        await this._engine.liquidate(
           PublicKey.fromBase58(args.vaultAddress),
           minaPriceInput!
         );
@@ -143,54 +165,97 @@ export class zkUsdWorker extends zkCloudWorker {
   constructor(cloud: Cloud) {
     super(cloud);
     this.cache = Cache.FileSystem(this.cloud.cache);
-    this.keys = getNetworkKeys(this.cloud.chain);
+    this._keys = getNetworkKeys(this.cloud.chain);
   }
 
+  /**
+   * Verifies and converts a JSON proof into a MinaPriceInput instance.
+   * This is used for operations that require price verification.
+   */
+  private async getMinaPriceInputFromJsonProof(
+    jsonProof: JsonProof
+  ): Promise<MinaPriceInput> {
+    const proof = (await AggregateOraclePricesProof.fromJSON(
+      jsonProof as JsonProof
+    )) as AggregateOraclePricesProof;
+
+    const ok = await verify(proof, ZkUsdCloudWorker.oracleAggregationVk!);
+    if (!ok) throw new Error('Proof verification failed');
+
+    return new MinaPriceInput({
+      proof,
+      verificationKey: ZkUsdCloudWorker.oracleAggregationVk!,
+    });
+  }
+
+  /**
+   * Initializes the transaction manager with the appropriate network interface.
+   * This is called once per worker instance.
+   */
+  private async initTxMgr() {
+    const MinaChain = await MinaNetworkInterface.initChain(this.cloud.chain);
+    if (!MinaChain) throw new Error('MinaChain not found');
+    ZkUsdCloudWorker.txMgr = TransactionManager.new(MinaChain);
+  }
+
+  /**
+   * Compiles all necessary contracts and verification keys.
+   * This is a heavy operation that's performed once and cached.
+   */
   private async compile(): Promise<string> {
-    console.log('Compiling contracts');
-
+    console.time('Compiling contracts');
     try {
-      this.vaultVk = new VerificationKey(
-        (await ZkUsdVault.compile()).verificationKey
-      );
+      // Compile and cache verification keys
+      if (ZkUsdCloudWorker.vaultVk === undefined) {
+        ZkUsdCloudWorker.vaultVk = new VerificationKey(
+          (await ZkUsdVault.compile({ cache: this.cache })).verificationKey
+        );
+      }
 
-      console.log('Compiling oracle aggregation');
-
-      this.oracleAggregationVk = new VerificationKey(
-        (await AggregateOraclePrices.compile()).verificationKey
-      );
-
-      console.log('Compiled oracle aggregation');
-
-      if (!this.vaultVk || !this.oracleAggregationVk) {
+      if (ZkUsdCloudWorker.oracleAggregationVk === undefined) {
+        ZkUsdCloudWorker.oracleAggregationVk = new VerificationKey(
+          (await AggregateOraclePrices.compile()).verificationKey
+        );
+      }
+      if (!ZkUsdCloudWorker.vaultVk || !ZkUsdCloudWorker.oracleAggregationVk) {
         throw new Error('Verification keys not found');
       }
-      const ZkUsdEngine = ZkUsdEngineContract({
-        zkUsdTokenAddress: this.keys.token.publicKey,
-        minaPriceInputZkProgramVkHash: this.oracleAggregationVk.hash,
-        vaultVerificationKey: this.vaultVk,
-      });
 
-      const FungibleToken = ZkUsdEngine.FungibleToken;
-
-      if (!ZkUsdEngine._provers) {
-        console.time('compiled zkUSD Contracts');
-        await FungibleToken.compile();
-        const engineVk = await ZkUsdEngine.compile();
-        console.log('engineVk', engineVk.verificationKey.hash.toString());
-        console.timeEnd('compiled zkUSD Contracts');
-      } else {
-        console.log('Contracts already compiled');
+      if (ZkUsdCloudWorker.ZkUsdEngine === undefined) {
+        ZkUsdCloudWorker.ZkUsdEngine = ZkUsdEngineContract({
+          zkUsdTokenAddress: this._keys.token.publicKey,
+          minaPriceInputZkProgramVkHash:
+            ZkUsdCloudWorker.oracleAggregationVk.hash,
+          vaultVerificationKey: ZkUsdCloudWorker.vaultVk,
+        });
       }
 
-      this.engine = {
-        contract: new ZkUsdEngine(this.keys.engine.publicKey),
-      };
+      if (ZkUsdCloudWorker.FungibleToken === undefined) {
+        ZkUsdCloudWorker.FungibleToken =
+          ZkUsdCloudWorker.ZkUsdEngine.FungibleToken;
+      }
 
-      this.token = {
-        contract: new FungibleToken(this.keys.token.publicKey),
-      };
+      if (ZkUsdCloudWorker.tokenVk === undefined) {
+        ZkUsdCloudWorker.tokenVk = (
+          await ZkUsdCloudWorker.FungibleToken.compile()
+        ).verificationKey;
+      }
 
+      if (ZkUsdCloudWorker.engineVk === undefined) {
+        ZkUsdCloudWorker.engineVk = (
+          await ZkUsdCloudWorker.ZkUsdEngine.compile()
+        ).verificationKey;
+      }
+
+      this._engine = new ZkUsdCloudWorker.ZkUsdEngine(
+        this._keys.engine.publicKey
+      );
+
+      this._token = new ZkUsdCloudWorker.FungibleToken(
+        this._keys.token.publicKey
+      );
+
+      console.timeEnd('Compiling contracts');
       return 'Contracts compiled';
     } catch (error) {
       console.error('Error in compile, restarting container', error);
@@ -201,10 +266,19 @@ export class zkUsdWorker extends zkCloudWorker {
     }
   }
 
+  /**
+   * Main entry point for executing transactions.
+   * Processes incoming transaction requests based on their type and configuration.
+   */
   public async execute(transactions: string[]): Promise<string | undefined> {
     console.log('Executing transaction');
     if (!this.cloud.args) throw new Error('this.cloud.args is undefined');
     if (transactions.length === 0) throw new Error('No transactions provided');
+
+    // Ensure transaction manager is initialized
+    if (ZkUsdCloudWorker.txMgr === undefined) {
+      await this.initTxMgr();
+    }
 
     const task = this.cloud.task as VaultTransactionType;
     const config = this.transactionConfigs[task] as TransactionConfig<
@@ -214,13 +288,15 @@ export class zkUsdWorker extends zkCloudWorker {
       this.cloud.args
     ) as VaultTransactionArgs[typeof task];
 
-    if (!config) {
-      throw new Error(`Unknown task: ${task}`);
-    }
+    if (!config) throw new Error(`Unknown task: ${task}`);
 
     return await this.processTransaction(config, args, transactions);
   }
 
+  /**
+   * Processes a single transaction based on its configuration.
+   * Handles the entire lifecycle from deserialization to execution.
+   */
   private async processTransaction<T extends VaultTransactionType>(
     config: TransactionConfig<T>,
     args: VaultTransactionArgs[T],
@@ -230,25 +306,25 @@ export class zkUsdWorker extends zkCloudWorker {
     await this.compile();
 
     try {
+      // Parse and extract transaction details
       const { serializedTx, signedData } = JSON.parse(txs[0]);
       const signedJson = JSON.parse(signedData);
-      const { fee, sender, nonce, memo } = transactionParams(
-        serializedTx,
-        signedJson
-      );
+      const { fee, sender, nonce, memo } =
+        ZkUsdCloudWorker.txMgr!.getTransactionParams(serializedTx, signedJson);
 
+      // Handle price proof if required
       let minaPriceInput: MinaPriceInput | undefined;
-
       if (config.requiresPriceProof) {
-        minaPriceInput = await getMinaPriceInputFromJsonProof(
-          (args as PriceProofArgs).minaPriceProof,
-          this.oracleAggregationVk
+        minaPriceInput = await this.getMinaPriceInputFromJsonProof(
+          (args as PriceProofArgs).minaPriceProof
         );
       }
 
+      // Ensure accounts are up to date
       await this.fetchLatestAccounts(sender, args.vaultAddress);
 
-      const txNew = await Mina.transaction(
+      // Build the transaction
+      const txNew = await ZkUsdCloudWorker.txMgr!.mina.transaction(
         { sender, fee, nonce, memo },
         async () => {
           if (config.requiresNewAccounts) {
@@ -261,8 +337,6 @@ export class zkUsdWorker extends zkCloudWorker {
         }
       );
 
-      console.log('txNew', txNew.toPretty());
-
       return await this.proveAndSendTx(serializedTx, txNew, signedJson);
     } catch (error) {
       console.error('Transaction failed:', error);
@@ -274,37 +348,34 @@ export class zkUsdWorker extends zkCloudWorker {
     }
   }
 
+  /**
+   * Handles the final steps of transaction processing:
+   * 1. Proving the transaction
+   * 2. Sending it to the network
+   * 3. Publishing metadata
+   */
   private async proveAndSendTx(
     serializedTx: string,
     txNew: Mina.Transaction<false, false>,
     signedJson: any
   ): Promise<string> {
-    const tx = deserializeTransaction(serializedTx, txNew, signedJson);
+    const tx = ZkUsdCloudWorker.txMgr!.deserializeTransaction(
+      serializedTx,
+      txNew,
+      signedJson
+    );
 
     console.log('Proving the transaction');
+
+    /**
+     * TODO: We need to figure out a way to timeout if the proof takes too long
+     * Right now it sometimes hangs, and we cant use a promise that rejects after 2 minutes
+     * because the proving hogs the CPU
+     */
     console.time('proved');
-
-    try {
-      // Create a promise that rejects after 2 minutes
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(
-          () => reject(new Error('Proving timed out after 2 minutes')),
-          2 * 60 * 1000
-        );
-      });
-
-      // Race between the proof generation and timeout
-      await Promise.race([tx.prove(), timeoutPromise]);
-    } catch (error) {
-      console.timeEnd('proved');
-      console.error('Proving failed:', error);
-      return (
-        'Error: Transaction proving failed - ' +
-        (error instanceof Error ? error.message : 'Unknown error')
-      );
-    }
-
+    await tx.prove();
     console.timeEnd('proved');
+
     const txSent = await tx.safeSend();
     if (txSent.status === 'pending') {
       console.log(`tx sent: hash: ${txSent.hash} status: ${txSent.status}`);
@@ -336,9 +407,13 @@ export class zkUsdWorker extends zkCloudWorker {
     return txSent?.hash ?? 'Error sending transaction';
   }
 
+  /**
+   * Ensures all relevant accounts are fetched with their latest state.
+   * This includes the engine account, sender account, and vault account.
+   */
   private async fetchLatestAccounts(sender: PublicKey, vaultAddress: string) {
     await fetchMinaAccount({
-      publicKey: this.keys.engine.publicKey,
+      publicKey: this._keys.engine.publicKey,
       force: true,
     });
     await fetchMinaAccount({
@@ -347,7 +422,7 @@ export class zkUsdWorker extends zkCloudWorker {
     });
     await fetchMinaAccount({
       publicKey: PublicKey.fromBase58(vaultAddress),
-      tokenId: this.engine.contract.deriveTokenId(),
+      tokenId: this._engine.deriveTokenId(),
       force: true,
     });
   }
