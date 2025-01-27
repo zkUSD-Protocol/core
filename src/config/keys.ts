@@ -3,6 +3,7 @@ import { blockchain } from '../mina/networks.js';
 import { KeyPair, OracleWhitelist } from '../types.js';
 
 export interface NetworkKeyPairs {
+  deployer?: KeyPair;
   protocolAdmin: KeyPair;
   token: KeyPair;
   engine: KeyPair;

@@ -4,7 +4,7 @@ import { FungibleTokenContract } from '@minatokens/token';
 import { Field, initializeBindings, VerificationKey } from 'o1js';
 import { Cloud, zkCloudWorker, initBlockchain } from 'zkcloudworker';
 import { verificationKeys } from './config/verification-keys.js';
-import { zkUsdWorker } from './cloud-worker/worker.js';
+import { ZkUsdCloudWorker } from './cloud-worker/worker.js';
 import { validPriceBlockCount } from './mina/networks.js';
 import {
   MinaPriceInput,
@@ -26,7 +26,7 @@ export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
   console.log(cloud);
   await initializeBindings();
   await initBlockchain(cloud.chain);
-  return new zkUsdWorker(cloud);
+  return new ZkUsdCloudWorker(cloud);
 }
 
 const vaultVk: VerificationKey = {

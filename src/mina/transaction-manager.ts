@@ -1,10 +1,4 @@
-import {
-  Field,
-  PrivateKey,
-  PublicKey,
-  UInt32,
-  UInt64,
-} from 'o1js';
+import { Field, Mina, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
 import { KeyPair } from '../types.js';
 import {
   IncludedTransaction,
@@ -24,7 +18,10 @@ export interface DefaultTransactionOptions {
   printTx: boolean;
   extraSigners: PrivateKey[];
   startingFee: UInt64;
-  feeFetcher: (args: { tx: Transaction<true, false>; failedFee: UInt64 }) => Promise<UInt64>;
+  feeFetcher: (args: {
+    tx: Transaction<true, false>;
+    failedFee: UInt64;
+  }) => Promise<UInt64>;
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeout: number;
@@ -78,19 +75,16 @@ export interface TransactionHandle {
   readonly nonce: UInt32 | undefined;
   readonly sender: PublicKey;
 
-  awaitStatusChange(
-    args: {
-      until: (status: TransactionStatus) => boolean,
-      statusPollInterval?: number,
-      timeout?: number
-    }
-  ): Promise<TransactionStatus>;
+  awaitStatusChange(args: {
+    until: (status: TransactionStatus) => boolean;
+    statusPollInterval?: number;
+    timeout?: number;
+  }): Promise<TransactionStatus>;
 
   awaitIncluded(args?: {
-    statusPollInterval?: number,
-    timeout?: number
-  }
-  ): Promise<IncludedTransaction>;
+    statusPollInterval?: number;
+    timeout?: number;
+  }): Promise<IncludedTransaction>;
 }
 
 /**
@@ -146,24 +140,28 @@ export type FailedBeforeSending = {
 export type RejectedOnReceive = {
   kind: 'RejectedOnReceive';
   errors: string[];
-}
+};
 
 export type RejectedOnInclusion = {
   kind: 'RejectedOnInclusion';
   errors: string[];
-}
+};
 
-export const statusIsOfKind = (status: TransactionStatus, ...kind: string[]): boolean => {
+export const statusIsOfKind = (
+  status: TransactionStatus,
+  ...kind: string[]
+): boolean => {
   if (typeof status === 'object' && status !== null) {
     return kind.includes(status.kind);
   }
   return kind.includes(status);
-}
+};
 
-export const statusIsRejected = (status: TransactionStatus):
-  status is RejectedOnReceive | RejectedOnInclusion => {
+export const statusIsRejected = (
+  status: TransactionStatus
+): status is RejectedOnReceive | RejectedOnInclusion => {
   return statusIsOfKind(status, 'RejectedOnReceive', 'RejectedOnInclusion');
-}
+};
 
 /**
  * Processing states for a transaction that is still in progress.
@@ -190,12 +188,17 @@ type FailedTxStatus =
 /**
  * Represents all possible states of a transaction.
  */
-export type TransactionStatus = ProcessingTxStatus | FailedTxStatus | 'Included';
+export type TransactionStatus =
+  | ProcessingTxStatus
+  | FailedTxStatus
+  | 'Included';
 
 /**
  * Checks whether a transaction status indicates that it should still be awaited (i.e., it's in progress).
  */
-export function statusShouldBeWaitedFor(status: TransactionStatus): status is ProcessingTxStatus {
+export function statusShouldBeWaitedFor(
+  status: TransactionStatus
+): status is ProcessingTxStatus {
   const inProgressStates = [
     'Scheduled',
     'Pending',
@@ -209,7 +212,9 @@ export function statusShouldBeWaitedFor(status: TransactionStatus): status is Pr
 /**
  * Checks whether a transaction status indicates that it has failed.
  */
-export function statusIsFailed(status: TransactionStatus): status is FailedTxStatus {
+export function statusIsFailed(
+  status: TransactionStatus
+): status is FailedTxStatus {
   const failureStates = [
     'RejectedOnInclusion',
     'RejectedOnReceive',
@@ -224,7 +229,9 @@ export function statusIsFailed(status: TransactionStatus): status is FailedTxSta
 /**
  * Checks whether a transaction status is final (either included or failed).
  */
-export function statusIsFinal(status: TransactionStatus): status is 'Included' | FailedTxStatus {
+export function statusIsFinal(
+  status: TransactionStatus
+): status is 'Included' | FailedTxStatus {
   return !statusShouldBeWaitedFor(status);
 }
 
@@ -243,8 +250,12 @@ export class TransactionInternal {
 
   public status: TransactionStatus = 'Scheduled';
 
-  private _sendingPromise?: TrackedPromise<PendingTransaction | RejectedTransaction>;
-  private _waitingPromise?: TrackedPromise<IncludedTransaction | RejectedTransaction | undefined>;
+  private _sendingPromise?: TrackedPromise<
+    PendingTransaction | RejectedTransaction
+  >;
+  private _waitingPromise?: TrackedPromise<
+    IncludedTransaction | RejectedTransaction | undefined
+  >;
   private _provingPromise?: TrackedPromise<ProvenTransaction>;
 
   /**
@@ -256,7 +267,10 @@ export class TransactionInternal {
     | RejectedTransaction
     | IncludedTransaction
     | undefined {
-    if (this._waitingPromise?.state === 'fulfilled' && this._waitingPromise.result) {
+    if (
+      this._waitingPromise?.state === 'fulfilled' &&
+      this._waitingPromise.result
+    ) {
       return this._waitingPromise.result;
     }
     if (this._sendingPromise?.state === 'fulfilled') {
@@ -348,9 +362,13 @@ export class TransactionInternal {
    */
   public installPromises(args: {
     provingPromise: TrackedPromise<Transaction<true, false>>;
-    waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction | undefined>;
+    waitingPromise: TrackedPromise<
+      IncludedTransaction | RejectedTransaction | undefined
+    >;
     sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction>;
-    mkSendingPromise: (fee: UInt64) => TrackedPromise<PendingTransaction | RejectedTransaction>;
+    mkSendingPromise: (
+      fee: UInt64
+    ) => TrackedPromise<PendingTransaction | RejectedTransaction>;
   }): void {
     this._waitingPromise = args.waitingPromise;
     this._sendingPromise = args.sendingPromise;
@@ -361,23 +379,24 @@ export class TransactionInternal {
   /**
    * Polls the `status` property at regular intervals until `stopWaiting(status)` is true or a timeout is reached.
    */
-  public async awaitStatusChange(
-    args: {
-      until: (status: TransactionStatus) => boolean,
-      statusPollInterval?: number,
-      timeout?: number
-    }
-  ): Promise<TransactionStatus> {
+  public async awaitStatusChange(args: {
+    until: (status: TransactionStatus) => boolean;
+    statusPollInterval?: number;
+    timeout?: number;
+  }): Promise<TransactionStatus> {
     let { until } = args;
     const timeout = args.timeout ?? defaultOptions.dependencyStatusPollTimeout;
-    const statusPollInterval = args.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
+    const statusPollInterval =
+      args.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
 
     let currentStatus = this.status;
     const startTime = Date.now();
 
     while (!until(currentStatus)) {
       if (Date.now() - startTime >= timeout) {
-        throw new Error(`${this.getId()} Timeout reached while waiting for status change.`);
+        throw new Error(
+          `${this.getId()} Timeout reached while waiting for status change.`
+        );
       }
       await new Promise((resolve) => setTimeout(resolve, statusPollInterval));
       currentStatus = this.status;
@@ -386,22 +405,27 @@ export class TransactionInternal {
     return currentStatus;
   }
 
-  public async awaitIncluded(
-    args?: {
-      statusPollInterval?: number,
-      timeout?: number
-    }
-  ): Promise<IncludedTransaction> {
-    const statusPollInterval = args?.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
+  public async awaitIncluded(args?: {
+    statusPollInterval?: number;
+    timeout?: number;
+  }): Promise<IncludedTransaction> {
+    const statusPollInterval =
+      args?.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
     const timeout = args?.timeout ?? defaultOptions.dependencyStatusPollTimeout;
 
     const status: TransactionStatus = await this.awaitStatusChange({
       until: (status) => !statusShouldBeWaitedFor(status),
       statusPollInterval,
-      timeout
+      timeout,
     });
     if (status !== 'Included') {
-      throw new Error(`Transaction was not included and ended with status ${JSON.stringify(status, null, 2)}`);
+      throw new Error(
+        `Transaction ${this.getId()} was not included and ended with status ${JSON.stringify(
+          status,
+          null,
+          2
+        )}`
+      );
     }
     return this.transactionState as IncludedTransaction;
   }
@@ -427,14 +451,13 @@ export class TransactionInternal {
 
       awaitStatusChange: self.awaitStatusChange.bind(self),
 
-      awaitIncluded: self.awaitIncluded.bind(self)
+      awaitIncluded: self.awaitIncluded.bind(self),
     };
   }
 
   // Private constructor to force usage of static methods
   private constructor() {}
 }
-
 
 //  Do not call from concurrent threads
 export class TransactionManager {
@@ -462,6 +485,101 @@ export class TransactionManager {
     return r;
   }
 
+  /**
+   * Extracts basic transaction parameters from serialized transaction data.
+   */
+  public getTransactionParams(
+    serializedTransaction: string,
+    signedJson: any
+  ): {
+    fee: UInt64;
+    sender: PublicKey;
+    nonce: number;
+    memo: string;
+  } {
+    const { sender, nonce, tx } = JSON.parse(serializedTransaction);
+    const transaction = Mina.Transaction.fromJSON(JSON.parse(tx));
+    const memo = transaction.transaction.memo;
+    return {
+      fee: UInt64.from(signedJson.zkappCommand.feePayer.body.fee),
+      sender: PublicKey.fromBase58(sender),
+      nonce: Number(signedJson.zkappCommand.feePayer.body.nonce),
+      memo,
+    };
+  }
+
+  /**
+   * Deserializes a transaction from serialized data.
+   */
+  public deserializeTransaction(
+    serializedTransaction: string,
+    txNew: Mina.Transaction<false, false>,
+    signedJson: any
+  ) {
+    const { tx, blindingValues, length } = JSON.parse(serializedTransaction);
+    const transaction = Mina.Transaction.fromJSON(JSON.parse(tx));
+    if (length !== txNew.transaction.accountUpdates.length) {
+      throw new Error('New Transaction length mismatch');
+    }
+    if (length !== transaction.transaction.accountUpdates.length) {
+      throw new Error('Serialized Transaction length mismatch');
+    }
+    for (let i = 0; i < length; i++) {
+      transaction.transaction.accountUpdates[i].lazyAuthorization =
+        txNew.transaction.accountUpdates[i].lazyAuthorization;
+      if (blindingValues[i] !== '')
+        (
+          transaction.transaction.accountUpdates[i].lazyAuthorization as any
+        ).blindingValue = Field.fromJSON(blindingValues[i]);
+    }
+    transaction.transaction.feePayer.authorization =
+      signedJson.zkappCommand.feePayer.authorization;
+    transaction.transaction.feePayer.body.fee = UInt64.from(
+      signedJson.zkappCommand.feePayer.body.fee
+    );
+    for (let i = 0; i < length; i++) {
+      const signature =
+        signedJson.zkappCommand.accountUpdates[i].authorization.signature;
+      if (signature !== undefined && signature !== null) {
+        transaction.transaction.accountUpdates[i].authorization.signature =
+          signedJson.zkappCommand.accountUpdates[i].authorization.signature;
+      }
+    }
+    return transaction;
+  }
+
+  /**
+   * Serializes a transaction to a string.
+   */
+  public serializeTransaction(tx: Mina.Transaction<false, false>): string {
+    const length = tx.transaction.accountUpdates.length;
+    let i;
+    let blindingValues = [];
+    for (i = 0; i < length; i++) {
+      const la = tx.transaction.accountUpdates[i].lazyAuthorization;
+      if (
+        la !== undefined &&
+        (la as any).blindingValue !== undefined &&
+        la.kind === 'lazy-proof'
+      )
+        blindingValues.push(la.blindingValue.toJSON());
+      else blindingValues.push('');
+    }
+    const serializedTransaction = JSON.stringify(
+      {
+        tx: tx.toJSON(),
+        blindingValues,
+        length,
+        fee: tx.transaction.feePayer.body.fee.toJSON(),
+        sender: tx.transaction.feePayer.body.publicKey.toBase58(),
+        nonce: tx.transaction.feePayer.body.nonce.toBigint().toString(),
+      },
+      null,
+      2
+    );
+    return serializedTransaction;
+  }
+
   // this will create a new transaction
   // and schedule it for proving signing and sending
   // it will also await for the dependencies to be included or failed
@@ -477,8 +595,8 @@ export class TransactionManager {
     sender: KeyPair, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
     options?: TransactionOptions & {
-      name?: string,
-      waitForIncluded?: (string | TransactionHandle)[]
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
     }
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
@@ -491,13 +609,15 @@ export class TransactionManager {
       callback,
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
-      callSite: getCallSite(2)
+      callSite: getCallSite(2),
     };
 
     // dependencies must be met
     const deps: TransactionInternal[] = [];
     for (const depId of request.waitForIncluded) {
-      const dep = this.transactions.get(typeof depId === 'string' ? depId : depId.txId);
+      const dep = this.transactions.get(
+        typeof depId === 'string' ? depId : depId.txId
+      );
       if (!dep) {
         throw new Error(`Transaction ${depId} does not exist`);
       }
@@ -514,7 +634,10 @@ export class TransactionManager {
 
     //=== include the transaction in the manager
     // -- create the tx and add it to the manager
-    const tx = TransactionInternal.fromRequest(request, this.getCallSiteNonce(request.callSite));
+    const tx = TransactionInternal.fromRequest(
+      request,
+      this.getCallSiteNonce(request.callSite)
+    );
     this.transactions.set(tx.getId(), tx);
     // --
 
@@ -524,12 +647,12 @@ export class TransactionManager {
     const mgr = this;
 
     function failed_before_sending(phase: string, error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       const err = `${tx.getId()} - error during ${phase}: ${errorMessage}`;
-      const status = { kind: 'FailedBeforeSending', errors: [err] }
+      const status = { kind: 'FailedBeforeSending', errors: [err] };
       return status;
     }
-
 
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
@@ -537,9 +660,13 @@ export class TransactionManager {
         console.log(`${tx.getId()} - Proving transaction ...`);
         return await transactionBuildAndProve(
           mgr._provingMutex,
-          mgr.mina, sender, callback, options);
+          mgr.mina,
+          sender,
+          callback,
+          options
+        );
       } catch (error) {
-        throw failed_before_sending("proving the tx", error);
+        throw failed_before_sending('proving the tx', error);
       }
     });
 
@@ -547,111 +674,147 @@ export class TransactionManager {
     const depsAwaitingPromise = new TrackedPromise(async () => {
       try {
         if (tx.dependencies.length !== 0) {
-          tx.status = { kind: "AwaitingForOtherTx", txs: tx.dependencies.map(dep => dep.txId) }
+          tx.status = {
+            kind: 'AwaitingForOtherTx',
+            txs: tx.dependencies.map((dep) => dep.txId),
+          };
         }
-        await Promise.all(deps.map(async (dep) => {
-          const depStatus = await dep.awaitStatusChange({
-            until: status => status === "Included" || statusIsFailed(status),
-            statusPollInterval: options?.dependencyStatusPollInterval,
-            timeout: options?.dependencyStatusPollTimeout
-          });
-          if (depStatus !== "Included") {
-            throw { kind: "DependencyRejectedFailedOrDropped", depId: dep.getId(), depStatus };
-          }
-          return;
-        }));
-        tx.status = "Scheduled";
+        await Promise.all(
+          deps.map(async (dep) => {
+            const depStatus = await dep.awaitStatusChange({
+              until: (status) =>
+                status === 'Included' || statusIsFailed(status),
+              statusPollInterval: options?.dependencyStatusPollInterval,
+              timeout: options?.dependencyStatusPollTimeout,
+            });
+            if (depStatus !== 'Included') {
+              throw {
+                kind: 'DependencyRejectedFailedOrDropped',
+                depId: dep.getId(),
+                depStatus,
+              };
+            }
+            return;
+          })
+        );
+        tx.status = 'Scheduled';
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           throw error;
         }
-        throw failed_before_sending("awaiting for the tx dependencies", error);
+        throw failed_before_sending('awaiting for the tx dependencies', error);
       }
     });
 
     // make a function that will schedule getting nonce and sign
     const mkSigningPromise = function (fee: UInt64) {
-      return (ptx: Transaction<true, false>) => new TrackedPromise(async () => {
-        try {
+      return (ptx: Transaction<true, false>) =>
+        new TrackedPromise(async () => {
           let nonceLock;
           try {
-            nonceLock = await mgr.mina.nonceManager.getAccountNonce(sender.publicKey);
+            try {
+              nonceLock = await mgr.mina.nonceManager.getAccountNonce(
+                sender.publicKey
+              );
+            } catch (error) {
+              const err = `Error during getting the tx nonce: ${error}`;
+              console.error(err);
+              throw err;
+            }
+            ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
+            ptx.transaction.feePayer.body.fee = fee;
+            console.log(
+              `${tx.getId()} - Signing transaction: {nonce: ${
+                nonceLock.nonce
+              }, fee: ${fee}} ...`
+            );
+            // TODO use signing service instead, do not pass private keys around
+            const signers = options?.extraSigners
+              ? [sender.privateKey, ...options.extraSigners]
+              : [sender.privateKey];
+            return { signedTx: ptx.sign(signers), nonceLock };
           } catch (error) {
-            const err = `Error during getting the tx nonce: ${error}`;
-            console.error(err);
-            throw err;
+            nonceLock?.unlock();
+            throw failed_before_sending('signing the tx', error);
           }
-          ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
-          ptx.transaction.feePayer.body.fee = fee;
-          console.log(`${tx.getId()} - Signing transaction: {nonce: ${nonceLock.nonce}, fee: ${fee}} ...`);
-          // TODO use signing service instead, do not pass private keys around
-          const signers = options?.extraSigners ? [sender.privateKey, ...options.extraSigners] : [sender.privateKey];
-          return { signedTx: ptx.sign(signers), nonceLock };
-        } catch (error) {
-          throw failed_before_sending("signing the tx", error);
-        }
-      });
+        });
     };
 
     // create sending promise maker
     const mkSendingPromise = function (fee: UInt64) {
       return new TrackedPromise(async () => {
-        const results = await Promise.all([provingPromise, depsAwaitingPromise]);
+        const results = await Promise.all([
+          provingPromise,
+          depsAwaitingPromise,
+        ]);
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
+        let nonceLock;
         try {
-          const { signedTx: signedTxResult, nonceLock } = signedTx;
+          const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
+          nonceLock = lock;
           console.log(`${tx.getId()} - Sending transaction ...`);
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();
           switch (sentTx.status) {
-            case "pending": {
-              tx.status = "Pending";
+            case 'pending': {
+              tx.status = 'Pending';
               break;
             }
-            case "rejected": {
-              tx.status = { kind: "RejectedOnReceive", errors: ["error when the tx has been sent", ...sentTx.errors] };
+            case 'rejected': {
+              tx.status = {
+                kind: 'RejectedOnReceive',
+                errors: ['error when the tx has been sent', ...sentTx.errors],
+              };
               break;
             }
           }
           return sentTx;
         } catch (error) {
-          throw failed_before_sending("sending the tx", error);
-        } finally {
-          // TODO need to release the nonce lock
+          await nonceLock?.unlock();
+          throw failed_before_sending('sending the tx', error);
         }
       });
-    }
+    };
     // schedule sending
-    const sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction> = mkSendingPromise(options?.startingFee ?? defaultOptions.startingFee);
+    const sendingPromise: TrackedPromise<
+      PendingTransaction | RejectedTransaction
+    > = mkSendingPromise(options?.startingFee ?? defaultOptions.startingFee);
 
     // schedule waiting for the transaction to be included
-    const waitingPromise: TrackedPromise<IncludedTransaction | RejectedTransaction | undefined> = new TrackedPromise(async () => {
+    const waitingPromise: TrackedPromise<
+      IncludedTransaction | RejectedTransaction | undefined
+    > = new TrackedPromise(async () => {
       try {
         const sentTx = await sendingPromise;
         if (statusIsRejectedTransaction(sentTx)) return sentTx;
         console.log(`${tx.getId()} - Awaiting inclusion ...`);
         const awaitedTx = await sentTx.safeWait();
-        if (awaitedTx.status === "included") {
-          tx.status = "Included";
-        }
-        else {
+        if (awaitedTx.status === 'included') {
+          tx.status = 'Included';
+        } else {
           // TODO check if actually rejected or stuck in mempool
           // if stuck then retry with higher fee
-          console.log("TODO - rejected or stuck in mempool");
-          const actualStatus = "rejected";
+          console.log('TODO - rejected or stuck in mempool');
+          const actualStatus = 'rejected';
 
-          if (actualStatus === "rejected") {
-            tx.status = { kind: "RejectedOnInclusion", errors: ["error during awaiting for inclusion", ...awaitedTx.errors] };
+          if (actualStatus === 'rejected') {
+            tx.status = {
+              kind: 'RejectedOnInclusion',
+              errors: [
+                'error during awaiting for inclusion',
+                ...awaitedTx.errors,
+              ],
+            };
           }
         }
         return awaitedTx;
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           const status = error as TransactionStatus;
-          tx.status = status
+          tx.status = status;
         }
         return undefined;
       }
@@ -663,7 +826,7 @@ export class TransactionManager {
       sendingPromise,
       waitingPromise,
       provingPromise,
-      mkSendingPromise
+      mkSendingPromise,
     });
 
     return tx.handle;
@@ -674,25 +837,24 @@ export class TransactionManager {
   }
 }
 
-
 function getCallSite(depth: number): string {
-  let ret = "unknown_call_site";
+  let ret = 'unknown_call_site';
   const callerLine = getCallerAtDepth(depth + 1);
   // Regex to extract function name, file path, line, and column
-  const match = callerLine.match(/at (.+?) \((.+?):(\d+):(\d+)\)/) ||
+  const match =
+    callerLine.match(/at (.+?) \((.+?):(\d+):(\d+)\)/) ||
     callerLine.match(/at (.+?):(\d+):(\d+)/);
 
   if (match) {
     // Extract details, including function name (if available)
-    const functionName = match[1] || "anonymous";
+    const functionName = match[1] || 'anonymous';
     const filePath = match[2];
     const line = match[3];
     // const column = match[4];
 
     // Generate a unique ID string
     ret = `${functionName}_${filePath}:${line}`;
-  }
-  else {
+  } else {
     ret = callerLine;
   }
 
@@ -701,13 +863,13 @@ function getCallSite(depth: number): string {
 
 function getCallerAtDepth(depth: number = 1): string {
   const error = new Error();
-  const stack = error.stack?.split("\n");
+  const stack = error.stack?.split('\n');
 
   if (stack && stack.length > depth + 1) {
     const callerLine = stack[depth + 1].trim(); // Depth + 1 because stack[0] is the current function
     return callerLine;
   }
-  throw new Error("Failed to get caller: stack not deep enough");
+  throw new Error('Failed to get caller: stack not deep enough');
 }
 
 // DEV: possibly refactor later
@@ -723,17 +885,20 @@ export async function transactionBuildAndProve(
     printTx = false,
     startingFee,
     printAccountUpdates = false,
-    nonce
+    nonce,
   } = options;
 
-  const tx = await mutex.runExclusive(async () => await chain.transaction(
-    {
-      sender: sender.publicKey,
-      ...(startingFee && { fee: startingFee }),
-      ...(nonce && { nonce: Number(nonce) })
-    },
-    callback
-  ));
+  const tx = await mutex.runExclusive(
+    async () =>
+      await chain.transaction(
+        {
+          sender: sender.publicKey,
+          ...(startingFee && { fee: startingFee }),
+          ...(nonce && { nonce: Number(nonce) }),
+        },
+        callback
+      )
+  );
 
   if (printTx) {
     console.log(tx.toPretty());
@@ -765,7 +930,8 @@ export async function transactionBuildAndProve(
     for (const au of auCount) {
       if (au.count > 1) {
         console.log(
-          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${au.count
+          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
+            au.count
           }`
         );
       }
@@ -776,7 +942,7 @@ export async function transactionBuildAndProve(
   try {
     return await mutex.runExclusive(async () => await tx.prove());
   } catch (error) {
-    console.error("Error during transaction processing:", error);
+    console.error('Error during transaction processing:', error);
     throw error; // Propagate the error to the caller
   }
 }

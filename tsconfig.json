@@ -19,10 +19,7 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
     "useDefineForClassFields": false,
-    "resolveJsonModule": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "resolveJsonModule": true
   },
   "include": ["./src/**/*.ts"]
 }

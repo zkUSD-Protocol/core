@@ -26,15 +26,14 @@ export class Mutex {
    */
   release(): void {
     if (!this.locked) {
-      throw new Error("Cannot release a mutex that is not locked");
+      throw new Error('Cannot release a mutex that is not locked');
     }
 
     // If there are tasks waiting, wake up the next task in the queue
     const next = this.waiting.shift();
     if (next) {
       next();
-    }
-    else {
+    } else {
       this.locked = false;
     }
   }

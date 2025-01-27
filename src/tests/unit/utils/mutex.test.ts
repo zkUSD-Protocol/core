@@ -10,7 +10,10 @@ test('should lock and release without errors', async () => {
 
 test('should throw an error if releasing an unlocked mutex', () => {
   const mutex = new Mutex();
-  assert.throws(() => mutex.release(), /Cannot release a mutex that is not locked/);
+  assert.throws(
+    () => mutex.release(),
+    /Cannot release a mutex that is not locked/
+  );
 });
 
 test('should queue tasks and execute them in order', async () => {
@@ -102,7 +105,7 @@ test('should handle very short lock times correctly with runExclusive', async ()
 
   await Promise.all(tasks);
 
-  // If everything works correctly under short lock times, 
+  // If everything works correctly under short lock times,
   // the counter should match the total number of tasks.
   assert.strictEqual(counter, totalTasks);
 });
@@ -110,8 +113,8 @@ test('should handle very short lock times correctly with runExclusive', async ()
 test('should work as expected during concurrency pressure', async () => {
   const mutex = new Mutex();
 
-  const NUM_WORKERS = 10;      // Number of parallel worker loops
-  const MAX_TIME_MS = 2000;    // Total time to try (5 seconds)
+  const NUM_WORKERS = 10; // Number of parallel worker loops
+  const MAX_TIME_MS = 2000; // Total time to try (5 seconds)
   let concurrencyBugDetected = false;
   let activeCount = 0;
 
@@ -122,7 +125,7 @@ test('should work as expected during concurrency pressure', async () => {
   async function worker() {
     while (true) {
       // Stop if we've triggered the bug or we ran out of time
-      if (concurrencyBugDetected || (Date.now() - start) > MAX_TIME_MS) {
+      if (concurrencyBugDetected || Date.now() - start > MAX_TIME_MS) {
         break;
       }
 
@@ -167,14 +170,11 @@ test('should work as expected during concurrency pressure', async () => {
       if (concurrencyBugDetected) {
         assert.fail('Concurrency bug detected');
       }
-    })()
+    })(),
   ]);
 
   // If we break out of the workers because concurrencyBugDetected == true,
-  // then we've triggered the race condition. 
+  // then we've triggered the race condition.
   // We can confirm by asserting it here. We "expect" the bug to appear:
-  assert.ok(
-    !concurrencyBugDetected,
-    'Concurrency issues detected'
-  );
+  assert.ok(!concurrencyBugDetected, 'Concurrency issues detected');
 });

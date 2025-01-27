@@ -1,4 +1,4 @@
-import { Account, Field, PublicKey, UInt32 } from "o1js";
+import { Account, Field, PublicKey, UInt32 } from 'o1js';
 import {
   GqlData,
   GqlQuery,
@@ -6,8 +6,8 @@ import {
   GqlVars,
   PooledNoncesQuery,
   mkPooledNoncesQuery,
-} from "./graphql.js";
-import { Mutex } from "../utils/mutex.js";
+} from './graphql.js';
+import { Mutex } from '../utils/mutex.js';
 
 /**
  * Represents a lock acquired for a nonce, containing the nonce value and
@@ -29,13 +29,15 @@ export interface INonceManager {
    * @param tokenId - Optional token ID (defaults to the MINA token if not provided).
    * @returns A `NonceLock` containing the locked nonce and an unlock function.
    */
-  getAccountNonce(publicKey: string | PublicKey, tokenId?: Field): Promise<NonceLock>;
+  getAccountNonce(
+    publicKey: string | PublicKey,
+    tokenId?: Field
+  ): Promise<NonceLock>;
 
   /**
    * Disposes of the nonce manager, releasing any resources or locks.
    */
   dispose(): Promise<void>;
-
 }
 
 /**
@@ -45,7 +47,10 @@ export interface NonceManagerConfig {
   /**
    * Fetches the account details from the network. The account may not exist.
    */
-  fetchMinaAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<Account | undefined>;
+  fetchMinaAccount(
+    publicKey: string | PublicKey,
+    tokenId?: Field
+  ): Promise<Account | undefined>;
 
   /**
    * Performs a GraphQL query to fetch pooled transactions.
@@ -60,7 +65,10 @@ export interface NonceManagerConfig {
  * to fetch and get account details, but mocks out the GraphQL behavior.
  */
 export interface LocalNonceManagerConfig {
-  fetchMinaAccount(publicKey: string | PublicKey, tokenId?: Field): Promise<Account | undefined>;
+  fetchMinaAccount(
+    publicKey: string | PublicKey,
+    tokenId?: Field
+  ): Promise<Account | undefined>;
 }
 
 /**
@@ -78,10 +86,10 @@ export class LocalNonceManager implements INonceManager {
       // Mock GraphQL queries to return empty results
       queryGraphQL: async () =>
         ({
-          version: "MOCK",
+          version: 'MOCK',
           pooledZkappCommands: [],
           pooledUserCommands: [],
-        } as any),
+        }) as any,
     };
     this._nonceManager = new NonceManager(mockConfig);
   }
@@ -229,7 +237,7 @@ export class NonceManager implements INonceManager {
       return nonces.reduce((max, num) => (num > max ? num : max), nonces[0]);
     } catch (error) {
       const msg = error instanceof Error ? error.message : error;
-      console.error("Error fetching pooled nonces:", msg);
+      console.error('Error fetching pooled nonces:', msg);
       return undefined; // Fallback in case of errors
     }
   }
@@ -246,7 +254,7 @@ export class NonceManager implements INonceManager {
     tokenId?: Field
   ): Promise<NonceLock> {
     const pubKey = this.toPublicKey(publicKey);
-    const keyString = `${pubKey.toBase58()}-${tokenId?.toString() ?? ""}`;
+    const keyString = `${pubKey.toBase58()}-${tokenId?.toString() ?? ''}`;
 
     // Get the highest nonce (pooled or account-based)
     const pooledNonce = await this.getHighestPooledNonce(pubKey, tokenId);
@@ -261,7 +269,7 @@ export class NonceManager implements INonceManager {
         throw new Error(`Failed to fetch account nonce: ${error}`);
       } finally {
         if (!account) {
-          throw new Error("Account not found");
+          throw new Error('Account not found');
         }
         highNonce = account.nonce;
       }
@@ -313,7 +321,7 @@ export class NonceManager implements INonceManager {
               }
             });
           } catch (err) {
-            console.error("Error unlocking nonce:", err);
+            console.error('Error unlocking nonce:', err);
           }
         },
       };
@@ -345,7 +353,7 @@ export class NonceManager implements INonceManager {
    * @returns The corresponding PublicKey object.
    */
   private toPublicKey(input: string | PublicKey): PublicKey {
-    return typeof input === "string" ? new PublicKey(input) : input;
+    return typeof input === 'string' ? new PublicKey(input) : input;
   }
 
   /**

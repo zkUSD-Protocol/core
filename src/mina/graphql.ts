@@ -1,5 +1,5 @@
-import fetch, { Response } from "node-fetch";
-import { PublicKey } from "o1js";
+import fetch, { Response } from 'node-fetch';
+import { PublicKey } from 'o1js';
 
 /**
  * Represents errors returned by a GraphQL endpoint.
@@ -47,7 +47,9 @@ type GqlData<T> = T extends GqlQuery<infer TData, any> ? TData : never;
 /**
  * Utility to infer the variables type from a GqlQuery.
  */
-type GqlVars<T> = T extends GqlQuery<any, infer TVariables> ? TVariables : never;
+type GqlVars<T> = T extends GqlQuery<any, infer TVariables>
+  ? TVariables
+  : never;
 
 /**
  * A generic GraphQL fetch function that knows how to handle typed queries.
@@ -58,8 +60,8 @@ async function queryGraphQL<T extends GqlQuery<any, any>>(
   url: string
 ): Promise<GqlData<T>> {
   const response: Response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       query: queryCall.query.query,
       operationName: queryCall.query.operationName,
@@ -103,13 +105,14 @@ interface PooledNoncesQuery {
   }>;
 }
 
-
 /**
  * Constructs a typed query definition for fetching pooled nonces.
  *
  * @param publicKey - The public key to use in the query
  */
-function mkPooledNoncesQuery(variables: { pubkey: PublicKey }): GqlQueryCall<PooledNoncesQuery, { pubkey: PublicKey }> {
+function mkPooledNoncesQuery(variables: {
+  pubkey: PublicKey;
+}): GqlQueryCall<PooledNoncesQuery, { pubkey: PublicKey }> {
   const pk = variables.pubkey.toBase58();
   const operationName = `PooledNoncesQuery_${pk}`;
   const query = {
@@ -132,11 +135,10 @@ query ${operationName}($pubkey: PublicKey) {
         tokenId
       }
     }
-  }`
+  }`,
   };
-  return { query, variables }
-};
-
+  return { query, variables };
+}
 
 export {
   GqlData,
@@ -147,5 +149,5 @@ export {
   GqlQueryCall,
   queryGraphQL,
   mkPooledNoncesQuery,
-  PooledNoncesQuery
+  PooledNoncesQuery,
 };

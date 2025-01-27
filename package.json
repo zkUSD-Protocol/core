@@ -26,6 +26,7 @@
     "@babel/preset-env": "^7.16.4",
     "@babel/preset-typescript": "^7.16.0",
     "@types/jest": "^29.5.12",
+    "@types/node-fetch": "^2.6.12",
     "@typescript-eslint/eslint-plugin": "^5.5.0",
     "@typescript-eslint/parser": "^5.5.0",
     "dotenv": "^16.4.5",
@@ -43,9 +44,9 @@
   "dependencies": {
     "@minatokens/token": "^0.5.5",
     "mina-signer": "^3.0.7",
+    "node-fetch": "2.6.1",
     "o1js": "2.2.0",
     "redis": "^4.7.0",
-    "zkcloudworker": "^0.23.11",
-    "node-fetch": "^3.3.2"
+    "zkcloudworker": "^0.23.11"
   }
 }
