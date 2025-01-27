@@ -2,6 +2,7 @@ import {
   AccountUpdate,
   Bool,
   Field,
+  IncludedTransaction,
   Mina,
   PrivateKey,
   PublicKey,
@@ -141,7 +142,7 @@ export class TestHelper {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     }
-  ) {
+  ): Promise<IncludedTransaction> {
     const h = await this.tx(sender, callback, options);
     return await h.awaitIncluded();
   }
