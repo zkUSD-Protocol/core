@@ -657,7 +657,7 @@ export function ZkUsdEngineContract(args: {
     }
 
 
-    @method.returns(Vault)
+    @method.returns(Vault) // TODO does it have to be a methods
     async retrieveVault(vaultAddress: PublicKey) {
       const vaultUpdate = AccountUpdate.create(
         vaultAddress,

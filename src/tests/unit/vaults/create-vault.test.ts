@@ -78,23 +78,7 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('Deployed vault should have clean state and valid owner', async () => {
-    const aliceVault = testHelper.agents.alice.vault;
-
-    let vault: Vault | undefined;
-    const tx = await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        vault = await testHelper.engine.contract.retrieveVault(
-          aliceVault?.publicKey!
-        );
-      },
-      { name: 'retrieveVault' }
-    );
-
-    const hasVaultState = tx.transaction.accountUpdates.some((update) => {
-      return update.hash === vault?.accountUpdate?.hash;
-    });
-    assert(hasVaultState);
+    const vault = await testHelper.retrieveVaultState('alice');
 
     assert(vault?.state.collateralAmount.equals(TestAmounts.ZERO));
     assert(vault?.state.debtAmount.equals(TestAmounts.ZERO));
