@@ -24,10 +24,10 @@ describe('zkUSD Vault Mint Test Suite', () => {
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
-    await testHelper.createAgents(['alice', 'bob']);
+    await testHelper.createAgents('alice', 'bob');
 
     //deploy alice's vault
-    await testHelper.createVaults(['alice']);
+    await testHelper.createVaults('alice');
 
     //Alice deposits 100 Mina
     await transaction(testHelper.agents.alice.keys, async () => {

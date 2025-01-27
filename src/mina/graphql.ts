@@ -70,7 +70,7 @@ async function queryGraphQL<T extends GqlQuery<any, any>>(
   });
 
   const resp_json = await response.json();
-  console.log(resp_json);
+  console.log(`GraphQL queried for ${queryCall.query.operationName}`);
 
   const json = resp_json as GraphQLResponse<GqlData<T>>;
 

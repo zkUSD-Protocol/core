@@ -10,6 +10,7 @@ import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
+import { NonceLock } from './nonce-manager.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -553,8 +554,8 @@ export class TransactionManager {
    */
   public serializeTransaction(tx: Mina.Transaction<false, false>): string {
     const length = tx.transaction.accountUpdates.length;
-    let i;
-    let blindingValues = [];
+    let i: number;
+    let blindingValues: string[] = [];
     for (i = 0; i < length; i++) {
       const la = tx.transaction.accountUpdates[i].lazyAuthorization;
       if (
@@ -597,7 +598,8 @@ export class TransactionManager {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
+    },
+    call_depth = 0
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
 
@@ -609,7 +611,7 @@ export class TransactionManager {
       callback,
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
-      callSite: getCallSite(2),
+      callSite: getCallSite(2+call_depth),
     };
 
     // dependencies must be met
@@ -710,7 +712,7 @@ export class TransactionManager {
     const mkSigningPromise = function (fee: UInt64) {
       return (ptx: Transaction<true, false>) =>
         new TrackedPromise(async () => {
-          let nonceLock;
+          let nonceLock: NonceLock | undefined;
           try {
             try {
               nonceLock = await mgr.mina.nonceManager.getAccountNonce(
@@ -750,7 +752,7 @@ export class TransactionManager {
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
-        let nonceLock;
+        let nonceLock: NonceLock | undefined;
         try {
           const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
           nonceLock = lock;

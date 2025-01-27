@@ -11,10 +11,10 @@ describe('zkUSD Vault Deposit Test Suite', () => {
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
-    await testHelper.createAgents(['alice', 'bob']);
+    await testHelper.createAgents('alice', 'bob');
 
     //deploy alice's vault
-    await testHelper.createVaults(['alice']);
+    await testHelper.createVaults('alice');
   });
 
   it('should allow deposits', async () => {

@@ -12,10 +12,10 @@ describe('zkUSD Vault Burn Test Suite', () => {
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
-    await testHelper.createAgents(['alice', 'bob', 'charlie']);
+    await testHelper.createAgents('alice', 'bob', 'charlie');
 
     //deploy alice's vault
-    await testHelper.createVaults(['alice']);
+    await testHelper.createVaults('alice');
 
     const price: MinaPriceInput = await testHelper.getMinaPriceInput(
       TestAmounts.PRICE_1_USD
