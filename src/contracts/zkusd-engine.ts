@@ -24,15 +24,8 @@ import {
   Provable,
   Mina,
 } from 'o1js';
-import { ZkUsdVault } from './zkusd-vault.js';
 
-import {
-  OracleWhitelist,
-  ProtocolDataPacked,
-  ProtocolData,
-  VaultState,
-  MinaPrice,
-} from '../types.js';
+import { Vault, VaultState } from '../types/vault.js';
 import {
   MinaPriceUpdateEvent,
   FallbackMinaPriceUpdateEvent,
@@ -57,6 +50,12 @@ import {
   verifyMinaPriceInput as verifyMinaPriceInputProof,
 } from '../proofs/oracle-price-aggregation/verify.js';
 import { PriceAggregationProofPublicOutput } from '../proofs/oracle-price-aggregation/common.js';
+import {
+  ProtocolData,
+  ProtocolDataPacked,
+  ZkUsdEngineErrors,
+} from '../types/engine.js';
+import { MinaPrice, OracleWhitelist } from '../types/oracle.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -66,51 +65,32 @@ import { PriceAggregationProofPublicOutput } from '../proofs/oracle-price-aggreg
  *          and administrative functionality such as the oracle whitelist.
  */
 
-// Errors
-export const ZkUsdEngineErrors = {
-  UPDATES_BLOCKED:
-    'Updates to the engine accounts can only be made by the engine',
-  VAULT_EXISTS: 'Vault already exists',
-  SENDER_NOT_WHITELISTED: 'Sender not in the whitelist',
-  INVALID_WHITELIST: 'Invalid whitelist',
-  PENDING_ACTION_EXISTS: 'Address already has a pending action',
-  EMERGENCY_HALT:
-    'Oracle is in emergency mode - all protocol actions are suspended',
-  AMOUNT_ZERO: 'Amount must be greater than zero',
-  INVALID_FEE:
-    'Protocol fee is a percentage and must be less than or equal to 100',
-  INSUFFICIENT_BALANCE: 'Insufficient balance for withdrawal',
-};
-
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
   validPriceBlockCount: UInt32;
   emergencyStop: Bool;
-  vaultVerificationKeyHash: Field;
 }
 
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
-  vaultVerificationKey: VerificationKey;
 }) {
-  const {
-    zkUsdTokenAddress,
-    minaPriceInputZkProgramVkHash,
-    vaultVerificationKey,
-  } = args;
+  const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     @state(Field) oracleWhitelistHash = State<Field>(); // Merkle root of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>();
-    @state(Field) vaultVerificationKeyHash = State<Field>(); // Hash of the vault verification key
     @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
 
-    static zkUsdTokenAddress = zkUsdTokenAddress;
+    static ZKUSD_TOKEN_ADDRESS = zkUsdTokenAddress; // The address of the zkUSD token contract
+    static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3); // The minimum number of valid oracle submissions required to update the price
+    static COLLATERAL_RATIO = Field.from(150); // The collateral ratio is the minimum ratio of collateral to debt that the vault must maintain
+    static COLLATERAL_RATIO_PRECISION = Field.from(100); // The precision of the collateral ratio
+    static PROTOCOL_FEE_PRECISION = UInt64.from(100); // The precision of the protocol fee
+    static UNIT_PRECISION = Field.from(1e9); // The precision of the unit - Mina has 9 decimal places
+    static MIN_HEALTH_FACTOR = UInt64.from(100); // The minimum health factor that the vault must maintain when adjusted
+    static LIQUIDATION_BONUS_RATIO = Field.from(110); // The value ratio of the liquidation
 
     static FungibleToken = FungibleTokenContract(ZkUsdEngine);
-
-    static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3);
-    static vaultVerificationKey = vaultVerificationKey;
 
     readonly events = {
       MinaPriceUpdate: MinaPriceUpdateEvent,
@@ -142,7 +122,6 @@ export function ZkUsdEngineContract(args: {
         ...Permissions.default(),
         setVerificationKey:
           Permissions.VerificationKey.impossibleDuringCurrentVersion(),
-
         setPermissions: Permissions.impossible(),
         editState: Permissions.proof(),
         send: Permissions.proof(),
@@ -157,8 +136,6 @@ export function ZkUsdEngineContract(args: {
           emergencyStop: args.emergencyStop,
         }).pack()
       );
-
-      this.vaultVerificationKeyHash.set(args.vaultVerificationKeyHash);
     }
 
     //Blocks the updating of state of the token accounts
@@ -209,8 +186,13 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPrice: MinaPrice
     ): Promise<UInt64> {
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+
       //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vault = Vault.get(vaultUpdate);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -287,14 +269,18 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getAndRequireSignature();
 
       //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+      const vault = Vault.get(vaultUpdate);
 
       //Update the owner
-      await vault.updateOwner(newOwner, owner);
+      const newVaultState = vault.updateOwner(newOwner, owner);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.zkUsdTokenAddress
+        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
       );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
@@ -321,88 +307,24 @@ export function ZkUsdEngineContract(args: {
      * @param   vaultAddress The address of the vault to create
      */
     @method async createVault(vaultAddress: PublicKey) {
-      //Preconditions
-      const vaultVerificationKeyHash =
-        this.vaultVerificationKeyHash.getAndRequireEquals();
-
       //The sender is the owner of the vault
       const owner = this.sender.getAndRequireSignature();
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.zkUsdTokenAddress
+        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
       );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
       await zkUSD.getBalanceOf(owner);
 
       //Create the new vault on the token account of the engine
-      const vault = AccountUpdate.createSigned(
+      const newVaultUpdate = AccountUpdate.createSigned(
         vaultAddress,
         this.deriveTokenId()
       );
 
-      //Prevents memo and fee changes
-      vault.body.useFullCommitment = Bool(true);
-
-      //Ensures that the vault does not already exist
-      vault.account.isNew
-        .getAndRequireEquals()
-        .assertTrue(ZkUsdEngineErrors.VAULT_EXISTS);
-
-      //Ensure that the verification key is the correct one for the vault
-      ZkUsdEngine.vaultVerificationKey.hash.assertEquals(
-        vaultVerificationKeyHash
-      );
-
-      //Set the verification key for the vault
-      vault.body.update.verificationKey = {
-        isSome: Bool(true),
-        value: ZkUsdEngine.vaultVerificationKey,
-      };
-
-      //Set the permissions for the vault
-      vault.body.update.permissions = {
-        isSome: Bool(true),
-        value: {
-          ...Permissions.default(),
-          send: Permissions.proof(),
-          // IMPORTANT: We need to think about upgradability here
-          setVerificationKey:
-            Permissions.VerificationKey.impossibleDuringCurrentVersion(),
-          setPermissions: Permissions.impossible(),
-          access: Permissions.proof(), //Should this be none or proof?
-          setZkappUri: Permissions.none(),
-          setTokenSymbol: Permissions.none(),
-        },
-      };
-
-      //Set the initial state for the vault
-      const initialVaultState = new VaultState({
-        collateralAmount: UInt64.zero,
-        debtAmount: UInt64.zero,
-        owner: owner,
-      });
-
-      // Convert vault state to fields
-      const vaultStateFields = VaultState.toFields(initialVaultState);
-
-      // Create an array of all 8 app state updates, setting unused fields to Field(0)
-      const appStateUpdates = Array(8).fill({
-        isSome: Bool(true),
-        value: Field(0),
-      });
-
-      // Update only the fields we need
-      vaultStateFields.forEach((field, index) => {
-        appStateUpdates[index] = {
-          isSome: Bool(true),
-          value: field,
-        };
-      });
-
-      //Set the app state for the vault
-      vault.body.update.appState = appStateUpdates;
+      Vault.initialize(newVaultUpdate, owner);
 
       //Emit the NewVault event
       this.emitEvent(
@@ -422,7 +344,13 @@ export function ZkUsdEngineContract(args: {
      */
     @method async depositCollateral(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      // const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+
+      const vault = Vault.get(vaultUpdate);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -439,10 +367,7 @@ export function ZkUsdEngineContract(args: {
       const owner = collateralDeposit.publicKey;
 
       //Deposit the collateral into the vault
-      const { collateralAmount, debtAmount } = await vault.depositCollateral(
-        amount,
-        owner
-      );
+      const newVaultState = vault.depositCollateral(amount, owner);
 
       //Update the total deposited collateral
       const totalDepositedCollateral = AccountUpdate.create(
@@ -457,8 +382,8 @@ export function ZkUsdEngineContract(args: {
         new DepositCollateralEvent({
           vaultAddress: vaultAddress,
           amountDeposited: amount,
-          vaultCollateralAmount: collateralAmount,
-          vaultDebtAmount: debtAmount,
+          vaultCollateralAmount: newVaultState.collateralAmount,
+          vaultDebtAmount: newVaultState.debtAmount,
         })
       );
     }
@@ -477,7 +402,12 @@ export function ZkUsdEngineContract(args: {
       await this.ensureProtocolNotStopped();
 
       //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+
+      const vault = Vault.get(vaultUpdate);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -486,7 +416,7 @@ export function ZkUsdEngineContract(args: {
       const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
 
       //Redeem the collateral
-      const { collateralAmount, debtAmount } = await vault.redeemCollateral(
+      const { collateralAmount, debtAmount } = vault.redeemCollateral(
         amount,
         owner,
         minaPrice
@@ -532,12 +462,16 @@ export function ZkUsdEngineContract(args: {
       //Ensure the protocol is not stopped
       await this.ensureProtocolNotStopped();
 
-      //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+
+      const vault = Vault.get(vaultUpdate);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.zkUsdTokenAddress
+        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
       );
 
       //Get the owner of the zkUSD
@@ -547,7 +481,7 @@ export function ZkUsdEngineContract(args: {
       const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
 
       //Manage the debt in the vault
-      const { collateralAmount, debtAmount } = await vault.mintZkUsd(
+      const { collateralAmount, debtAmount } = vault.mintZkUsd(
         amount,
         owner,
         minaPrice
@@ -579,7 +513,12 @@ export function ZkUsdEngineContract(args: {
      */
     @method async burnZkUsd(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+
+      const vault = Vault.get(vaultUpdate);
 
       //Get the owner of the zkUSD
       // we have sender signature from zkUSD.burn
@@ -588,14 +527,11 @@ export function ZkUsdEngineContract(args: {
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.zkUsdTokenAddress
+        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
       );
 
       //Manage the debt in the vault
-      const { collateralAmount, debtAmount } = await vault.burnZkUsd(
-        amount,
-        owner
-      );
+      const { collateralAmount, debtAmount } = vault.burnZkUsd(amount, owner);
 
       //Burn the zkUSD from the sender
       await zkUSD.burn(owner, amount);
@@ -626,11 +562,15 @@ export function ZkUsdEngineContract(args: {
       await this.ensureProtocolNotStopped();
 
       // //Get the vault
-      const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+      const vault = Vault.get(vaultUpdate);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.zkUsdTokenAddress
+        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
       );
 
       // Get the liquidator
@@ -642,7 +582,7 @@ export function ZkUsdEngineContract(args: {
       const { minaPrice } = this.verifyMinaPriceInput(minaPriceInput);
 
       const { oldVaultState, liquidatorCollateral, vaultOwnerCollateral } =
-        await vault.liquidate(minaPrice);
+        vault.liquidate(minaPrice);
 
       oldVaultState.collateralAmount.assertEquals(
         liquidatorCollateral.add(vaultOwnerCollateral)

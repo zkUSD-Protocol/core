@@ -10,14 +10,9 @@ import {
   UInt64,
   VerificationKey,
 } from 'o1js';
-import { ZkUsdVault } from '../contracts/zkusd-vault.js';
+import { Vault } from '../types/vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import {
-  computeOracleWhitelistHash,
-  ContractInstance,
-  KeyPair,
-  OracleWhitelist,
-} from '../types.js';
+
 import { FungibleTokenContract } from '@minatokens/token';
 import {
   IMinaNetworkInterface,
@@ -37,6 +32,8 @@ import {
   TransactionManager,
   TransactionOptions,
 } from '../mina/transaction-manager.js';
+import { ContractInstance, KeyPair } from '../types/utility.js';
+import { OracleWhitelist } from '../types/oracle.js';
 
 const client = new Client({
   network: 'testnet',
@@ -51,7 +48,10 @@ export class TestAmounts {
   static COLLATERAL_200_MINA = UInt64.from(200e9); // 200 Mina
   static COLLATERAL_105_MINA = UInt64.from(105e9); // 105 Mina
   static COLLATERAL_100_MINA = UInt64.from(100e9); // 100 Mina
+  static COLLATERAL_99_MINA = UInt64.from(99e9); // 99 Mina
+  static COLLATERAL_80_MINA = UInt64.from(80e9); // 80 Mina
   static COLLATERAL_50_MINA = UInt64.from(50e9); // 50 Mina
+  static COLLATERAL_20_MINA = UInt64.from(20e9); // 20 Mina
   static COLLATERAL_2_MINA = UInt64.from(2e9); // 2 Mina
   static COLLATERAL_1_MINA = UInt64.from(1e9); // 1 Mina
 
@@ -84,7 +84,6 @@ export class TestAmounts {
 export interface Agent {
   keys: KeyPair;
   vault?: {
-    contract: ZkUsdVault;
     publicKey: PublicKey;
     privateKey: PrivateKey;
   };
@@ -114,7 +113,6 @@ export class TestHelper {
   public get txMgr() {
     return this._txMgr;
   }
-
 
   get networkKeys(): NetworkKeyPairs {
     return getNetworkKeys(this.mina.network.chainId);
@@ -164,15 +162,11 @@ export class TestHelper {
   }
 
   async deployTokenContracts() {
-    this._deploymentService = await DeploymentService.create(
-      this.txMgr,
-    );
+    this._deploymentService = await DeploymentService.create(this.txMgr);
     const deployedContracts = await this._deploymentService.deploy();
 
     if (this.mina.network.chainId === 'local') {
-      this.txMgr.mina.local?.setBlockchainLength(
-        UInt32.from(1000)
-      );
+      this.txMgr.mina.local?.setBlockchainLength(UInt32.from(1000));
     }
 
     this.token = deployedContracts.token;
@@ -227,10 +221,6 @@ export class TestHelper {
       const vaultKeyPair = this.createVaultKeyPair();
 
       this.agents[name].vault = {
-        contract: new ZkUsdVault(
-          vaultKeyPair.publicKey,
-          this.engine.contract.deriveTokenId()
-        ),
         publicKey: vaultKeyPair.publicKey,
         privateKey: vaultKeyPair.privateKey,
       };
@@ -281,13 +271,7 @@ export class TestHelper {
     );
   }
 
-  async getPriceSubmissions({
-    oraclePrice,
-    fallbackPrice,
-  }: {
-    oraclePrice: UInt64;
-    fallbackPrice: UInt64;
-  }) {
+  async getPriceSubmissions({ oraclePrice }: { oraclePrice: UInt64 }) {
     const blockHeight = Mina.getNetworkState().blockchainLength;
 
     const oraclePriceSubmissions: OraclePriceSubmissions = {
@@ -324,10 +308,9 @@ export class TestHelper {
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,
-      fallbackPrice: price,
     });
 
-    const oracleWhitelistHash = computeOracleWhitelistHash(this.whitelist);
+    const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
 
     const programOutput = await AggregateOraclePrices.compute(
       {

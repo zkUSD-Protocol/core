@@ -1,5 +1,4 @@
 import { ZkUsdEngineContract } from './contracts/zkusd-engine.js';
-import { ZkUsdVault } from './contracts/zkusd-vault.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { Field, initializeBindings, VerificationKey } from 'o1js';
 import { Cloud, zkCloudWorker, initBlockchain } from 'zkcloudworker';
@@ -13,13 +12,13 @@ import {
   PriceSubmission,
   AggregateOraclePricesProof,
 } from './proofs/oracle-price-aggregation/index.js';
-import {
-  OracleWhitelist,
-  computeOracleWhitelistHash,
-  VaultTransactionType,
-  VaultTransactionArgs,
-} from './types.js';
+
 import { getNetworkKeys } from './config/keys.js';
+import {
+  VaultTransactionArgs,
+  VaultTransactionType,
+} from './types/cloud-worker.js';
+import { OracleWhitelist } from './types/oracle.js';
 
 export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
   console.log(`starting worker example version on chain ${cloud.chain}`);
@@ -42,7 +41,6 @@ const oracleAggregationVk: VerificationKey = {
 export {
   ZkUsdEngineContract,
   FungibleTokenContract,
-  ZkUsdVault,
   vaultVk,
   oracleAggregationVk,
   validPriceBlockCount,
@@ -51,7 +49,6 @@ export {
   OraclePriceSubmissions,
   PriceSubmission,
   OracleWhitelist,
-  computeOracleWhitelistHash,
   MinaPriceInput,
   getNetworkKeys,
   VaultTransactionType,

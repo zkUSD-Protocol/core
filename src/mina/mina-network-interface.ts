@@ -8,7 +8,7 @@ import {
   Account,
 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
-import { KeyPair } from './../types.js';
+import { KeyPair } from './../types/utility.js';
 import {
   INonceManager,
   LocalNonceManager,

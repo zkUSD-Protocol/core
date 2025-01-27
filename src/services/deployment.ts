@@ -1,17 +1,8 @@
-import {
-  ZkUsdEngineContract,
-} from '../contracts/zkusd-engine.js';
-import { ZkUsdVault } from '../contracts/zkusd-vault.js';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import {
-  AccountUpdate,
-  Bool,
-  UInt32,
-  UInt8,
-  VerificationKey,
-} from 'o1js';
-import { ContractInstance, KeyPair } from '../types.js';
+import { AccountUpdate, Bool, UInt32, UInt8, VerificationKey } from 'o1js';
+import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { updateVerificationKeys } from '../utils/update-verification-keys.js';
 import { validPriceBlockCount } from '../index.js';
@@ -69,7 +60,6 @@ export class DeploymentService {
    */
   private updateVerificationKeys() {
     updateVerificationKeys({
-      vaultVk: ZkUsdVault._verificationKey!,
       oracleAggregationVk: this._oracleAggregationVk,
     });
   }
@@ -91,14 +81,11 @@ export class DeploymentService {
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
-    await ZkUsdVault.compile();
-
     this.updateVerificationKeys();
 
     const ZkUsdEngine = ZkUsdEngineContract({
       zkUsdTokenAddress: this._networkKeys.token.publicKey,
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
-      vaultVerificationKey: ZkUsdVault._verificationKey!,
     });
 
     await ZkUsdEngine.compile();
@@ -179,7 +166,6 @@ export class DeploymentService {
               validPriceBlockCount[this._txMgr.mina.network.chainId]
             ),
             emergencyStop: Bool(false),
-            vaultVerificationKeyHash: ZkUsdVault._verificationKey!.hash,
           });
         },
         {

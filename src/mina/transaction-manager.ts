@@ -1,5 +1,5 @@
 import { Field, Mina, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
-import { KeyPair } from '../types.js';
+import { KeyPair } from '../types/utility.js';
 import {
   IncludedTransaction,
   PendingTransaction,

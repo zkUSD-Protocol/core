@@ -9,11 +9,7 @@ import {
   ZkProgram,
 } from 'o1js';
 
-import {
-  MinaPrice,
-  OracleWhitelist,
-  computeOracleWhitelistHash,
-} from '../../types.js';
+import { MinaPrice, OracleWhitelist } from '../../types/oracle.js';
 import {
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput,
@@ -68,7 +64,7 @@ const AggregateOraclePrices = ZkProgram({
         privateInput: PriceAggregationProofPrivateInput
       ) {
         publicInput.oracleWhitelistHash.assertEquals(
-          computeOracleWhitelistHash(privateInput.oracleWhitelist),
+          OracleWhitelist.hash(privateInput.oracleWhitelist),
           'Invalid oracle whitelist hash'
         );
 

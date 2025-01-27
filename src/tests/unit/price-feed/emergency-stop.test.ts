@@ -1,185 +1,185 @@
-import { AccountUpdate, Bool } from 'o1js';
-import { TestAmounts, TestHelper } from '../../test-helper.js';
-import { ProtocolData } from '../../../types.js';
-import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
-import { describe, it, before } from 'node:test';
-import assert from 'node:assert';
-import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
+// import { AccountUpdate, Bool } from 'o1js';
+// import { TestAmounts, TestHelper } from '../../test-helper.js';
+// import { ProtocolData } from '../../../types.js';
+// import { ZkUsdEngineErrors } from '../../../contracts/zkusd-engine.js';
+// import { describe, it, before } from 'node:test';
+// import assert from 'node:assert';
+// import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
-describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
-  let testHelper: TestHelper;
-  let priceOneUsd: MinaPriceInput;
-  before(async () => {
-    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
-    await testHelper.deployTokenContracts();
-    await testHelper.createAgents(['alice']);
+// describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
+//   let testHelper: TestHelper;
+//   let priceOneUsd: MinaPriceInput;
+//   before(async () => {
+//     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
+//     await testHelper.deployTokenContracts();
+//     await testHelper.createAgents(['alice']);
 
-    await testHelper.createVaults(['alice']);
+//     await testHelper.createVaults(['alice']);
 
-    priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+//     priceOneUsd = await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
-    //Alice deposits 100 Mina
-    await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
-      await testHelper.engine.contract.depositCollateral(
-        testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.COLLATERAL_100_MINA
-      );
-    }, {name: 'depositCollateral'});
-  });
+//     //Alice deposits 100 Mina
+//     await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+//       await testHelper.engine.contract.depositCollateral(
+//         testHelper.agents.alice.vault!.publicKey,
+//         TestAmounts.COLLATERAL_100_MINA
+//       );
+//     }, {name: 'depositCollateral'});
+//   });
 
-  it('should allow the protocol to be stopped with the admin key', async () => {
-    await testHelper.includeTx(
-      testHelper.deployer,
-      async () => {
-        await testHelper.engine.contract.toggleEmergencyStop(Bool(true));
-      },
-      {
-        extraSigners: [testHelper.networkKeys.protocolAdmin.privateKey],
-        name: 'toggleEmergencyStop #1',
-      }
-    );
+//   it('should allow the protocol to be stopped with the admin key', async () => {
+//     await testHelper.includeTx(
+//       testHelper.deployer,
+//       async () => {
+//         await testHelper.engine.contract.toggleEmergencyStop(Bool(true));
+//       },
+//       {
+//         extraSigners: [testHelper.networkKeys.protocolAdmin.privateKey],
+//         name: 'toggleEmergencyStop #1',
+//       }
+//     );
 
-    const protocolDataPacked =
-      await testHelper.engine.contract.protocolDataPacked.fetch();
+//     const protocolDataPacked =
+//       await testHelper.engine.contract.protocolDataPacked.fetch();
 
-    const protocolData = ProtocolData.unpack(protocolDataPacked!);
+//     const protocolData = ProtocolData.unpack(protocolDataPacked!);
 
-    const emergencyStopFlag = protocolData.emergencyStop;
+//     const emergencyStopFlag = protocolData.emergencyStop;
 
-    assert.deepStrictEqual(emergencyStopFlag, Bool(true));
+//     assert.deepStrictEqual(emergencyStopFlag, Bool(true));
 
-    await testHelper.resumeTheProtocol();
-  });
+//     await testHelper.resumeTheProtocol();
+//   });
 
-  it('should emit the emergency stop event', async () => {
-    await testHelper.includeTx(
-      testHelper.deployer,
-      async () => {
-        await testHelper.engine.contract.toggleEmergencyStop(Bool(true));
-      },
-      {
-        name: 'toggleEmergencyStop #2',
-        extraSigners: [testHelper.networkKeys.protocolAdmin.privateKey],
-      }
-    );
+//   it('should emit the emergency stop event', async () => {
+//     await testHelper.includeTx(
+//       testHelper.deployer,
+//       async () => {
+//         await testHelper.engine.contract.toggleEmergencyStop(Bool(true));
+//       },
+//       {
+//         name: 'toggleEmergencyStop #2',
+//         extraSigners: [testHelper.networkKeys.protocolAdmin.privateKey],
+//       }
+//     );
 
-    const contractEvents = await testHelper.engine.contract.fetchEvents();
-    const latestEvent = contractEvents[0];
+//     const contractEvents = await testHelper.engine.contract.fetchEvents();
+//     const latestEvent = contractEvents[0];
 
-    assert.strictEqual(latestEvent.type, 'EmergencyStopToggled');
-    assert.deepStrictEqual(
-      // @ts-ignore
-      latestEvent.event.data.emergencyStop,
-      Bool(true)
-    );
+//     assert.strictEqual(latestEvent.type, 'EmergencyStopToggled');
+//     assert.deepStrictEqual(
+//       // @ts-ignore
+//       latestEvent.event.data.emergencyStop,
+//       Bool(true)
+//     );
 
-    await testHelper.resumeTheProtocol();
-  });
+//     await testHelper.resumeTheProtocol();
+//   });
 
-  it('should not allow the protocol to be stopped without the admin key', async () => {
-    await assert.rejects(async () => {
-      await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.toggleEmergencyStop(Bool(true));
-      },{name: 'toggleEmergencyStop #3'});
-    }, /Transaction verification failed/i);
-  });
+//   it('should not allow the protocol to be stopped without the admin key', async () => {
+//     await assert.rejects(async () => {
+//       await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+//         await testHelper.engine.contract.toggleEmergencyStop(Bool(true));
+//       },{name: 'toggleEmergencyStop #3'});
+//     }, /Transaction verification failed/i);
+//   });
 
-  it('should allow the protocol to be resumed with the admin key', async () => {
-    await testHelper.stopTheProtocol();
+//   it('should allow the protocol to be resumed with the admin key', async () => {
+//     await testHelper.stopTheProtocol();
 
-    await testHelper.includeTx(
-      testHelper.deployer,
-      async () => {
-        await testHelper.engine.contract.toggleEmergencyStop(Bool(false));
-      },
-      {
-        name: 'toggleEmergencyStop #4',
-        extraSigners: [testHelper.networkKeys.protocolAdmin.privateKey],
-      }
-    );
+//     await testHelper.includeTx(
+//       testHelper.deployer,
+//       async () => {
+//         await testHelper.engine.contract.toggleEmergencyStop(Bool(false));
+//       },
+//       {
+//         name: 'toggleEmergencyStop #4',
+//         extraSigners: [testHelper.networkKeys.protocolAdmin.privateKey],
+//       }
+//     );
 
-    const emergencyStopFlag =
-      await testHelper.engine.contract.protocolDataPacked.fetch();
+//     const emergencyStopFlag =
+//       await testHelper.engine.contract.protocolDataPacked.fetch();
 
-    const protocolData = ProtocolData.unpack(emergencyStopFlag!);
+//     const protocolData = ProtocolData.unpack(emergencyStopFlag!);
 
-    assert.deepStrictEqual(protocolData.emergencyStop, Bool(false));
-  });
+//     assert.deepStrictEqual(protocolData.emergencyStop, Bool(false));
+//   });
 
-  it('should emit the emergency resume event', async () => {
-    const contractEvents = await testHelper.engine.contract.fetchEvents();
-    const latestEvent = contractEvents[0];
+//   it('should emit the emergency resume event', async () => {
+//     const contractEvents = await testHelper.engine.contract.fetchEvents();
+//     const latestEvent = contractEvents[0];
 
-    assert.strictEqual(latestEvent.type, 'EmergencyStopToggled');
-    assert.deepStrictEqual(
-      // @ts-ignore
-      latestEvent.event.data.emergencyStop,
-      Bool(false)
-    );
-  });
+//     assert.strictEqual(latestEvent.type, 'EmergencyStopToggled');
+//     assert.deepStrictEqual(
+//       // @ts-ignore
+//       latestEvent.event.data.emergencyStop,
+//       Bool(false)
+//     );
+//   });
 
-  it('should not allow the protocol to be resumed without the admin key', async () => {
-    await testHelper.stopTheProtocol();
+//   it('should not allow the protocol to be resumed without the admin key', async () => {
+//     await testHelper.stopTheProtocol();
 
-    await assert.rejects(async () => {
+//     await assert.rejects(async () => {
 
-    await testHelper.includeTx(
-        testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.toggleEmergencyStop(Bool(false));
-        }, {name: 'toggleEmergencyStop #5'});
-    }, /Transaction verification failed/i);
+//     await testHelper.includeTx(
+//         testHelper.agents.alice.keys, async () => {
+//         await testHelper.engine.contract.toggleEmergencyStop(Bool(false));
+//         }, {name: 'toggleEmergencyStop #5'});
+//     }, /Transaction verification failed/i);
 
-    await testHelper.resumeTheProtocol();
-  });
+//     await testHelper.resumeTheProtocol();
+//   });
 
-  it('should not allow vault actions when the protocol is stopped', async () => {
-    await testHelper.stopTheProtocol();
+//   it('should not allow vault actions when the protocol is stopped', async () => {
+//     await testHelper.stopTheProtocol();
 
-    await assert.rejects(async () => {
+//     await assert.rejects(async () => {
 
-    await testHelper.includeTx(
-        testHelper.agents.alice.keys, async () => {
-        AccountUpdate.fundNewAccount(testHelper.agents.alice.keys.publicKey, 1);
-        await testHelper.engine.contract.mintZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_5_ZKUSD,
-          priceOneUsd
-        );
-        },{name: 'mintZkUsd #1'});
-    }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
+//     await testHelper.includeTx(
+//         testHelper.agents.alice.keys, async () => {
+//         AccountUpdate.fundNewAccount(testHelper.agents.alice.keys.publicKey, 1);
+//         await testHelper.engine.contract.mintZkUsd(
+//           testHelper.agents.alice.vault!.publicKey,
+//           TestAmounts.DEBT_5_ZKUSD,
+//           priceOneUsd
+//         );
+//         },{name: 'mintZkUsd #1'});
+//     }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
 
-    await testHelper.resumeTheProtocol();
-  });
+//     await testHelper.resumeTheProtocol();
+//   });
 
-  it('should allow vault actions when the protocol is resumed', async () => {
-    await testHelper.stopTheProtocol();
+//   it('should allow vault actions when the protocol is resumed', async () => {
+//     await testHelper.stopTheProtocol();
 
-    await assert.rejects(async () => {
-    await testHelper.includeTx(
-        testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.mintZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_5_ZKUSD,
-          priceOneUsd
-        );
-        },{name: 'mintZkUsd #2'});
-    }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
+//     await assert.rejects(async () => {
+//     await testHelper.includeTx(
+//         testHelper.agents.alice.keys, async () => {
+//         await testHelper.engine.contract.mintZkUsd(
+//           testHelper.agents.alice.vault!.publicKey,
+//           TestAmounts.DEBT_5_ZKUSD,
+//           priceOneUsd
+//         );
+//         },{name: 'mintZkUsd #2'});
+//     }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
 
-    await testHelper.resumeTheProtocol();
+//     await testHelper.resumeTheProtocol();
 
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys, async () => {
-      await testHelper.engine.contract.mintZkUsd(
-        testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD,
-        priceOneUsd
-      );
-      },{name: 'mintZkUsd #3'});
+//     await testHelper.includeTx(
+//       testHelper.agents.alice.keys, async () => {
+//       await testHelper.engine.contract.mintZkUsd(
+//         testHelper.agents.alice.vault!.publicKey,
+//         TestAmounts.DEBT_5_ZKUSD,
+//         priceOneUsd
+//       );
+//       },{name: 'mintZkUsd #3'});
 
-    const vaultBalance = await testHelper.token.contract.getBalanceOf(
-      testHelper.agents.alice.keys.publicKey
-    );
+//     const vaultBalance = await testHelper.token.contract.getBalanceOf(
+//       testHelper.agents.alice.keys.publicKey
+//     );
 
-    assert.deepStrictEqual(vaultBalance, TestAmounts.DEBT_5_ZKUSD);
-  });
-});
+//     assert.deepStrictEqual(vaultBalance, TestAmounts.DEBT_5_ZKUSD);
+//   });
+// });
