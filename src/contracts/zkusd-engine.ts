@@ -21,8 +21,6 @@ import {
   AccountUpdateForest,
   Int64,
   UInt32,
-  Provable,
-  Mina,
 } from 'o1js';
 
 import { Vault, VaultState } from '../types/vault.js';
@@ -656,7 +654,6 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
-
     @method.returns(Vault) // TODO does it have to be a methods
     async retrieveVault(vaultAddress: PublicKey) {
       const vaultUpdate = AccountUpdate.create(
@@ -665,7 +662,6 @@ export function ZkUsdEngineContract(args: {
       );
       return Vault.get(vaultUpdate);
     }
-
 
     /**
      * @notice  Updates the oracle whitelist merkle root

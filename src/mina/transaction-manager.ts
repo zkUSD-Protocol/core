@@ -658,7 +658,9 @@ export class TransactionManager {
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
       try {
-        console.log(`${tx.getId()} - Proving transaction ...`);
+        if (options?.printTx) {
+          console.log(`${tx.getId()} - Proving transaction ...`);
+        }
         return await transactionBuildAndProve(
           mgr._provingMutex,
           mgr.mina,
@@ -724,11 +726,13 @@ export class TransactionManager {
             }
             ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
             ptx.transaction.feePayer.body.fee = fee;
-            console.log(
-              `${tx.getId()} - Signing transaction: {nonce: ${
-                nonceLock.nonce
-              }, fee: ${fee}} ...`
-            );
+            if (options?.printTx) {
+              console.log(
+                `${tx.getId()} - Signing transaction: {nonce: ${
+                  nonceLock.nonce
+                }, fee: ${fee}} ...`
+              );
+            }
             // TODO use signing service instead, do not pass private keys around
             const signers = options?.extraSigners
               ? [sender.privateKey, ...options.extraSigners]
@@ -755,7 +759,9 @@ export class TransactionManager {
         try {
           const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
           nonceLock = lock;
-          console.log(`${tx.getId()} - Sending transaction ...`);
+          if (options?.printTx) {
+            console.log(`${tx.getId()} - Sending transaction ...`);
+          }
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();
@@ -791,7 +797,9 @@ export class TransactionManager {
       try {
         const sentTx = await sendingPromise;
         if (statusIsRejectedTransaction(sentTx)) return sentTx;
-        console.log(`${tx.getId()} - Awaiting inclusion ...`);
+        if (options?.printTx) {
+          console.log(`${tx.getId()} - Awaiting inclusion ...`);
+        }
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === 'included') {
           tx.status = 'Included';

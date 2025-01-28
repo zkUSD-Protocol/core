@@ -42,7 +42,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       th.agents.alice.keys.publicKey
     );
 
-    const debtAmount = (await th.retrieveVaultState('alice')).state.debtAmount;
+    const debtAmount = (await th.retrieveVault('alice')).state.debtAmount;
 
     assert.deepStrictEqual(debtAmount, TestAmounts.DEBT_5_ZKUSD);
     assert.deepStrictEqual(aliceBalance, TestAmounts.DEBT_5_ZKUSD);
@@ -76,20 +76,28 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
 
   it('should track total debt correctly across multiple mint operations', async () => {
-    const initialDebt = (await th.retrieveVaultState('alice')).state.debtAmount;
+    const initialDebt = (await th.retrieveVault('alice')).state.debtAmount;
 
     // Perform multiple small mints
     for (let i = 0; i < 3; i++) {
-      await th.includeTx(th.agents.alice.keys, async () => {
-        await th.engine.contract.mintZkUsd(
-          th.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_1_ZKUSD,
-          oneUsdPrice
-        );
-      });
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.mintZkUsd(
+            th.agents.alice.vault!.publicKey,
+            TestAmounts.DEBT_1_ZKUSD,
+            oneUsdPrice
+          );
+        },
+        {
+          name: `Mint Test Suite: Alice mints 1 zkUSD (multiple mints test ${
+            i + 1
+          }/3)`,
+        }
+      );
     }
 
-    const finalDebt = (await th.retrieveVaultState('alice')).state.debtAmount;
+    const finalDebt = (await th.retrieveVault('alice')).state.debtAmount;
     assert.deepStrictEqual(
       finalDebt,
       initialDebt?.add(TestAmounts.DEBT_1_ZKUSD.mul(3))
@@ -99,42 +107,60 @@ describe('zkUSD Vault Mint Test Suite', () => {
   it('should fail if mint amount is zero', async () => {
     await assert.rejects(
       async () => {
-        await th.includeTx(th.agents.alice.keys, async () => {
-          await th.engine.contract.mintZkUsd(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.ZERO,
-            oneUsdPrice
-          );
-        });
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.mintZkUsd(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.ZERO,
+              oneUsdPrice
+            );
+          },
+          {
+            name: 'Mint Test Suite: Alice attempts to mint 0 zkUSD - should fail',
+          }
+        );
       },
-      {
-        message: VaultErrors.AMOUNT_ZERO,
+      (err: any) => {
+        return err.message.includes(VaultErrors.AMOUNT_ZERO);
       }
     );
   });
 
   it('should fail if mint amount is negative', async () => {
     await assert.rejects(async () => {
-      await th.includeTx(th.agents.alice.keys, async () => {
-        await th.engine.contract.mintZkUsd(
-          th.agents.alice.vault!.publicKey,
-          UInt64.from(-1),
-          oneUsdPrice
-        );
-      });
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.mintZkUsd(
+            th.agents.alice.vault!.publicKey,
+            UInt64.from(-1),
+            oneUsdPrice
+          );
+        },
+        {
+          name: 'Mint Test Suite: Alice attempts to mint negative zkUSD - should fail',
+        }
+      );
     });
   });
 
   it('should fail if the minter is not the owner of the vault', async () => {
     await assert.rejects(
       async () => {
-        await th.includeTx(th.agents.bob.keys, async () => {
-          await th.engine.contract.mintZkUsd(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.DEBT_5_ZKUSD,
-            oneUsdPrice
-          );
-        });
+        await th.includeTx(
+          th.agents.bob.keys,
+          async () => {
+            await th.engine.contract.mintZkUsd(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.DEBT_5_ZKUSD,
+              oneUsdPrice
+            );
+          },
+          {
+            name: 'Mint Test Suite: Bob attempts to mint zkUSD for Alice vault - should fail',
+          }
+        );
       },
       (err: any) => {
         assert.match(err.message, /Field.assertEquals()/i);
@@ -156,14 +182,14 @@ describe('zkUSD Vault Mint Test Suite', () => {
           );
         });
       },
-      {
-        message: VaultErrors.HEALTH_FACTOR_TOO_LOW,
+      (err: any) => {
+        return err.message.includes(VaultErrors.HEALTH_FACTOR_TOO_LOW);
       }
     );
   });
 
   it('should maintain correct health factor after multiple mint operations', async () => {
-    let vault: Vault = await th.retrieveVaultState('alice');
+    let vault: Vault = await th.retrieveVault('alice');
     const initialCollateral = vault.state.collateralAmount;
     let currentDebt = vault.state.debtAmount;
 
@@ -177,14 +203,22 @@ describe('zkUSD Vault Mint Test Suite', () => {
 
       // Only mint if health factor would remain above minimum
       if (healthFactor!.greaterThanOrEqual(Vault.MIN_HEALTH_FACTOR)) {
-        await th.includeTx(th.agents.alice.keys, async () => {
-          await th.engine.contract.mintZkUsd(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.DEBT_1_ZKUSD,
-            oneUsdPrice
-          );
-        });
-        vault = await th.retrieveVaultState('alice');
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.mintZkUsd(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.DEBT_1_ZKUSD,
+              oneUsdPrice
+            );
+          },
+          {
+            name: `Mint Test Suite: Health Factor Check - Alice mints 1 zkUSD (multiple mints test ${
+              i + 1
+            }/3)`,
+          }
+        );
+        vault = await th.retrieveVault('alice');
         currentDebt = currentDebt?.add(TestAmounts.DEBT_1_ZKUSD);
       }
     }
@@ -206,12 +240,18 @@ describe('zkUSD Vault Mint Test Suite', () => {
   it('should not allow minting from calling the token contract directly', async () => {
     await assert.rejects(
       async () => {
-        await th.includeTx(th.agents.alice.keys, async () => {
-          await th.token.contract.mint(
-            th.agents.alice.keys.publicKey,
-            TestAmounts.DEBT_5_ZKUSD
-          );
-        });
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.token.contract.mint(
+              th.agents.alice.keys.publicKey,
+              TestAmounts.DEBT_5_ZKUSD
+            );
+          },
+          {
+            name: 'Mint Test Suite: Alice attempts to mint zkUSD from token contract - should fail',
+          }
+        );
       },
       (err: any) => {
         assert.match(
@@ -228,13 +268,19 @@ describe('zkUSD Vault Mint Test Suite', () => {
 
     await assert.rejects(
       async () => {
-        await th.includeTx(th.agents.alice.keys, async () => {
-          await th.engine.contract.mintZkUsd(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.DEBT_5_ZKUSD,
-            oneUsdPrice
-          );
-        });
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.mintZkUsd(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.DEBT_5_ZKUSD,
+              oneUsdPrice
+            );
+          },
+          {
+            name: 'Mint Test Suite: Alice attempts to mint zkUSD while engine is halted - should fail',
+          }
+        );
       },
       (err: any) => {
         assert.match(err.message, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
@@ -246,12 +292,18 @@ describe('zkUSD Vault Mint Test Suite', () => {
   it('Should allow minting if the price feed is resumed', async () => {
     await th.resumeTheProtocol();
 
-    await th.includeTx(th.agents.alice.keys, async () => {
-      await th.engine.contract.mintZkUsd(
-        th.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD,
-        oneUsdPrice
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.mintZkUsd(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.DEBT_5_ZKUSD,
+          oneUsdPrice
+        );
+      },
+      {
+        name: 'Mint Test Suite: Alice attempts to mint zkUSD while price feed is resumed - should succeed',
+      }
+    );
   });
 });

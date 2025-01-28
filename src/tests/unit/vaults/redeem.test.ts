@@ -21,21 +21,29 @@ describe('zkUSD Vault Redeem Test Suite', () => {
     priceOneUsd = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     //Alice deposits 100 Mina
-    await th.includeTx(th.agents.alice.keys, async () => {
-      await th.engine.contract.depositCollateral(
-        th.agents.alice.vault!.publicKey,
-        TestAmounts.COLLATERAL_100_MINA
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.depositCollateral(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.COLLATERAL_100_MINA
+        );
+      },
+      { name: 'Redeem Test Suite: Alice deposits 100 Mina' }
+    );
 
     //Alice mints 5 zkUSD
-    await th.includeTx(th.agents.alice.keys, async () => {
-      await th.engine.contract.mintZkUsd(
-        th.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_5_ZKUSD,
-        priceOneUsd
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.mintZkUsd(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.DEBT_5_ZKUSD,
+          priceOneUsd
+        );
+      },
+      { name: 'Redeem Test Suite: Alice mints 5 zkUSD' }
+    );
   });
 
   const redeemCollateral = async (amount: UInt64, shouldPrintTx = false) => {
@@ -60,15 +68,19 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   };
 
   it('should allow alice to redeem collateral', async () => {
-    const initialCollateral = (await th.retrieveVaultState('alice')).state
+    const initialCollateral = (await th.retrieveVault('alice')).state
       .collateralAmount;
-    const aliceBalanceBefore = th.mina.Mina.getBalance(th.agents.alice.keys.publicKey);
+    const aliceBalanceBefore = th.mina.Mina.getBalance(
+      th.agents.alice.keys.publicKey
+    );
 
     await redeemCollateral(TestAmounts.COLLATERAL_1_MINA);
 
-    const finalCollateral = (await th.retrieveVaultState('alice')).state
+    const finalCollateral = (await th.retrieveVault('alice')).state
       .collateralAmount;
-    const aliceBalanceAfter = th.mina.Mina.getBalance(th.agents.alice.keys.publicKey);
+    const aliceBalanceAfter = th.mina.Mina.getBalance(
+      th.agents.alice.keys.publicKey
+    );
 
     assert.deepStrictEqual(
       finalCollateral,
@@ -108,18 +120,22 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   });
 
   it('should fail if the amount redeemed is zero', async () => {
-    const aliceBalanceBefore = th.mina.Mina.getBalance(th.agents.alice.keys.publicKey);
+    const aliceBalanceBefore = th.mina.Mina.getBalance(
+      th.agents.alice.keys.publicKey
+    );
 
     await assert.rejects(
       async () => {
         await redeemCollateral(TestAmounts.ZERO);
       },
-      {
-        message: VaultErrors.AMOUNT_ZERO,
+      (err: any) => {
+        return err.message.includes(VaultErrors.AMOUNT_ZERO);
       }
     );
 
-    const aliceBalanceAfter = th.mina.Mina.getBalance(th.agents.alice.keys.publicKey);
+    const aliceBalanceAfter = th.mina.Mina.getBalance(
+      th.agents.alice.keys.publicKey
+    );
     assert.deepStrictEqual(aliceBalanceAfter, aliceBalanceBefore);
   });
 
@@ -141,6 +157,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
             });
           },
           {
+            name: 'Redeem Test Suite: Alice tries to send Mina from the engine without proof',
             extraSigners: [th.networkKeys.engine.privateKey],
           }
         );
@@ -155,13 +172,17 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   it('should fail if the redeemer is not the owner', async () => {
     await assert.rejects(
       async () => {
-        await th.includeTx(th.agents.bob.keys, async () => {
-          await th.engine.contract.redeemCollateral(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.COLLATERAL_1_MINA,
-            priceOneUsd
-          );
-        });
+        await th.includeTx(
+          th.agents.bob.keys,
+          async () => {
+            await th.engine.contract.redeemCollateral(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.COLLATERAL_1_MINA,
+              priceOneUsd
+            );
+          },
+          { name: 'Redeem Test Suite: Bob tries to redeem collateral' }
+        );
       },
       (err: any) => {
         assert.match(err.message, /Field.assertEquals()/i);
@@ -175,14 +196,14 @@ describe('zkUSD Vault Redeem Test Suite', () => {
       async () => {
         await redeemCollateral(TestAmounts.COLLATERAL_100_MINA);
       },
-      {
-        message: VaultErrors.INSUFFICIENT_COLLATERAL,
+      (err: any) => {
+        return err.message.includes(VaultErrors.INSUFFICIENT_COLLATERAL);
       }
     );
   });
 
   it('should fail if redemption amount would undercollateralize the vault', async () => {
-    const vault = await th.retrieveVaultState('alice');
+    const vault = await th.retrieveVault('alice');
     const currentCollateral = vault.state.collateralAmount;
     const currentDebt = vault.state.debtAmount;
 
@@ -195,14 +216,14 @@ describe('zkUSD Vault Redeem Test Suite', () => {
       async () => {
         await redeemCollateral(currentCollateral!);
       },
-      {
-        message: VaultErrors.HEALTH_FACTOR_TOO_LOW,
+      (err: any) => {
+        return err.message.includes(VaultErrors.HEALTH_FACTOR_TOO_LOW);
       }
     );
   });
 
   it('should track collateral correctly after multiple redemptions', async () => {
-    const initialCollateral = (await th.retrieveVaultState('alice')).state
+    const initialCollateral = (await th.retrieveVault('alice')).state
       .collateralAmount;
 
     // Perform multiple small redemptions
@@ -210,7 +231,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
       await redeemCollateral(TestAmounts.COLLATERAL_1_MINA);
     }
 
-    const finalCollateral = (await th.retrieveVaultState('alice')).state
+    const finalCollateral = (await th.retrieveVault('alice')).state
       .collateralAmount;
     assert.deepStrictEqual(
       finalCollateral,
@@ -223,13 +244,19 @@ describe('zkUSD Vault Redeem Test Suite', () => {
 
     await assert.rejects(
       async () => {
-        await th.includeTx(th.agents.alice.keys, async () => {
-          await th.engine.contract.redeemCollateral(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.COLLATERAL_1_MINA,
-            priceOneUsd
-          );
-        });
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.redeemCollateral(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.COLLATERAL_1_MINA,
+              priceOneUsd
+            );
+          },
+          {
+            name: 'Redeem Test Suite: Alice tries to redeem collateral in emergency mode',
+          }
+        );
       },
       (err: any) => {
         assert.match(err.message, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
@@ -241,12 +268,18 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   it('Should allow redeeming if the price feed is resumed', async () => {
     await th.resumeTheProtocol();
 
-    await th.includeTx(th.agents.alice.keys, async () => {
-      await th.engine.contract.redeemCollateral(
-        th.agents.alice.vault!.publicKey,
-        TestAmounts.COLLATERAL_1_MINA,
-        priceOneUsd
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.redeemCollateral(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.COLLATERAL_1_MINA,
+          priceOneUsd
+        );
+      },
+      {
+        name: 'Redeem Test Suite: Alice redeems collateral after protocol resume',
+      }
+    );
   });
 });

@@ -78,7 +78,7 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('Deployed vault should have clean state and valid owner', async () => {
-    const vault = await testHelper.retrieveVaultState('alice');
+    const vault = await testHelper.retrieveVault('alice');
 
     assert(vault?.state.collateralAmount.equals(TestAmounts.ZERO));
     assert(vault?.state.debtAmount.equals(TestAmounts.ZERO));

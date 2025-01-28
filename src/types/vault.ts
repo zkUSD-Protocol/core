@@ -174,7 +174,6 @@ export class Vault extends Struct({
           accountUpdate.publicKey,
           accountUpdate.tokenId
         );
-        console.log('Account from retrieveState: ', account);
       } catch (err) {
         console.log(err);
 
@@ -201,8 +200,6 @@ export class Vault extends Struct({
       for (let i = 0; i < VaultState.sizeInFields(); i++) {
         stateAsFields.push(account.zkapp?.appState[i]);
       }
-
-      Provable.log('State as fields: ', stateAsFields);
 
       return stateAsFields;
     });
@@ -471,7 +468,12 @@ export class Vault extends Struct({
     });
   }
 
-  getHealthFactor(minaPrice: MinaPrice): UInt64 {
+  /**
+   * @notice  This method is used to get the health factor of the vault
+   * @param   minaPrice - The current price of MINA in nanoUSD
+   * @returns The health factor of the vault
+   */
+  public getHealthFactor(minaPrice: MinaPrice): UInt64 {
     return this.calculateHealthFactor(
       this.state.collateralAmount,
       this.state.debtAmount,

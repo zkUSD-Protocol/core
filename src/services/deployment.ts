@@ -88,8 +88,10 @@ export class DeploymentService {
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
     });
 
-    await ZkUsdEngine.compile();
-    await ZkUsdEngine.FungibleToken.compile();
+    if (this._mina.proofsEnabled) {
+      await ZkUsdEngine.compile();
+      await ZkUsdEngine.FungibleToken.compile();
+    }
 
     this._token = {
       contract: new ZkUsdEngine.FungibleToken(
