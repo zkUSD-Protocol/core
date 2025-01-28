@@ -2,6 +2,7 @@ import { TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import {
+  TransactionHandle,
   TransactionManager,
   statusIsFailed,
   statusIsFinal,
@@ -17,7 +18,7 @@ describe('Local tests of TransactionManager', async () => {
   before(async () => {});
 
   it('can create a tx and await until it is included', async () => {
-    const [alice, bob] = await helper.createAgents(['alice', 'bob']);
+    const [alice, bob] = await helper.createAgents('alice', 'bob');
 
     const txHandle = await txMgr.tx(alice.keys, async () => {
       const au = AccountUpdate.createSigned(alice.keys.publicKey);
@@ -34,7 +35,7 @@ describe('Local tests of TransactionManager', async () => {
   });
 
   it('can create a tx with dependencies and await until it is included', async () => {
-    const [alice] = await helper.createAgents(['alice']);
+    const [alice] = await helper.createAgents('alice');
 
     const bob_keys = PrivateKey.randomKeypair();
 
@@ -74,7 +75,7 @@ describe('Local tests of TransactionManager', async () => {
   });
 
   it('tx with dependencies will fail if a dep failed', async () => {
-    const [alice] = await helper.createAgents(['alice']);
+    const [alice] = await helper.createAgents('alice');
 
     const bob_keys = PrivateKey.randomKeypair();
 
@@ -125,9 +126,9 @@ describe('Local tests of TransactionManager', async () => {
       'harry',
       'ian',
     ];
-    const agents = await helper.createAgents(names);
+    const agents = await helper.createAgents(...names);
     // make 10
-    const txHandles = [];
+    const txHandles: TransactionHandle[] = [];
 
     for (let i = 0; i < agents.length; i++) {
       const agent = agents[i];
@@ -145,9 +146,9 @@ describe('Local tests of TransactionManager', async () => {
 
   it('execute multiple txs from mixed accounts simultanously', async () => {
     const names = ['alice', 'bob', 'charlie', 'david'];
-    const agents = await helper.createAgents(names);
+    const agents = await helper.createAgents(...names);
     // make 10
-    const txHandles = [];
+    const txHandles: TransactionHandle[] = [];
 
     for (let i = 0; i < agents.length; i++) {
       for (let j = 1; j < agents.length; j++) {
@@ -179,7 +180,7 @@ describe('Local tests of TransactionManager', async () => {
 //   let alice: Agent;
 
 //   before(async () => {
-//     [alice] = await helper.createAgents(['alice', 'bob']);
+//     [alice] = await helper.createAgents('alice', 'bob');
 //     // Give alice some balance if you want to ensure it can pay fees
 //     // or leave it with 0 if you want “insufficient funds” to cause an error, etc.
 //     // In local tests, you can always fund it:

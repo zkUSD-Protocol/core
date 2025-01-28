@@ -47,8 +47,8 @@
 
 //     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
 //     await testHelper.deployTokenContracts();
-//     await testHelper.createAgents(['alice']);
-//     await testHelper.createVaults(['alice']);
+//     await testHelper.createAgents('alice');
+//     await testHelper.createVaults('alice');
 
 //     txMgr = testHelper.txMgr;
 

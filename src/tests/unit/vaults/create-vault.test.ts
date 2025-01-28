@@ -10,7 +10,7 @@ describe('zkUSD Deployment Test Suite', () => {
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
-    await testHelper.createAgents(['alice', 'bob', 'charlie', 'david', 'eve']);
+    await testHelper.createAgents('alice', 'bob', 'charlie', 'david', 'eve');
   });
 
   it('should fail to create a vault from outside of the engine', async () => {
@@ -39,7 +39,7 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('should create vaults', async () => {
-    await testHelper.createVaults(['alice']);
+    await testHelper.createVaults('alice');
 
     const aliceVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.alice.vault?.publicKey!,
@@ -86,7 +86,7 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('should create multiple vaults', async () => {
-    await testHelper.createVaults(['bob', 'charlie', 'david', 'eve']);
+    await testHelper.createVaults('bob', 'charlie', 'david', 'eve');
 
     const bobVault = testHelper.mina.fetchMinaAccount(
       testHelper.agents.bob.vault?.publicKey!,

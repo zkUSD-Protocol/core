@@ -11,8 +11,8 @@
 //   before(async () => {
 //     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
 //     await testHelper.deployTokenContracts();
-//     await testHelper.createAgents(['alice', 'bob']);
-//     await testHelper.createVaults(['alice', 'bob']);
+//     await testHelper.createAgents('alice', 'bob');
+//     await testHelper.createVaults('alice', 'bob');
 
 //     price = (await testHelper.getMinaPriceInput(TestAmounts.PRICE_1_USD)).proof
 //       .publicOutput.minaPrice;

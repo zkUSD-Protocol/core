@@ -3,7 +3,6 @@ import {
   Bool,
   Field,
   IncludedTransaction,
-  Mina,
   PrivateKey,
   PublicKey,
   Signature,
@@ -12,8 +11,7 @@ import {
   VerificationKey,
 } from 'o1js';
 
-import assert from 'node:assert';
-import { Vault, VaultState } from '../types/vault.js';
+import { Vault } from '../types/vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 
 import { FungibleTokenContract } from '@minatokens/token';
@@ -35,9 +33,9 @@ import {
   TransactionManager,
   TransactionOptions,
 } from '../mina/transaction-manager.js';
+import { ensureLightnetRunning } from '../utils/lightnet-boot-script.js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
-// import { assertIsDefined } from './utils.js';
 
 const client = new Client({
   network: 'testnet',
@@ -177,6 +175,7 @@ export class TestHelper {
   }
 
   static async initLightnetChain() {
+    await ensureLightnetRunning()
     const mina = await MinaNetworkInterface.initLightnet();
     const deployer = await mina.newAccount();
     return new TestHelper(mina, deployer);
@@ -194,8 +193,7 @@ export class TestHelper {
     this.engine = deployedContracts.engine;
     this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
 
-    let updateOracleWhitelistTx;
-    if (this.mina.network.chainId === 'local') {
+    if (['local', 'lightnet'].includes(this.mina.network.chainId)) {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
         const oracleName = 'oracle' + (i + 1);
         this.oracles[oracleName] = this.networkKeys.oracles![i];
@@ -203,7 +201,7 @@ export class TestHelper {
         this.whitelistedOracles.set(oracleName, i);
       }
 
-      updateOracleWhitelistTx = await this.tx(
+      await this.includeTx(
         this.deployer,
         async () => {
           await this.engine.contract.updateOracleWhitelist(this.whitelist);
@@ -214,10 +212,25 @@ export class TestHelper {
         }
       );
     }
-    await updateOracleWhitelistTx?.awaitIncluded();
   }
 
-  async createAgents(names: string[]) {
+  stringifyAgent(name: string, replacer?: (number | string)[] | null, space?: string | number) {
+    let x: Record<string, any> = {};
+    x['name'] = name;
+    x['keys'] = {
+      publicKey: this.agents[name].keys.publicKey.toBase58(),
+      privateKey: this.agents[name].keys.privateKey.toBase58(),
+    };
+    if (this.agents[name].vault) {
+      x['vault'] = {
+        publicKey: this.agents[name].vault?.publicKey.toBase58(),
+        privateKey: this.agents[name].vault?.privateKey.toBase58(),
+      }
+    }
+    return JSON.stringify(x, replacer, space);
+  }
+
+  async createAgents(...names: string[]) {
     const ret: Agent[] = [];
     for (const name of names) {
       if (name in this.agents) {
@@ -232,36 +245,43 @@ export class TestHelper {
     return ret;
   }
 
-  async createVaults(names: string[]) {
-    const vaultCreationTxs = [];
+  async registerNewAgent(name: string, agent: Agent) {
+    this.agents[name] = agent;
+    await this.mina.fetchMinaAccount(agent.keys.publicKey, {force:true});
+  }
+
+  async createVaults(...names: string[]) {
+    const vaultCreationTxs: TransactionHandle[] = [];
+
     for (const name of names) {
-      if (!this.agents[name]) {
+      const agent: Agent | undefined = this.agents[name];
+      if (!agent) {
         throw new Error(`Agent ${name} not found`);
       }
 
       const vaultKeyPair = this.createVaultKeyPair();
 
-      this.agents[name].vault = {
+      agent.vault = {
         publicKey: vaultKeyPair.publicKey,
         privateKey: vaultKeyPair.privateKey,
       };
 
       const tx = await this.tx(
-        this.agents[name].keys,
+        agent.keys,
         async () => {
-          AccountUpdate.fundNewAccount(this.agents[name].keys.publicKey, 2);
+          AccountUpdate.fundNewAccount(agent.keys.publicKey, 2);
           await this.engine.contract.createVault(
-            this.agents[name].vault!.publicKey
+            agent.vault!.publicKey
           );
         },
         {
           name: `Create Vault for ${name}`,
-          extraSigners: [this.agents[name].vault!.privateKey],
+          extraSigners: [agent.vault!.privateKey],
         }
       );
       vaultCreationTxs.push(tx);
     }
-    await Promise.all(vaultCreationTxs.map((t) => t.awaitIncluded()));
+    return await Promise.all(vaultCreationTxs.map((t) => t.awaitIncluded()));
   }
 
   async stopTheProtocol() {
@@ -293,7 +313,7 @@ export class TestHelper {
   }
 
   async getPriceSubmissions({ oraclePrice }: { oraclePrice: UInt64 }) {
-    const blockHeight = Mina.getNetworkState().blockchainLength;
+    const blockHeight = this.mina.getNetworkState().blockchainLength;
 
     const oraclePriceSubmissions: OraclePriceSubmissions = {
       submissions: [],
@@ -325,7 +345,9 @@ export class TestHelper {
   }
 
   async getMinaPriceInput(price: UInt64) {
-    const blockHeight = Mina.getNetworkState().blockchainLength;
+    // const blockHeight = Mina.getNetworkState().blockchainLength;
+    const blockHeight = this.mina.getNetworkState().blockchainLength;
+    console.log('Building mina price input for block height:', blockHeight.toBigint());
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,
@@ -376,3 +398,4 @@ export class TestHelper {
     this.deployer = deployer;
   }
 }
+

@@ -17,10 +17,10 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents(['alice', 'bob', 'charlie', 'dave', 'rewards']);
+    await th.createAgents('alice', 'bob', 'charlie', 'dave', 'rewards');
 
     //Deploy a fresh vault
-    await th.createVaults(['alice', 'bob', 'charlie', 'dave']);
+    await th.createVaults('alice', 'bob', 'charlie', 'dave');
 
     // Alice deposits 100 Mina
     await th.includeTx(

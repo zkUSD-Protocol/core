@@ -13,10 +13,10 @@ describe('zkUSD Vault Mint Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents(['alice', 'bob']);
+    await th.createAgents('alice', 'bob');
 
     //deploy alice's vault
-    await th.createVaults(['alice']);
+    await th.createVaults('alice');
 
     //Alice deposits 100 Mina
     await th.includeTx(th.agents.alice.keys, async () => {
