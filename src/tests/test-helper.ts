@@ -2,7 +2,6 @@ import {
   AccountUpdate,
   Bool,
   Field,
-  Mina,
   PrivateKey,
   PublicKey,
   Signature,
@@ -131,10 +130,11 @@ export class TestHelper {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
+    },
+    call_depth = 1
   ) {
     const keys = 'keys' in sender ? sender.keys : sender;
-    return this.txMgr.tx(keys, callback, options);
+    return this.txMgr.tx(keys, callback, options, call_depth);
   }
 
   public async includeTx(
@@ -145,7 +145,8 @@ export class TestHelper {
       waitForIncluded?: (string | TransactionHandle)[];
     }
   ) {
-    const h = await this.tx(sender, callback, options);
+    const call_depth = 2;
+    const h = await this.tx(sender, callback, options, call_depth);
     return await h.awaitIncluded();
   }
 
@@ -204,7 +205,23 @@ export class TestHelper {
     await updateOracleWhitelistTx?.awaitIncluded();
   }
 
-  async createAgents(names: string[]) {
+  stringifyAgent(name: string, replacer?: (number | string)[] | null, space?: string | number) {
+    let x: Record<string, any> = {};
+    x['name'] = name;
+    x['keys'] = {
+      publicKey: this.agents[name].keys.publicKey.toBase58(),
+      privateKey: this.agents[name].keys.privateKey.toBase58(),
+    };
+    if (this.agents[name].vault) {
+      x['vault'] = {
+        publicKey: this.agents[name].vault?.publicKey.toBase58(),
+        privateKey: this.agents[name].vault?.privateKey.toBase58(),
+      }
+    }
+    return JSON.stringify(x, replacer, space);
+  }
+
+  async createAgents(...names: string[]) {
     const ret: Agent[] = [];
     for (const name of names) {
       if (name in this.agents) {
@@ -219,16 +236,23 @@ export class TestHelper {
     return ret;
   }
 
-  async createVaults(names: string[]) {
+  async registerNewAgent(name: string, agent: Agent) {
+    this.agents[name] = agent;
+    await this.mina.fetchMinaAccount(agent.keys.publicKey, {force:true});
+  }
+
+  async createVaults(...names: string[]) {
     const vaultCreationTxs: TransactionHandle[] = [];
+
     for (const name of names) {
-      if (!this.agents[name]) {
+      const agent: Agent | undefined = this.agents[name];
+      if (!agent) {
         throw new Error(`Agent ${name} not found`);
       }
 
       const vaultKeyPair = this.createVaultKeyPair();
 
-      this.agents[name].vault = {
+      agent.vault = {
         contract: new ZkUsdVault(
           vaultKeyPair.publicKey,
           this.engine.contract.deriveTokenId()
@@ -237,22 +261,24 @@ export class TestHelper {
         privateKey: vaultKeyPair.privateKey,
       };
 
+      console.log(this.stringifyAgent(name));
+
       const tx = await this.tx(
-        this.agents[name].keys,
+        agent.keys,
         async () => {
-          AccountUpdate.fundNewAccount(this.agents[name].keys.publicKey, 2);
+          AccountUpdate.fundNewAccount(agent.keys.publicKey, 2);
           await this.engine.contract.createVault(
-            this.agents[name].vault!.publicKey
+            agent.vault!.publicKey
           );
         },
         {
           name: `Create Vault for ${name}`,
-          extraSigners: [this.agents[name].vault!.privateKey],
+          extraSigners: [agent.vault!.privateKey],
         }
       );
       vaultCreationTxs.push(tx);
     }
-    await Promise.all(vaultCreationTxs.map((t) => t.awaitIncluded()));
+    return await Promise.all(vaultCreationTxs.map((t) => t.awaitIncluded()));
   }
 
   async stopTheProtocol() {
@@ -290,7 +316,8 @@ export class TestHelper {
     oraclePrice: UInt64;
     fallbackPrice: UInt64;
   }) {
-    const blockHeight = Mina.getNetworkState().blockchainLength;
+    // const blockHeight = Mina.getNetworkState().blockchainLength;
+    const blockHeight = this.mina.getNetworkState().blockchainLength;
 
     const oraclePriceSubmissions: OraclePriceSubmissions = {
       submissions: [],
@@ -322,7 +349,9 @@ export class TestHelper {
   }
 
   async getMinaPriceInput(price: UInt64) {
-    const blockHeight = Mina.getNetworkState().blockchainLength;
+    // const blockHeight = Mina.getNetworkState().blockchainLength;
+    const blockHeight = this.mina.getNetworkState().blockchainLength;
+    console.log('Building mina price input for block height:', blockHeight.toBigint());
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,

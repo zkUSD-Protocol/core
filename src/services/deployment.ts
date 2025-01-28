@@ -86,6 +86,7 @@ export class DeploymentService {
    * This includes the oracle aggregation proof, vault, engine, and token contracts.
    */
   async compile() {
+    console.log('Compiling Contracts - start');
     console.time('Compiling Contracts');
 
     const oracleAggCompiled = await AggregateOraclePrices.compile();

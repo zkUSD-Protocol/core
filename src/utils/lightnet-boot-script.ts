@@ -42,6 +42,7 @@ export async function checkLightnetStatus(): Promise<LightnetStatusResult> {
 
   // Analyze output for specific conditions if exitCode === 0
   const conditions = [
+    { condition: raw.stdout.includes('try again a bit later'), status: LightnetStatus.NotReady },
     { condition: raw.stdout.includes('Is running: true'), status: LightnetStatus.Running },
     { condition: raw.stdout.includes('Exit code: 137'), status: LightnetStatus.NotYetRun },
     { condition: raw.stdout.includes('Killed by OOM: true'), status: LightnetStatus.KilledByOOM },

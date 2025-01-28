@@ -328,6 +328,9 @@ export function ZkUsdEngineContract(args: {
       //The sender is the owner of the vault
       const owner = this.sender.getAndRequireSignature();
 
+      Provable.log('sender', owner);
+      Provable.log('owner in fields', owner.toFields());
+
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
         ZkUsdEngine.zkUsdTokenAddress
@@ -400,6 +403,8 @@ export function ZkUsdEngineContract(args: {
           value: field,
         };
       });
+
+      Provable.log('appStateUpdates', appStateUpdates);
 
       //Set the app state for the vault
       vault.body.update.appState = appStateUpdates;

@@ -110,6 +110,28 @@ interface IMinaNetworkInterface extends ZkusdMinaApi {
   ): Promise<Account | undefined>;
   newAccount(): Promise<KeyPair>;
   moveChainForward(n?: number): Promise<void>;
+  fetchAccount(
+    accountInfo: {
+      publicKey: string | PublicKey;
+      tokenId?: string | Field;
+    },
+    graphqlEndpoint?: string,
+    options?: {
+      timeout?: number | undefined;
+    }
+  ): Promise<
+    | {
+        account: Account;
+        error: undefined;
+      }
+    | {
+        account: undefined;
+        error: {
+          statusCode: number;
+          statusText: string;
+        };
+      }
+  >;
 }
 
 // exported singleton mina api helper that works with both local and lightnet
@@ -283,6 +305,35 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
 
   get network(): MinaNetwork {
     return this.backend.network;
+  }
+
+  async fetchAccount(
+    accountInfo: {
+      publicKey: string | PublicKey;
+      tokenId?: string | Field;
+    },
+    graphqlEndpoint?: string,
+    options?: {
+      timeout?: number | undefined;
+    }
+  ): Promise<
+    | {
+        account: Account;
+        error: undefined;
+      }
+    | {
+        account: undefined;
+        error: {
+          statusCode: number;
+          statusText: string;
+        };
+      }
+  > {
+    return await fetchAccount(
+      accountInfo,
+      graphqlEndpoint ?? this.network.mina[0],
+      { timeout: options?.timeout }
+    );
   }
 
   // ----------- Bind all MinaApi methods -----------

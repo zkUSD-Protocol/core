@@ -80,6 +80,8 @@ export class ZkUsdVault extends SmartContract {
     let vaultOwner = this.owner.getAndRequireEquals();
 
     //Assert the owner is correct
+    Provable.log('owner', owner);
+    Provable.log('vaultOwner', vaultOwner);
     vaultOwner.assertEquals(owner);
 
     //assert amount is greater than 0

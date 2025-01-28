@@ -11,6 +11,7 @@ import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
 import { NonceLock } from './nonce-manager.js';
+import { extractAllTxParties } from './utils.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -45,7 +46,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 120000,
+  dependencyStatusPollTimeout: 180000,
 };
 
 /**
@@ -581,6 +582,22 @@ export class TransactionManager {
     return serializedTransaction;
   }
 
+  txHandle(txId: string): TransactionHandle | undefined {
+    return this.transactions.get(txId)?.handle;
+  }
+
+  private async forceFetchAllTxParties(
+    tx: Record<string, any> & { transaction: ZkappCommand }
+  ): Promise<void> {
+    let requests: Promise<any>[] = [];
+    extractAllTxParties(tx.transaction).forEach(({ publicKey, tokenId }) => {
+      requests.push(
+        this.mina.fetchMinaAccount(publicKey, { tokenId, force: true })
+      );
+    });
+    await Promise.all(requests);
+  }
+
   // this will create a new transaction
   // and schedule it for proving signing and sending
   // it will also await for the dependencies to be included or failed
@@ -611,7 +628,7 @@ export class TransactionManager {
       callback,
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
-      callSite: getCallSite(2+call_depth),
+      callSite: getCallSite(2 + call_depth),
     };
 
     // dependencies must be met
@@ -796,6 +813,8 @@ export class TransactionManager {
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === 'included') {
           tx.status = 'Included';
+          // make sure that the local state matches the state after tx
+          await this.forceFetchAllTxParties(awaitedTx);
         } else {
           // TODO check if actually rejected or stuck in mempool
           // if stuck then retry with higher fee
@@ -881,13 +900,16 @@ export async function transactionBuildAndProve(
   chain: IMinaNetworkInterface,
   sender: KeyPair,
   callback: () => Promise<void>,
-  options: TransactionOptions & { nonce?: UInt32 } = {}
+  options: TransactionOptions & {
+    nonce?: UInt32,
+    forceFetchAllTxParties?: (tx: Record<string, any> & { transaction: ZkappCommand }) => Promise<void>} = {}
 ): Promise<Transaction<true, false>> {
   const {
     printTx = false,
     startingFee,
     printAccountUpdates = false,
     nonce,
+    forceFetchAllTxParties
   } = options;
 
   const tx = await mutex.runExclusive(
@@ -942,6 +964,9 @@ export async function transactionBuildAndProve(
   }
 
   try {
+    if(forceFetchAllTxParties){
+      await forceFetchAllTxParties(tx);
+    }
     return await mutex.runExclusive(async () => await tx.prove());
   } catch (error) {
     console.error('Error during transaction processing:', error);
