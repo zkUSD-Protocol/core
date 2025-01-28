@@ -11,9 +11,9 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents(['alice']);
+    await th.createAgents('alice');
 
-    await th.createVaults(['alice']);
+    await th.createVaults('alice');
 
     priceOneUsd = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 

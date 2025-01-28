@@ -10,6 +10,8 @@ import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
+import { NonceLock } from './nonce-manager.js';
+import { extractAllTxParties } from './utils.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -44,7 +46,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 120000,
+  dependencyStatusPollTimeout: 180000,
 };
 
 /**
@@ -420,7 +422,7 @@ export class TransactionInternal {
     });
     if (status !== 'Included') {
       throw new Error(
-        `Transaction ${this.getId()} was not included and ended with status ${JSON.stringify(
+        `Transaction '${this.getId()}' was not included and ended with status ${JSON.stringify(
           status,
           null,
           2
@@ -553,8 +555,8 @@ export class TransactionManager {
    */
   public serializeTransaction(tx: Mina.Transaction<false, false>): string {
     const length = tx.transaction.accountUpdates.length;
-    let i;
-    let blindingValues = [];
+    let i: number;
+    let blindingValues: string[] = [];
     for (i = 0; i < length; i++) {
       const la = tx.transaction.accountUpdates[i].lazyAuthorization;
       if (
@@ -578,6 +580,22 @@ export class TransactionManager {
       2
     );
     return serializedTransaction;
+  }
+
+  txHandle(txId: string): TransactionHandle | undefined {
+    return this.transactions.get(txId)?.handle;
+  }
+
+  private async forceFetchAllTxParties(
+    tx: Record<string, any> & { transaction: ZkappCommand }
+  ): Promise<void> {
+    let requests: Promise<any>[] = [];
+    extractAllTxParties(tx.transaction).forEach(({ publicKey, tokenId }) => {
+      requests.push(
+        this.mina.fetchMinaAccount(publicKey, { tokenId, force: true })
+      );
+    });
+    await Promise.all(requests);
   }
 
   // this will create a new transaction
@@ -713,7 +731,7 @@ export class TransactionManager {
     const mkSigningPromise = function (fee: UInt64) {
       return (ptx: Transaction<true, false>) =>
         new TrackedPromise(async () => {
-          let nonceLock;
+          let nonceLock: NonceLock | undefined;
           try {
             try {
               nonceLock = await mgr.mina.nonceManager.getAccountNonce(
@@ -756,7 +774,7 @@ export class TransactionManager {
         const provenTx = results[0];
         const signedTx = await mkSigningPromise(fee)(provenTx);
         // send the transaction
-        let nonceLock;
+        let nonceLock: NonceLock | undefined;
         try {
           const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
           nonceLock = lock;
@@ -806,6 +824,8 @@ export class TransactionManager {
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === 'included') {
           tx.status = 'Included';
+          // make sure that the local state matches the state after tx
+          await this.forceFetchAllTxParties(awaitedTx);
         } else {
           // TODO check if actually rejected or stuck in mempool
           // if stuck then retry with higher fee
@@ -891,13 +911,16 @@ export async function transactionBuildAndProve(
   chain: IMinaNetworkInterface,
   sender: KeyPair,
   callback: () => Promise<void>,
-  options: TransactionOptions & { nonce?: UInt32 } = {}
+  options: TransactionOptions & {
+    nonce?: UInt32,
+    forceFetchAllTxParties?: (tx: Record<string, any> & { transaction: ZkappCommand }) => Promise<void>} = {}
 ): Promise<Transaction<true, false>> {
   const {
     printTx = false,
     startingFee,
     printAccountUpdates = false,
     nonce,
+    forceFetchAllTxParties
   } = options;
 
   const tx = await mutex.runExclusive(
@@ -952,6 +975,9 @@ export async function transactionBuildAndProve(
   }
 
   try {
+    if(forceFetchAllTxParties){
+      await forceFetchAllTxParties(tx);
+    }
     return await mutex.runExclusive(async () => await tx.prove());
   } catch (error) {
     console.error('Error during transaction processing:', error);

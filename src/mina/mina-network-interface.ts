@@ -293,6 +293,35 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     return this.backend.network;
   }
 
+  async fetchAccount(
+    accountInfo: {
+      publicKey: string | PublicKey;
+      tokenId?: string | Field;
+    },
+    graphqlEndpoint?: string,
+    options?: {
+      timeout?: number | undefined;
+    }
+  ): Promise<
+    | {
+        account: Account;
+        error: undefined;
+      }
+    | {
+        account: undefined;
+        error: {
+          statusCode: number;
+          statusText: string;
+        };
+      }
+  > {
+    return await fetchAccount(
+      accountInfo,
+      graphqlEndpoint ?? this.network.mina[0],
+      { timeout: options?.timeout }
+    );
+  }
+
   // ----------- Bind all MinaApi methods -----------
   private bindMethods() {
     // Get all property names that exist directly on `this.instance`

@@ -13,10 +13,10 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents(['alice', 'bob', 'charlie', 'rewards']);
+    await th.createAgents('alice', 'bob', 'charlie', 'rewards');
 
     //deploy alice's vault
-    await th.createVaults(['alice', 'bob']);
+    await th.createVaults('alice', 'bob');
 
     priceOneUsd = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 

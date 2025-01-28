@@ -12,8 +12,8 @@ describe('zkUSD Protocol Administration Test Suite', async () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents(['alice']);
-    await th.createVaults(['alice']);
+    await th.createAgents('alice');
+    await th.createVaults('alice');
 
     //Alice deposits 100 Mina
     await th.includeTx(
