@@ -28,11 +28,6 @@ export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
   return new ZkUsdCloudWorker(cloud);
 }
 
-const vaultVk: VerificationKey = {
-  data: verificationKeys.vault.data,
-  hash: verificationKeys.vault.hash,
-};
-
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
   hash: verificationKeys.oracleAggregation.hash,
@@ -41,7 +36,6 @@ const oracleAggregationVk: VerificationKey = {
 export {
   ZkUsdEngineContract,
   FungibleTokenContract,
-  vaultVk,
   oracleAggregationVk,
   validPriceBlockCount,
   AggregateOraclePricesProof,

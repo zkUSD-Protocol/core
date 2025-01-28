@@ -656,6 +656,17 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+
+    @method.returns(Vault) // TODO does it have to be a methods
+    async retrieveVault(vaultAddress: PublicKey) {
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+      return Vault.get(vaultUpdate);
+    }
+
+
     /**
      * @notice  Updates the oracle whitelist merkle root
      * @param   whitelist The new oracle whitelist merkle root
@@ -730,7 +741,6 @@ export function ZkUsdEngineContract(args: {
         newAdmin,
       });
     }
-
     /**
      * @notice  This method is used to assert the interaction flag, this is used to ensure that the zkUSD token contract knows it is being called from the vault
      * @returns True if the flag is set

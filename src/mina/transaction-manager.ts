@@ -597,7 +597,8 @@ export class TransactionManager {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
+    },
+    callDepth = 2
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
 
@@ -609,7 +610,7 @@ export class TransactionManager {
       callback,
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
-      callSite: getCallSite(2),
+      callSite: getCallSite(callDepth),
     };
 
     // dependencies must be met

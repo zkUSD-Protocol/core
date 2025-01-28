@@ -2,6 +2,7 @@ import {
   AccountUpdate,
   Bool,
   Field,
+  IncludedTransaction,
   Mina,
   PrivateKey,
   PublicKey,
@@ -10,6 +11,8 @@ import {
   UInt64,
   VerificationKey,
 } from 'o1js';
+
+import assert from 'node:assert';
 import { Vault } from '../types/vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 
@@ -34,6 +37,7 @@ import {
 } from '../mina/transaction-manager.js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
+import { assertIsDefined } from './utils.js';
 
 const client = new Client({
   network: 'testnet',
@@ -128,10 +132,11 @@ export class TestHelper {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
+    },
+    callDepth = 3
   ) {
     const keys = 'keys' in sender ? sender.keys : sender;
-    return this.txMgr.tx(keys, callback, options);
+    return this.txMgr.tx(keys, callback, options, callDepth);
   }
 
   public async includeTx(
@@ -140,9 +145,10 @@ export class TestHelper {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
-  ) {
-    const h = await this.tx(sender, callback, options);
+    },
+    callDepth=4
+  ): Promise<IncludedTransaction> {
+    const h = await this.tx(sender, callback, options, callDepth);
     return await h.awaitIncluded();
   }
 
@@ -329,6 +335,24 @@ export class TestHelper {
     });
 
     return minaPriceInput;
+  }
+
+  public async retrieveVaultState(agentName: string): Promise<Vault>{
+    if (!this.agents[agentName]) {
+      throw new Error(`Agent ${agentName} not found`);
+    }
+
+    let vaultStartingState: Vault|undefined;
+    const tx = await this.includeTx(this.agents[agentName].keys, async () => {
+      vaultStartingState = await this.engine.contract.retrieveVault(
+        this.agents[agentName].vault!.publicKey,
+      );
+    });
+    assertIsDefined(vaultStartingState, "vaultStartingState");
+    assert(tx.transaction.accountUpdates.some((update) => {
+      return update.hash === vaultStartingState!.accountUpdate.hash;
+    }));
+    return vaultStartingState
   }
 
   private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
