@@ -2,6 +2,7 @@ import {
   AccountUpdate,
   Bool,
   Field,
+  IncludedTransaction,
   Mina,
   PrivateKey,
   PublicKey,
@@ -10,14 +11,11 @@ import {
   UInt64,
   VerificationKey,
 } from 'o1js';
-import { ZkUsdVault } from '../contracts/zkusd-vault.js';
+
+import assert from 'node:assert';
+import { Vault, VaultState } from '../types/vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import {
-  computeOracleWhitelistHash,
-  ContractInstance,
-  KeyPair,
-  OracleWhitelist,
-} from '../types.js';
+
 import { FungibleTokenContract } from '@minatokens/token';
 import {
   IMinaNetworkInterface,
@@ -37,6 +35,9 @@ import {
   TransactionManager,
   TransactionOptions,
 } from '../mina/transaction-manager.js';
+import { ContractInstance, KeyPair } from '../types/utility.js';
+import { OracleWhitelist } from '../types/oracle.js';
+// import { assertIsDefined } from './utils.js';
 
 const client = new Client({
   network: 'testnet',
@@ -51,7 +52,10 @@ export class TestAmounts {
   static COLLATERAL_200_MINA = UInt64.from(200e9); // 200 Mina
   static COLLATERAL_105_MINA = UInt64.from(105e9); // 105 Mina
   static COLLATERAL_100_MINA = UInt64.from(100e9); // 100 Mina
+  static COLLATERAL_99_MINA = UInt64.from(99e9); // 99 Mina
+  static COLLATERAL_80_MINA = UInt64.from(80e9); // 80 Mina
   static COLLATERAL_50_MINA = UInt64.from(50e9); // 50 Mina
+  static COLLATERAL_20_MINA = UInt64.from(20e9); // 20 Mina
   static COLLATERAL_2_MINA = UInt64.from(2e9); // 2 Mina
   static COLLATERAL_1_MINA = UInt64.from(1e9); // 1 Mina
 
@@ -84,7 +88,6 @@ export class TestAmounts {
 export interface Agent {
   keys: KeyPair;
   vault?: {
-    contract: ZkUsdVault;
     publicKey: PublicKey;
     privateKey: PrivateKey;
   };
@@ -115,7 +118,6 @@ export class TestHelper {
     return this._txMgr;
   }
 
-
   get networkKeys(): NetworkKeyPairs {
     return getNetworkKeys(this.mina.network.chainId);
   }
@@ -130,10 +132,11 @@ export class TestHelper {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
+    },
+    callDepth = 3
   ) {
     const keys = 'keys' in sender ? sender.keys : sender;
-    return this.txMgr.tx(keys, callback, options);
+    return this.txMgr.tx(keys, callback, options, callDepth);
   }
 
   public async includeTx(
@@ -142,9 +145,25 @@ export class TestHelper {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      startingFee?: UInt64;
+    },
+    callDepth = 4
+  ): Promise<IncludedTransaction> {
+    let startingFee: UInt64 | undefined;
+
+    if (this._txMgr.mina.network.chainId === 'local') {
+      startingFee = new UInt64(0);
     }
-  ) {
-    const h = await this.tx(sender, callback, options);
+
+    const h = await this.tx(
+      sender,
+      callback,
+      {
+        ...options,
+        startingFee: options?.startingFee ?? startingFee,
+      },
+      callDepth
+    );
     return await h.awaitIncluded();
   }
 
@@ -164,15 +183,11 @@ export class TestHelper {
   }
 
   async deployTokenContracts() {
-    this._deploymentService = await DeploymentService.create(
-      this.txMgr,
-    );
+    this._deploymentService = await DeploymentService.create(this.txMgr);
     const deployedContracts = await this._deploymentService.deploy();
 
     if (this.mina.network.chainId === 'local') {
-      this.txMgr.mina.local?.setBlockchainLength(
-        UInt32.from(1000)
-      );
+      this.txMgr.mina.local?.setBlockchainLength(UInt32.from(1000));
     }
 
     this.token = deployedContracts.token;
@@ -227,10 +242,6 @@ export class TestHelper {
       const vaultKeyPair = this.createVaultKeyPair();
 
       this.agents[name].vault = {
-        contract: new ZkUsdVault(
-          vaultKeyPair.publicKey,
-          this.engine.contract.deriveTokenId()
-        ),
         publicKey: vaultKeyPair.publicKey,
         privateKey: vaultKeyPair.privateKey,
       };
@@ -281,13 +292,7 @@ export class TestHelper {
     );
   }
 
-  async getPriceSubmissions({
-    oraclePrice,
-    fallbackPrice,
-  }: {
-    oraclePrice: UInt64;
-    fallbackPrice: UInt64;
-  }) {
+  async getPriceSubmissions({ oraclePrice }: { oraclePrice: UInt64 }) {
     const blockHeight = Mina.getNetworkState().blockchainLength;
 
     const oraclePriceSubmissions: OraclePriceSubmissions = {
@@ -324,10 +329,9 @@ export class TestHelper {
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,
-      fallbackPrice: price,
     });
 
-    const oracleWhitelistHash = computeOracleWhitelistHash(this.whitelist);
+    const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
 
     const programOutput = await AggregateOraclePrices.compute(
       {
@@ -346,6 +350,24 @@ export class TestHelper {
     });
 
     return minaPriceInput;
+  }
+
+  public async retrieveVault(agentName: string): Promise<Vault> {
+    if (!this.agents[agentName]) {
+      throw new Error(`Agent ${agentName} not found`);
+    }
+
+    await this.mina.fetchMinaAccount(this.agents[agentName].vault!.publicKey, {
+      tokenId: this.engine.contract.deriveTokenId(),
+      force: true,
+    });
+
+    const accountUpdate = AccountUpdate.create(
+      this.agents[agentName].vault!.publicKey,
+      this.engine.contract.deriveTokenId()
+    );
+
+    return Vault.get(accountUpdate);
   }
 
   private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {

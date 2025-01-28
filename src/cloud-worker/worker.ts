@@ -23,7 +23,6 @@ import {
 } from 'o1js';
 import {
   ZkUsdEngineContract,
-  ZkUsdVault,
   FungibleTokenContract,
   validPriceBlockCount,
   AggregateOraclePrices,
@@ -34,14 +33,13 @@ import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
 import {
   CollateralAmountAndPriceProofArgs,
   CollateralAmountArgs,
-  ContractInstance,
   CreateVaultArgs,
   PriceProofArgs,
   VaultTransactionArgs,
   VaultTransactionType,
   ZkUSDAmountAndPriceProofArgs,
   ZkUSDAmountArgs,
-} from '../types.js';
+} from '../types/cloud-worker.js';
 import { TransactionManager } from '../mina/transaction-manager.js';
 import { MinaNetworkInterface } from '../mina/mina-network-interface.js';
 
@@ -69,7 +67,6 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
   private _keys: NetworkKeyPairs;
 
   // Static verification keys and contract instances are shared across all worker instances
-  static vaultVk: VerificationKey | undefined = undefined;
   static oracleAggregationVk: VerificationKey | undefined = undefined;
   static engineVk: VerificationKey | undefined = undefined;
   static tokenVk: VerificationKey | undefined = undefined;
@@ -205,19 +202,12 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
   private async compile(): Promise<string> {
     console.time('Compiling contracts');
     try {
-      // Compile and cache verification keys
-      if (ZkUsdCloudWorker.vaultVk === undefined) {
-        ZkUsdCloudWorker.vaultVk = new VerificationKey(
-          (await ZkUsdVault.compile({ cache: this.cache })).verificationKey
-        );
-      }
-
       if (ZkUsdCloudWorker.oracleAggregationVk === undefined) {
         ZkUsdCloudWorker.oracleAggregationVk = new VerificationKey(
           (await AggregateOraclePrices.compile()).verificationKey
         );
       }
-      if (!ZkUsdCloudWorker.vaultVk || !ZkUsdCloudWorker.oracleAggregationVk) {
+      if (!ZkUsdCloudWorker.oracleAggregationVk) {
         throw new Error('Verification keys not found');
       }
 
@@ -226,7 +216,6 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
           zkUsdTokenAddress: this._keys.token.publicKey,
           minaPriceInputZkProgramVkHash:
             ZkUsdCloudWorker.oracleAggregationVk.hash,
-          vaultVerificationKey: ZkUsdCloudWorker.vaultVk,
         });
       }
 
@@ -237,7 +226,7 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
 
       if (ZkUsdCloudWorker.tokenVk === undefined) {
         ZkUsdCloudWorker.tokenVk = (
-          await ZkUsdCloudWorker.FungibleToken.compile()
+          await ZkUsdCloudWorker.FungibleToken!.compile()
         ).verificationKey;
       }
 
@@ -251,7 +240,7 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
         this._keys.engine.publicKey
       );
 
-      this._token = new ZkUsdCloudWorker.FungibleToken(
+      this._token = new ZkUsdCloudWorker.FungibleToken!(
         this._keys.token.publicKey
       );
 

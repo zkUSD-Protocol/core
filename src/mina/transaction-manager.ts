@@ -1,5 +1,5 @@
 import { Field, Mina, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
-import { KeyPair } from '../types.js';
+import { KeyPair } from '../types/utility.js';
 import {
   IncludedTransaction,
   PendingTransaction,
@@ -597,7 +597,8 @@ export class TransactionManager {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    }
+    },
+    callDepth = 2
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
 
@@ -609,7 +610,7 @@ export class TransactionManager {
       callback,
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
-      callSite: getCallSite(2),
+      callSite: getCallSite(callDepth),
     };
 
     // dependencies must be met
@@ -657,7 +658,9 @@ export class TransactionManager {
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
       try {
-        console.log(`${tx.getId()} - Proving transaction ...`);
+        if (options?.printTx) {
+          console.log(`${tx.getId()} - Proving transaction ...`);
+        }
         return await transactionBuildAndProve(
           mgr._provingMutex,
           mgr.mina,
@@ -723,11 +726,13 @@ export class TransactionManager {
             }
             ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
             ptx.transaction.feePayer.body.fee = fee;
-            console.log(
-              `${tx.getId()} - Signing transaction: {nonce: ${
-                nonceLock.nonce
-              }, fee: ${fee}} ...`
-            );
+            if (options?.printTx) {
+              console.log(
+                `${tx.getId()} - Signing transaction: {nonce: ${
+                  nonceLock.nonce
+                }, fee: ${fee}} ...`
+              );
+            }
             // TODO use signing service instead, do not pass private keys around
             const signers = options?.extraSigners
               ? [sender.privateKey, ...options.extraSigners]
@@ -754,7 +759,9 @@ export class TransactionManager {
         try {
           const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
           nonceLock = lock;
-          console.log(`${tx.getId()} - Sending transaction ...`);
+          if (options?.printTx) {
+            console.log(`${tx.getId()} - Sending transaction ...`);
+          }
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();
@@ -790,7 +797,9 @@ export class TransactionManager {
       try {
         const sentTx = await sendingPromise;
         if (statusIsRejectedTransaction(sentTx)) return sentTx;
-        console.log(`${tx.getId()} - Awaiting inclusion ...`);
+        if (options?.printTx) {
+          console.log(`${tx.getId()} - Awaiting inclusion ...`);
+        }
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === 'included') {
           tx.status = 'Included';
