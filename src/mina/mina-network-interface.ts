@@ -8,7 +8,7 @@ import {
   Account,
 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
-import { KeyPair } from './../types.js';
+import { KeyPair } from './../types/utility.js';
 import {
   INonceManager,
   LocalNonceManager,
@@ -25,6 +25,7 @@ import {
   blockchain,
   fetchMinaAccount as zkCWfetchMinaAccount,
 } from 'zkcloudworker';
+import { setActiveInstance } from 'o1js/dist/node/lib/mina/mina-instance.js';
 
 type LocalOnlyApi = {
   // add more as needed
@@ -110,28 +111,7 @@ interface IMinaNetworkInterface extends ZkusdMinaApi {
   ): Promise<Account | undefined>;
   newAccount(): Promise<KeyPair>;
   moveChainForward(n?: number): Promise<void>;
-  fetchAccount(
-    accountInfo: {
-      publicKey: string | PublicKey;
-      tokenId?: string | Field;
-    },
-    graphqlEndpoint?: string,
-    options?: {
-      timeout?: number | undefined;
-    }
-  ): Promise<
-    | {
-        account: Account;
-        error: undefined;
-      }
-    | {
-        account: undefined;
-        error: {
-          statusCode: number;
-          statusText: string;
-        };
-      }
-  >;
+  Mina: typeof Mina;
 }
 
 // exported singleton mina api helper that works with both local and lightnet
@@ -161,6 +141,12 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   declare getNetworkConstants: MinaApi['getNetworkConstants'];
   declare getNetworkId: MinaApi['getNetworkId'];
   declare proofsEnabled: MinaApi['proofsEnabled'];
+
+
+  public get Mina() {
+    Mina.setActiveInstance(this.instance);
+    return Mina;
+  }
 
   private set nonceManager(nm: INonceManager) {
     this._nonceManager = nm;

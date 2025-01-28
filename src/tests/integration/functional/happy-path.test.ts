@@ -107,17 +107,36 @@ describe('zkUSD Lightnet - Functional Integration Test Suite', () => {
   it(`user's vault can be liquidated`, async () => {
     const newman = th.agents['newman'];
 
+    // assert mintTx defined
     const price = await th.getMinaPriceInput(TestAmounts.PRICE_10_USD);
+
+    await assert.doesNotReject(async () => {
+      await th.includeTx(
+        newman.keys,
+        async () => {
+          await th.engine.contract.mintZkUsd(
+            newman.vault!.publicKey,
+            UInt64.from(5e9),
+            price
+          );
+        },
+        {
+          name: 'newman_mints_again',
+        }
+      );
+    });
+
+    const newPrice = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     await assert.doesNotReject(async () => {
       await th.includeTx(
         alice.keys,
         async () => {
-          await th.engine.contract.liquidate(newman.vault!.publicKey, price);
+          AccountUpdate.fundNewAccount(alice.keys.publicKey);
+          await th.engine.contract.liquidate(newman.vault!.publicKey, newPrice);
         },
         {
           name: `newman's getting liquidated`,
-          waitForIncluded: ['newman_mints_zkUSD'],
         }
       );
     });

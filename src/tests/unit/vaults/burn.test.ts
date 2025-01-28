@@ -1,68 +1,78 @@
 import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { AccountUpdate, UInt64 } from 'o1js';
-import { ZkUsdVaultErrors } from '../../../contracts/zkusd-vault.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { transaction } from '../../../utils/transaction.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
+import { VaultErrors } from '../../../types/vault.js';
 
 describe('zkUSD Vault Burn Test Suite', () => {
-  let testHelper: TestHelper;
+  let th: TestHelper;
 
   before(async () => {
-    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
-    await testHelper.deployTokenContracts();
-    await testHelper.createAgents('alice', 'bob', 'charlie');
+    th = await TestHelper.initLocalChain({ proofsEnabled: false });
+    await th.deployTokenContracts();
+    await th.createAgents('alice', 'bob', 'charlie');
 
     //deploy alice's vault
-    await testHelper.createVaults('alice');
+    await th.createVaults('alice');
 
-    const price: MinaPriceInput = await testHelper.getMinaPriceInput(
+    const price: MinaPriceInput = await th.getMinaPriceInput(
       TestAmounts.PRICE_1_USD
     );
 
     // Alice deposits 100 Mina
-    await transaction(testHelper.agents.alice.keys, async () => {
-      await testHelper.engine.contract.depositCollateral(
-        testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.COLLATERAL_100_MINA
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.depositCollateral(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.COLLATERAL_100_MINA
+        );
+      },
+      { name: 'Burn Test Suite: Alice deposits 100 Mina' }
+    );
 
     // Alice mint 30 zkUSD
-    await transaction(testHelper.agents.alice.keys, async () => {
-      await testHelper.engine.contract.mintZkUsd(
-        testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_30_ZKUSD,
-        price
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.mintZkUsd(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.DEBT_30_ZKUSD,
+          price
+        );
+      },
+      { name: 'Burn Test Suite: Alice mints 30 zkUSD' }
+    );
   });
 
   it('should allow alice to burn zkUSD', async () => {
-    const aliceStartingBalance = await testHelper.token.contract.getBalanceOf(
-      testHelper.agents.alice.keys.publicKey
+    const aliceStartingBalance = await th.token.contract.getBalanceOf(
+      th.agents.alice.keys.publicKey
     );
 
-    const vaultStartingDebt =
-      await testHelper.agents.alice.vault?.contract.debtAmount.fetch();
+    const vaultStartingState = await th.retrieveVault('alice');
 
-    await transaction(testHelper.agents.alice.keys, async () => {
-      await testHelper.engine.contract.burnZkUsd(
-        testHelper.agents.alice.vault!.publicKey,
-        TestAmounts.DEBT_1_ZKUSD
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.burnZkUsd(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.DEBT_1_ZKUSD
+        );
+      },
+      { name: 'Burn Test Suite: Alice burns 1 zkUSD' }
+    );
 
-    const vaultFinalDebt =
-      await testHelper.agents.alice.vault?.contract.debtAmount.fetch();
-    const aliceFinalBalance = await testHelper.token.contract.getBalanceOf(
-      testHelper.agents.alice.keys.publicKey
+    const vaultFinalState = await th.retrieveVault('alice');
+
+    const aliceFinalBalance = await th.token.contract.getBalanceOf(
+      th.agents.alice.keys.publicKey
     );
 
     assert.deepStrictEqual(
-      vaultFinalDebt,
-      vaultStartingDebt?.sub(TestAmounts.DEBT_1_ZKUSD)
+      vaultFinalState.state.debtAmount,
+      vaultStartingState.state.debtAmount.sub(TestAmounts.DEBT_1_ZKUSD)
     );
     assert.deepStrictEqual(
       aliceFinalBalance,
@@ -71,14 +81,14 @@ describe('zkUSD Vault Burn Test Suite', () => {
   });
 
   it('should emit the BurnZkUsd event', async () => {
-    const contractEvents = await testHelper.engine.contract.fetchEvents();
+    const contractEvents = await th.engine.contract.fetchEvents();
     const latestEvent = contractEvents[0];
 
     assert.strictEqual(latestEvent.type, 'BurnZkUsd');
     assert.deepStrictEqual(
       // @ts-ignore
       latestEvent.event.data.vaultAddress,
-      testHelper.agents.alice.vault?.publicKey
+      th.agents.alice.vault?.publicKey
     );
     assert.deepStrictEqual(
       // @ts-ignore
@@ -99,84 +109,106 @@ describe('zkUSD Vault Burn Test Suite', () => {
 
   it('should fail if burn amount is zero', async () => {
     await assert.rejects(async () => {
-      await transaction(testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.burnZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.ZERO
-        );
-      });
-    }, new RegExp(ZkUsdVaultErrors.AMOUNT_ZERO));
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.burnZkUsd(
+            th.agents.alice.vault!.publicKey,
+            TestAmounts.ZERO
+          );
+        },
+        { name: 'Burn Test Suite: Alice burns 0 zkUSD' }
+      );
+    }, new RegExp(VaultErrors.AMOUNT_ZERO));
   });
 
   it('should fail if burn amount exceeds debt', async () => {
-    const currentDebt =
-      await testHelper.agents.alice.vault?.contract.debtAmount.fetch();
+    const currentVault = await th.retrieveVault('alice');
 
     await assert.rejects(async () => {
-      await transaction(testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.burnZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          currentDebt!.add(1)
-        );
-      });
-    }, new RegExp(ZkUsdVaultErrors.AMOUNT_EXCEEDS_DEBT));
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.burnZkUsd(
+            th.agents.alice.vault!.publicKey,
+            currentVault.state.debtAmount.add(1)
+          );
+        },
+        { name: 'Burn Test Suite: Alice burns more than debt' }
+      );
+    }, new RegExp(VaultErrors.AMOUNT_EXCEEDS_DEBT));
   });
 
   it('should fail if burn amount is negative', async () => {
     await assert.rejects(async () => {
-      await transaction(testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.burnZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          UInt64.from(-1)
-        );
-      });
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.burnZkUsd(
+            th.agents.alice.vault!.publicKey,
+            UInt64.from(-1)
+          );
+        },
+        { name: 'Burn Test Suite: Alice burns negative amount' }
+      );
     });
   });
 
   it('should track debt correctly after multiple burns', async () => {
-    const initialDebt =
-      await testHelper.agents.alice.vault?.contract.debtAmount.fetch();
+    const initialVault = await th.retrieveVault('alice');
 
     // Perform multiple small burns
     for (let i = 0; i < 3; i++) {
-      await transaction(testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.burnZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_10_CENT_ZKUSD
-        );
-      });
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.burnZkUsd(
+            th.agents.alice.vault!.publicKey,
+            TestAmounts.DEBT_10_CENT_ZKUSD
+          );
+        },
+        { name: `Burn Test Suite: Alice burns 10 cents ${i}` }
+      );
     }
 
-    const finalDebt =
-      await testHelper.agents.alice.vault?.contract.debtAmount.fetch();
+    const finalVault = await th.retrieveVault('alice');
+
     assert.deepStrictEqual(
-      finalDebt,
-      initialDebt?.sub(TestAmounts.DEBT_10_CENT_ZKUSD.mul(3))
+      finalVault.state.debtAmount,
+      initialVault.state.debtAmount.sub(TestAmounts.DEBT_10_CENT_ZKUSD.mul(3))
     );
   });
 
   it('should fail if trying to burn without sufficient zkUSD balance', async () => {
-    const aliceBalance = await testHelper.token.contract.getBalanceOf(
-      testHelper.agents.alice.keys.publicKey
+    const aliceBalance = await th.token.contract.getBalanceOf(
+      th.agents.alice.keys.publicKey
     );
 
     //Alice transfers all her zkUSD to Bob
-    await transaction(testHelper.agents.alice.keys, async () => {
-      AccountUpdate.fundNewAccount(testHelper.agents.alice.keys.publicKey, 1);
-      await testHelper.token.contract.transfer(
-        testHelper.agents.alice.keys.publicKey,
-        testHelper.agents.bob.keys.publicKey,
-        aliceBalance
-      );
-    });
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        AccountUpdate.fundNewAccount(th.agents.alice.keys.publicKey, 1);
+        await th.token.contract.transfer(
+          th.agents.alice.keys.publicKey,
+          th.agents.bob.keys.publicKey,
+          aliceBalance
+        );
+      },
+      { name: 'Burn Test Suite: Alice transfers all zkUSD to Bob' }
+    );
 
     await assert.rejects(async () => {
-      await transaction(testHelper.agents.alice.keys, async () => {
-        await testHelper.engine.contract.burnZkUsd(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_10_CENT_ZKUSD
-        );
-      });
+      await th.includeTx(
+        th.agents.alice.keys,
+        async () => {
+          await th.engine.contract.burnZkUsd(
+            th.agents.alice.vault!.publicKey,
+            TestAmounts.DEBT_10_CENT_ZKUSD
+          );
+        },
+        { name: 'Burn Test Suite: Alice burns 10 cents' }
+      );
     });
   });
 });

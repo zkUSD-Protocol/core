@@ -8,7 +8,7 @@ import {
   OraclePriceSubmissions,
 } from '../../../proofs/oracle-price-aggregation/prove.js';
 import { TestHelper } from '../../test-helper.js';
-import { computeOracleWhitelistHash } from '../../../types.js';
+import { OracleWhitelist } from '../../../types/oracle.js';
 
 const client = new Client({
   network: 'testnet',
@@ -17,21 +17,21 @@ const client = new Client({
 /**
  * Utility function to generate dynamic oracle submissions.
  * @param prices Array of prices from real oracles
- * @param testHelper TestHelper instance for accessing oracle keys
+ * @param th TestHelper instance for accessing oracle keys
  * @returns OraclePriceSubmissions object
  */
 async function getDynamicPriceSubmissions(
   prices: (number | bigint)[],
-  testHelper: TestHelper
+  th: TestHelper
 ): Promise<OraclePriceSubmissions> {
-  const oracleCount = testHelper.whitelist.addresses.length;
+  const oracleCount = th.whitelist.addresses.length;
   const blockHeight = Mina.getNetworkState().blockchainLength;
   const submissions: PriceSubmission[] = [];
 
   for (let i = 0; i < oracleCount; i++) {
     const oracleName = 'oracle' + (i + 1);
-    const oraclePrivateKey = testHelper.oracles[oracleName].privateKey;
-    const oraclePublicKey = testHelper.oracles[oracleName].publicKey;
+    const oraclePrivateKey = th.oracles[oracleName].privateKey;
+    const oraclePublicKey = th.oracles[oracleName].publicKey;
 
     const isReal = i < prices.length;
     const priceValue = isReal ? UInt64.from(prices[i]) : UInt64.zero;
@@ -68,24 +68,19 @@ async function getDynamicPriceSubmissions(
 }
 
 describe('Oracle Price Aggregation Test Suite', () => {
-  let testHelper: TestHelper;
+  let th: TestHelper;
 
   before(async () => {
-    testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
-    await testHelper.deployTokenContracts();
+    th = await TestHelper.initLocalChain({ proofsEnabled: false });
+    await th.deployTokenContracts();
   });
 
   it('should compute median with 3 valid prices', async () => {
     const prices = [100n, 120n, 110n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -93,7 +88,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -110,15 +105,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should handle even number of valid prices', async () => {
     const prices = [100n, 120n, 110n, 130n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -126,7 +116,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -144,18 +134,13 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should reject submissions with invalid block height', async () => {
     const prices = [100n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     // Modify block height to be invalid
     oraclePriceSubmissions.submissions[0].blockHeight = UInt32.from(999999);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     // try {
     await assert.rejects(async () => {
@@ -165,7 +150,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
           oracleWhitelistHash,
         },
         {
-          oracleWhitelist: testHelper.whitelist,
+          oracleWhitelist: th.whitelist,
           oraclePriceSubmissions,
         }
       );
@@ -175,15 +160,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
   it('should reject submissions that would cause overflow in median calculation', async () => {
     const BIG = (1n << 64n) - 1n; // Max UInt64 value
     const prices = [1n, BIG, 50n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     await assert.rejects(async () => {
       await AggregateOraclePrices.compute(
@@ -192,7 +172,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
           oracleWhitelistHash,
         },
         {
-          oracleWhitelist: testHelper.whitelist,
+          oracleWhitelist: th.whitelist,
           oraclePriceSubmissions,
         }
       );
@@ -203,15 +183,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
     // Using large but safe numbers that won't overflow when added/divided
     const LARGE = 1000000000000n; // 1 trillion
     const prices = [LARGE - 10n, LARGE, LARGE + 10n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -219,7 +194,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -237,15 +212,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should track valid submissions correctly', async () => {
     const prices = [100n, 120n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -253,7 +223,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -267,7 +237,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
     );
 
     // Check remaining submissions are invalid
-    for (let i = 2; i < testHelper.whitelist.addresses.length; i++) {
+    for (let i = 2; i < th.whitelist.addresses.length; i++) {
       assert(
         !result.proof.publicOutput.validSubmissions.valid[
           i
@@ -278,15 +248,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should compute correct median with all oracles submitting same price', async () => {
     const prices = Array(8).fill(100n); // All 8 oracles submit 100
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -294,7 +259,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -311,15 +276,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should compute correct median with all oracles submitting ascending prices', async () => {
     const prices = [10n, 20n, 30n, 40n, 50n, 60n, 70n, 80n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -327,7 +287,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -345,15 +305,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should compute correct median with all oracles submitting descending prices', async () => {
     const prices = [80n, 70n, 60n, 50n, 40n, 30n, 20n, 10n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -361,7 +316,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -379,15 +334,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should compute correct median with all oracles submitting unordered prices', async () => {
     const prices = [30n, 10n, 70n, 50n, 20n, 60n, 40n, 80n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -395,7 +345,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );
@@ -414,15 +364,10 @@ describe('Oracle Price Aggregation Test Suite', () => {
 
   it('should compute correct median with all oracles submitting with duplicates', async () => {
     const prices = [40n, 40n, 40n, 40n, 50n, 50n, 50n, 50n];
-    const oraclePriceSubmissions = await getDynamicPriceSubmissions(
-      prices,
-      testHelper
-    );
+    const oraclePriceSubmissions = await getDynamicPriceSubmissions(prices, th);
 
     const blockHeight = Mina.getNetworkState().blockchainLength;
-    const oracleWhitelistHash = computeOracleWhitelistHash(
-      testHelper.whitelist
-    );
+    const oracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
 
     const result = await AggregateOraclePrices.compute(
       {
@@ -430,7 +375,7 @@ describe('Oracle Price Aggregation Test Suite', () => {
         oracleWhitelistHash,
       },
       {
-        oracleWhitelist: testHelper.whitelist,
+        oracleWhitelist: th.whitelist,
         oraclePriceSubmissions,
       }
     );

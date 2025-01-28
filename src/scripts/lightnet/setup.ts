@@ -1,10 +1,6 @@
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
-
-import { transaction } from '../../utils/transaction.js';
-import { receiveMina } from './receive-mina.js';
 import { getNetworkKeys } from '../../config/keys.js';
-import { OracleWhitelist } from '../../types.js';
-import { fetchMinaAccount } from 'zkcloudworker';
+import { OracleWhitelist } from '../../types/oracle.js';
 import { TransactionManager } from '../../mina/transaction-manager.js';
 import { DeploymentService } from '../../services/deployment.js';
 import { AccountUpdate, PublicKey } from 'o1js';
