@@ -733,6 +733,7 @@ export class TransactionManager {
                 }, fee: ${fee}} ...`
               );
             }
+
             // TODO use signing service instead, do not pass private keys around
             const signers = options?.extraSigners
               ? [sender.privateKey, ...options.extraSigners]
@@ -761,7 +762,9 @@ export class TransactionManager {
           nonceLock = lock;
           if (options?.printTx) {
             console.log(`${tx.getId()} - Sending transaction ...`);
+            console.log('Pretty printing signed tx', signedTxResult.toPretty());
           }
+
           const sentTx = await signedTxResult.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();

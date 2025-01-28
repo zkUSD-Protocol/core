@@ -12,7 +12,7 @@ import {
   PriceSubmission,
   AggregateOraclePricesProof,
 } from './proofs/oracle-price-aggregation/index.js';
-
+import { Vault } from './types/vault.js';
 import { getNetworkKeys } from './config/keys.js';
 import {
   VaultTransactionArgs,
@@ -22,7 +22,6 @@ import { OracleWhitelist } from './types/oracle.js';
 
 export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
   console.log(`starting worker example version on chain ${cloud.chain}`);
-  console.log(cloud);
   await initializeBindings();
   await initBlockchain(cloud.chain);
   return new ZkUsdCloudWorker(cloud);
@@ -47,4 +46,5 @@ export {
   getNetworkKeys,
   VaultTransactionType,
   VaultTransactionArgs,
+  Vault,
 };

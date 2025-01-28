@@ -23,7 +23,7 @@ import {
   UInt32,
 } from 'o1js';
 
-import { Vault, VaultState } from '../types/vault.js';
+import { Vault } from '../../../../types/vault.js';
 import {
   MinaPriceUpdateEvent,
   FallbackMinaPriceUpdateEvent,
@@ -42,47 +42,43 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
   ValidPriceBlockCountUpdatedEvent,
-} from '../events.js';
+} from '../../../../events.js';
 import {
   MinaPriceInput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
-} from '../proofs/oracle-price-aggregation/verify.js';
-import { PriceAggregationProofPublicOutput } from '../proofs/oracle-price-aggregation/common.js';
+} from '../../../../proofs/oracle-price-aggregation/verify.js';
+import { PriceAggregationProofPublicOutput } from '../../../../proofs/oracle-price-aggregation/common.js';
 import {
   ProtocolData,
   ProtocolDataPacked,
   ZkUsdEngineErrors,
-} from '../types/engine.js';
-import { MinaPrice, OracleWhitelist } from '../types/oracle.js';
+} from '../../../../types/engine.js';
+import { MinaPrice, OracleWhitelist } from '../../../../types/oracle.js';
 
 /**
  * @title   zkUSD Engine contract
- * @notice  This contract is the master contract used to govern the rules of interaction with the zkUSD system.
- *          It uses a token account design model which installs user vaults on the token account of the engine. This
- *          allows the engine to be the admin of the zkUSD token contract, while also managing the price state, interaction with the vaults,
- *          and administrative functionality such as the oracle whitelist.
+ * @notice  This is a fake contract to test the upgradability of the zkUSD engine.
  */
 
-export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
-  admin: PublicKey;
-  validPriceBlockCount: UInt32;
-  emergencyStop: Bool;
-}
-
-export function ZkUsdEngineContract(args: {
+export function ZkUsdEngineUpgradeContract(args: {
   zkUsdTokenAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
 }) {
   const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
-  class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
+  class ZkUsdEngineUpgrade
+    extends TokenContract
+    implements FungibleTokenAdminBase
+  {
     @state(Field) oracleWhitelistHash = State<Field>(); // Posieden hash of the oracle whitelist
-    @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>(); // Protocol data
+    @state(UInt32) validPriceBlockCount = State<UInt32>(); // Valid price block count
+    @state(Field) hashedSecret = State<Field>(); // Posieden hash of the secret
+    @state(Bool) emergencyStop = State<Bool>(); // Emergency stop
     @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
 
     static ZKUSD_TOKEN_ADDRESS = zkUsdTokenAddress; // The address of the zkUSD token contract
     static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3); // The minimum number of valid oracle submissions required to update the price
 
-    static FungibleToken = FungibleTokenContract(ZkUsdEngine);
+    static FungibleToken = FungibleTokenContract(ZkUsdEngineUpgrade);
 
     readonly events = {
       MinaPriceUpdate: MinaPriceUpdateEvent,
@@ -103,70 +99,35 @@ export function ZkUsdEngineContract(args: {
       Liquidate: LiquidateEvent,
     };
 
-    /**
-     * @notice  Deploys the oracle contract and sets initial state
-     * @param   args.initialPrice We initialise the contract with a price
-     */
-    async deploy(args: ZkUsdEngineDeployProps) {
-      await super.deploy(args);
-
-      this.account.permissions.set({
-        ...Permissions.default(),
-        setPermissions: Permissions.impossible(),
-
-        /**
-         * Due to Mina's transaction versioning system, verification key permissions are automatically
-         * reset to 'signature' during network upgrades (hardforks). This means that achieving complete
-         * immutability for verification keys is currently not possible in the Mina protocol.
-         *
-         * Given this constraint, and our commitment to continuous protocol improvements, we explicitly
-         * set the verification key permission to 'signature'. This allows us to upgrade the protocol's
-         * proof system as needed and as we improve our decentralisation efforts.
-         *
-         * This design choice balances protocol upgradeability with security, acknowledging that
-         * true immutability of verification keys is not achievable under Mina's current architecture.
-         */
-        setVerificationKey: Permissions.VerificationKey.signature(),
-
-        editState: Permissions.proof(),
-        send: Permissions.proof(),
-      });
-
-      this.oracleWhitelistHash.set(Field.from(0));
-
-      this.protocolDataPacked.set(
-        ProtocolData.new({
-          admin: args.admin,
-          validPriceBlockCount: args.validPriceBlockCount,
-          emergencyStop: args.emergencyStop,
-        }).pack()
-      );
-    }
-
     //Blocks the updating of state of the token accounts
     approveBase(forest: AccountUpdateForest): Promise<void> {
       throw Error(ZkUsdEngineErrors.UPDATES_BLOCKED);
     }
 
     /**
-     * @notice The initialize method is necessary for setting up the various helper token accounts
-     *         that are used to track the state of the system.
+     * @notice  Initializes the upgraded engine contract
+     *
      */
-    @method async initialize() {
-      //Ensure admin key
-      await this.ensureAdminSignature();
+    @method async initialize(
+      secret: Field,
+      oracleWhitelist: OracleWhitelist,
+      validPriceBlockCount: UInt32
+    ) {
+      //We now need to reset the state of the engine
+      //Set the secret hash
+      this.hashedSecret.set(Poseidon.hash([secret]));
 
-      //Set the permissions to track the collateral deposits on the engine
-      let au = AccountUpdate.createSigned(this.address, this.deriveTokenId());
-      au.account.isNew.getAndRequireEquals().assertTrue();
-      let permissions = Permissions.default();
-      permissions.send = Permissions.none();
-      permissions.setPermissions = Permissions.impossible();
-      au.account.permissions.set(permissions);
+      //Set the oracle whitelist hash
+      this.oracleWhitelistHash.set(OracleWhitelist.hash(oracleWhitelist));
 
-      //Here we can set the editState permission to none because these permissions are set
-      //on a token account which means all updates have to be approved by the engine
-      permissions.editState = Permissions.none();
+      //Set the valid price block count
+      this.validPriceBlockCount.set(validPriceBlockCount);
+
+      //Set the emergency stop
+      this.emergencyStop.set(Bool(false));
+
+      //Set the interaction flag
+      this.interactionFlag.set(Bool(false));
     }
 
     /**
@@ -207,21 +168,20 @@ export function ZkUsdEngineContract(args: {
      * @notice  Ensures the protocol is not stopped
      */
     async ensureProtocolNotStopped() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      protocolData.emergencyStop.assertFalse(ZkUsdEngineErrors.EMERGENCY_HALT);
+      this.emergencyStop
+        .getAndRequireEquals()
+        .assertFalse(ZkUsdEngineErrors.EMERGENCY_HALT);
     }
 
     /**
-     * @notice  Internal helper to validate admin signature
-     * @returns The signed account update from the admin
+     * @notice  Internal helper to validate the hashed secret
+     * @param   secret The secret to validate
      */
-    async ensureAdminSignature(): Promise<AccountUpdate> {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
+    async ensureHashedSecret(secret: Field) {
+      const providedHashedSecret = Poseidon.hash([secret]);
+      providedHashedSecret.assertEquals(
+        this.hashedSecret.getAndRequireEquals()
       );
-      return AccountUpdate.createSigned(protocolData.admin);
     }
 
     /**
@@ -232,15 +192,12 @@ export function ZkUsdEngineContract(args: {
     verifyMinaPriceInput(
       minaPriceInput: MinaPriceInput
     ): PriceAggregationProofPublicOutput {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
+      const validPriceBlockCount =
+        this.validPriceBlockCount.getAndRequireEquals();
 
       const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
-      const lastValidBlock = firstValidBlock.add(
-        protocolData.validPriceBlockCount
-      );
+      const lastValidBlock = firstValidBlock.add(validPriceBlockCount);
 
       this.network.blockchainLength.requireBetween(
         firstValidBlock,
@@ -255,7 +212,7 @@ export function ZkUsdEngineContract(args: {
       });
 
       minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
-        ZkUsdEngine.MINIMUM_VALID_ORACLE_SUBMISSIONS
+        ZkUsdEngineUpgrade.MINIMUM_VALID_ORACLE_SUBMISSIONS
       );
 
       return minaPriceInput.proof.publicOutput;
@@ -284,8 +241,8 @@ export function ZkUsdEngineContract(args: {
       const newVaultState = vault.updateOwner(newOwner, owner);
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
+      const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
+        ZkUsdEngineUpgrade.ZKUSD_TOKEN_ADDRESS
       );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
@@ -316,8 +273,8 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getAndRequireSignature();
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
+      const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
+        ZkUsdEngineUpgrade.ZKUSD_TOKEN_ADDRESS
       );
 
       //We create an account for the owner on the zkUSD token contract (if they don't already have one)
@@ -475,8 +432,8 @@ export function ZkUsdEngineContract(args: {
       const vault = Vault.get(vaultUpdate);
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
+      const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
+        ZkUsdEngineUpgrade.ZKUSD_TOKEN_ADDRESS
       );
 
       //Get the owner of the zkUSD
@@ -531,8 +488,8 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getUnconstrained();
 
       //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
+      const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
+        ZkUsdEngineUpgrade.ZKUSD_TOKEN_ADDRESS
       );
 
       //Manage the debt in the vault
@@ -574,8 +531,8 @@ export function ZkUsdEngineContract(args: {
       const vault = Vault.get(vaultUpdate);
 
       // //Get the zkUSD token contract
-      const zkUSD = new ZkUsdEngine.FungibleToken(
-        ZkUsdEngine.ZKUSD_TOKEN_ADDRESS
+      const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
+        ZkUsdEngineUpgrade.ZKUSD_TOKEN_ADDRESS
       );
 
       // Get the liquidator
@@ -635,22 +592,19 @@ export function ZkUsdEngineContract(args: {
      * @dev     Can only be called by authorized addresses via protocol vault
      * @param   shouldStop True to stop the protocol, false to resume
      */
-    @method async toggleEmergencyStop(shouldStop: Bool) {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
+    @method async toggleEmergencyStop(shouldStop: Bool, secret: Field) {
+      const emergencyStop = this.emergencyStop.getAndRequireEquals();
 
       //Assertions
       shouldStop
-        .equals(protocolData.emergencyStop)
+        .equals(emergencyStop)
         .assertFalse('Protocol is already in desired state');
 
       //Do we have the right permissions to toggle the protocol?
-      await this.ensureAdminSignature();
+      await this.ensureHashedSecret(secret);
 
       //Toggle the protocol state
-      protocolData.emergencyStop = shouldStop;
-      this.protocolDataPacked.set(protocolData.pack());
+      this.emergencyStop.set(shouldStop);
 
       //Emit the Liquidate event
       this.emitEvent(
@@ -674,47 +628,44 @@ export function ZkUsdEngineContract(args: {
      * @notice  Updates the oracle whitelist merkle root
      * @param   whitelist The new oracle whitelist merkle root
      */
-    @method async updateOracleWhitelist(whitelist: OracleWhitelist) {
+    @method async updateOracleWhitelist(
+      whitelist: OracleWhitelist,
+      secret: Field
+    ) {
       //Precondition
       const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
 
       //Ensure admin signature
-      await this.ensureAdminSignature();
+      await this.ensureHashedSecret(secret);
 
-      const updatedWhitelistHash = Poseidon.hash(
-        OracleWhitelist.toFields(whitelist)
-      );
-      this.oracleWhitelistHash.set(updatedWhitelistHash);
+      this.oracleWhitelistHash.set(OracleWhitelist.hash(whitelist));
 
       this.emitEvent('OracleWhitelistUpdated', {
         previousHash,
-        newHash: updatedWhitelistHash,
+        newHash: OracleWhitelist.hash(whitelist),
       });
     }
 
     async getValidPriceBlockCount() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return protocolData.validPriceBlockCount;
+      const validPriceBlockCount =
+        this.validPriceBlockCount.getAndRequireEquals();
+      return validPriceBlockCount;
     }
 
     /**
      * @notice  Updates the valid price block count
      * @param   count The new valid price block count
      */
-    @method async updateValidPriceBlockCount(count: UInt32) {
+    @method async updateValidPriceBlockCount(count: UInt32, secret: Field) {
       //Precondition
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
+      const validPriceBlockCount =
+        this.validPriceBlockCount.getAndRequireEquals();
 
-      const previousCount = protocolData.validPriceBlockCount;
+      const previousCount = validPriceBlockCount;
       //Ensure admin signature
-      await this.ensureAdminSignature();
+      await this.ensureHashedSecret(secret);
 
-      protocolData.validPriceBlockCount = count;
-      this.protocolDataPacked.set(protocolData.pack());
+      this.validPriceBlockCount.set(count);
 
       this.emitEvent('ValidPriceBlockCountUpdated', {
         previousCount: previousCount,
@@ -722,28 +673,6 @@ export function ZkUsdEngineContract(args: {
       });
     }
 
-    /**
-     * @notice  Updates the admin public key
-     * @param   newAdmin The new admin public key
-     */
-    @method async updateAdmin(newAdmin: PublicKey) {
-      //Ensure admin signature
-      await this.ensureAdminSignature();
-
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-
-      const previousAdmin = protocolData.admin;
-
-      protocolData.admin = newAdmin;
-      this.protocolDataPacked.set(protocolData.pack());
-
-      this.emitEvent('AdminUpdated', {
-        previousAdmin,
-        newAdmin,
-      });
-    }
     /**
      * @notice  This method is used to assert the interaction flag, this is used to ensure that the zkUSD token contract knows it is being called from the vault
      * @returns True if the flag is set
@@ -774,8 +703,8 @@ export function ZkUsdEngineContract(args: {
     @method.returns(Bool)
     public async canChangeAdmin(_admin: PublicKey) {
       //We need the admin signature to change the admin
-      await this.ensureAdminSignature();
-      return Bool(true);
+
+      return Bool(false);
     }
 
     /**
@@ -785,8 +714,7 @@ export function ZkUsdEngineContract(args: {
     @method.returns(Bool)
     public async canPause(): Promise<Bool> {
       //We need the admin signature to pause the token, we will only do this in case of upgrades
-      await this.ensureAdminSignature();
-      return Bool(true);
+      return Bool(false);
     }
 
     /**
@@ -796,10 +724,9 @@ export function ZkUsdEngineContract(args: {
     @method.returns(Bool)
     public async canResume(): Promise<Bool> {
       //We need the admin signature to resume the token
-      await this.ensureAdminSignature();
-      return Bool(true);
+      return Bool(false);
     }
   }
 
-  return ZkUsdEngine;
+  return ZkUsdEngineUpgrade;
 }
