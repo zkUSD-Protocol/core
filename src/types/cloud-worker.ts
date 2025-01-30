@@ -14,6 +14,7 @@ export enum VaultTransactionType {
 }
 
 export interface BaseTransactionArgs {
+  transactionId: string;
   vaultAddress: string;
 }
 
