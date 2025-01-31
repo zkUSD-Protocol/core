@@ -128,10 +128,10 @@ export class Vault extends Struct({
    * @param   accountUpdate - The account update object used to retrieve the vault state
    * @returns The retrieved vault state
    */
-  static get(accountUpdate: AccountUpdate): Vault {
+  static getAndRequireEquals(accountUpdate: AccountUpdate): Vault {
     //TODO: We should constrain the token id of the account to the engine token id
 
-    const state = Vault.retrieveState(accountUpdate);
+    const state = Vault.retrieveStateAndRequireEquals(accountUpdate);
 
     return new Vault({
       accountUpdate: accountUpdate,
@@ -159,7 +159,9 @@ export class Vault extends Struct({
    * @param   accountUpdate - The account update object used to retrieve the vault state
    * @returns The retrieved vault state
    */
-  static retrieveState(accountUpdate: AccountUpdate): VaultState {
+  static retrieveStateAndRequireEquals(
+    accountUpdate: AccountUpdate
+  ): VaultState {
     const vaultStateFieldsType = Provable.Array(
       Field,
       VaultState.sizeInFields()
@@ -213,6 +215,30 @@ export class Vault extends Struct({
     });
 
     return VaultState.fromFields(stateAsFields);
+  }
+
+  /**
+   * @notice  This method is used to calculate the health factor of the vault.
+   *          We calculate the health factor by dividing the maximum allowed debt by the debt amount.
+   *          The health factor is a normalised mesaure of the "healthiness" of the vault.
+   *
+   *          A health factor > 100 is over collateralised
+   *          A health factor < 100 is under collateralised and will be liquidated
+   *
+   * @param   collateralAmount - The amount of collateral
+   * @param   debtAmount - The amount of debt
+   * @param   minaPrice - MINA/nanoUSD price
+   * @returns The health factor of the vault
+   */
+  public calculateHealthFactor(
+    collateralAmount: UInt64,
+    debtAmount: UInt64,
+    minaPrice: MinaPrice
+  ): UInt64 {
+    const collateralValue = this.calculateUsdValue(collateralAmount, minaPrice);
+    const maxAllowedDebt = this.calculateMaxAllowedDebt(collateralValue);
+    const debtInFields = debtAmount.toFields()[0];
+    return UInt64.fromFields([this.safeDiv(maxAllowedDebt, debtInFields)]);
   }
 
   /**
@@ -343,6 +369,7 @@ export class Vault extends Struct({
   ): VaultState {
     // Verify caller is vault owner
     this.state.owner.assertEquals(owner);
+
     // Ensure mint amount is positive
     amount.assertGreaterThan(UInt64.zero, VaultErrors.AMOUNT_ZERO);
 
@@ -479,30 +506,6 @@ export class Vault extends Struct({
       this.state.debtAmount,
       minaPrice
     );
-  }
-
-  /**
-   * @notice  This method is used to calculate the health factor of the vault.
-   *          We calculate the health factor by dividing the maximum allowed debt by the debt amount.
-   *          The health factor is a normalised mesaure of the "healthiness" of the vault.
-   *
-   *          A health factor > 100 is over collateralised
-   *          A health factor < 100 is under collateralised and will be liquidated
-   *
-   * @param   collateralAmount - The amount of collateral
-   * @param   debtAmount - The amount of debt
-   * @param   minaPrice - MINA/nanoUSD price
-   * @returns The health factor of the vault
-   */
-  public calculateHealthFactor(
-    collateralAmount: UInt64,
-    debtAmount: UInt64,
-    minaPrice: MinaPrice
-  ): UInt64 {
-    const collateralValue = this.calculateUsdValue(collateralAmount, minaPrice);
-    const maxAllowedDebt = this.calculateMaxAllowedDebt(collateralValue);
-    const debtInFields = debtAmount.toFields()[0];
-    return UInt64.fromFields([this.safeDiv(maxAllowedDebt, debtInFields)]);
   }
 
   /**

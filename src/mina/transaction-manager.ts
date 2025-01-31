@@ -27,6 +27,7 @@ export interface DefaultTransactionOptions {
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeout: number;
+  memo: string;
 }
 
 /**
@@ -47,6 +48,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
   dependencyStatusPollTimeout: 180000,
+  memo: '',
 };
 
 /**
@@ -912,15 +914,19 @@ export async function transactionBuildAndProve(
   sender: KeyPair,
   callback: () => Promise<void>,
   options: TransactionOptions & {
-    nonce?: UInt32,
-    forceFetchAllTxParties?: (tx: Record<string, any> & { transaction: ZkappCommand }) => Promise<void>} = {}
+    nonce?: UInt32;
+    forceFetchAllTxParties?: (
+      tx: Record<string, any> & { transaction: ZkappCommand }
+    ) => Promise<void>;
+  } = {}
 ): Promise<Transaction<true, false>> {
   const {
     printTx = false,
     startingFee,
     printAccountUpdates = false,
     nonce,
-    forceFetchAllTxParties
+    memo,
+    forceFetchAllTxParties,
   } = options;
 
   const tx = await mutex.runExclusive(
@@ -930,6 +936,7 @@ export async function transactionBuildAndProve(
           sender: sender.publicKey,
           ...(startingFee && { fee: startingFee }),
           ...(nonce && { nonce: Number(nonce) }),
+          ...(memo && { memo }),
         },
         callback
       )
@@ -975,7 +982,7 @@ export async function transactionBuildAndProve(
   }
 
   try {
-    if(forceFetchAllTxParties){
+    if (forceFetchAllTxParties) {
       await forceFetchAllTxParties(tx);
     }
     return await mutex.runExclusive(async () => await tx.prove());

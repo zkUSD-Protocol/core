@@ -19,6 +19,8 @@
     "coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "format": "prettier --write --ignore-unknown **/*",
     "test": "npm run build && NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test",
+    "test:unit": "npm run build && NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test build/src/tests/unit/**/*.test.js",
+    "test:integration": "npm run build && NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test build/src/tests/integration/**/*.test.js",
     "testw": "npm run build && node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "lint": "npx eslint src/* --fix"
   },

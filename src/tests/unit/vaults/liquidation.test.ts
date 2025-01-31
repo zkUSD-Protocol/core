@@ -17,7 +17,7 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice', 'bob', 'charlie', 'dave', 'rewards');
+    await th.createLocalAgents('alice', 'bob', 'charlie', 'dave', 'rewards');
 
     //Deploy a fresh vault
     await th.createVaults('alice', 'bob', 'charlie', 'dave');
@@ -181,9 +181,9 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
       { name: 'Liquidation Test Suite: Bob resets permissions to default' }
     );
 
-    let vault = await th.retrieveVault('alice');
-    const aliceVaultCollateralPreLiq = vault.state.collateralAmount;
-    const aliceVaultDebtPreLiq = vault.state.debtAmount;
+    let vault = await th.retrieveVaultState('alice');
+    const aliceVaultCollateralPreLiq = vault.collateralAmount;
+    const aliceVaultDebtPreLiq = vault.debtAmount;
     const bobZkUsdBalancePreLiq = await th.token.contract.getBalanceOf(
       th.agents.bob.keys.publicKey
     );
@@ -208,9 +208,9 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
       { name: 'Liquidation Test Suite: Bob liquidates Alice vault' }
     );
 
-    vault = await th.retrieveVault('alice');
-    const aliceVaultCollateralPostLiq = vault.state.collateralAmount;
-    const aliceVaultDebtPostLiq = vault.state.debtAmount;
+    vault = await th.retrieveVaultState('alice');
+    const aliceVaultCollateralPostLiq = vault.collateralAmount;
+    const aliceVaultDebtPostLiq = vault.debtAmount;
     const bobZkUsdBalancePostLiq = await th.token.contract.getBalanceOf(
       th.agents.bob.keys.publicKey
     );
@@ -352,9 +352,9 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     // - With 10% bonus, liquidator should get 110 MINA
     // - Since only 105 MINA exists, liquidator gets all of it
 
-    let vault = await th.retrieveVault('dave');
-    const daveVaultCollateralPreLiq = vault.state.collateralAmount;
-    const daveVaultDebtPreLiq = vault.state.debtAmount;
+    let vault = await th.retrieveVaultState('dave');
+    const daveVaultCollateralPreLiq = vault.collateralAmount;
+    const daveVaultDebtPreLiq = vault.debtAmount;
     const bobZkUsdBalancePreLiq = await th.token.contract.getBalanceOf(
       th.agents.bob.keys.publicKey
     );
@@ -377,9 +377,9 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
       { name: 'Liquidation Test Suite: Bob liquidates Dave vault' }
     );
 
-    vault = await th.retrieveVault('dave');
-    const daveVaultCollateralPostLiq = vault.state.collateralAmount;
-    const daveVaultDebtPostLiq = vault.state.debtAmount;
+    vault = await th.retrieveVaultState('dave');
+    const daveVaultCollateralPostLiq = vault.collateralAmount;
+    const daveVaultDebtPostLiq = vault.debtAmount;
     const bobZkUsdBalancePostLiq = await th.token.contract.getBalanceOf(
       th.agents.bob.keys.publicKey
     );

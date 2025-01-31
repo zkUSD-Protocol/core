@@ -11,7 +11,7 @@ describe('zkUSD Vault Burn Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice', 'bob', 'charlie');
+    await th.createLocalAgents('alice', 'bob', 'charlie');
 
     //deploy alice's vault
     await th.createVaults('alice');
@@ -51,7 +51,7 @@ describe('zkUSD Vault Burn Test Suite', () => {
       th.agents.alice.keys.publicKey
     );
 
-    const vaultStartingState = await th.retrieveVault('alice');
+    const vaultStartingState = await th.retrieveVaultState('alice');
 
     await th.includeTx(
       th.agents.alice.keys,
@@ -64,15 +64,15 @@ describe('zkUSD Vault Burn Test Suite', () => {
       { name: 'Burn Test Suite: Alice burns 1 zkUSD' }
     );
 
-    const vaultFinalState = await th.retrieveVault('alice');
+    const vaultFinalState = await th.retrieveVaultState('alice');
 
     const aliceFinalBalance = await th.token.contract.getBalanceOf(
       th.agents.alice.keys.publicKey
     );
 
     assert.deepStrictEqual(
-      vaultFinalState.state.debtAmount,
-      vaultStartingState.state.debtAmount.sub(TestAmounts.DEBT_1_ZKUSD)
+      vaultFinalState.debtAmount,
+      vaultStartingState.debtAmount.sub(TestAmounts.DEBT_1_ZKUSD)
     );
     assert.deepStrictEqual(
       aliceFinalBalance,
@@ -123,7 +123,7 @@ describe('zkUSD Vault Burn Test Suite', () => {
   });
 
   it('should fail if burn amount exceeds debt', async () => {
-    const currentVault = await th.retrieveVault('alice');
+    const currentVault = await th.retrieveVaultState('alice');
 
     await assert.rejects(async () => {
       await th.includeTx(
@@ -131,7 +131,7 @@ describe('zkUSD Vault Burn Test Suite', () => {
         async () => {
           await th.engine.contract.burnZkUsd(
             th.agents.alice.vault!.publicKey,
-            currentVault.state.debtAmount.add(1)
+            currentVault.debtAmount.add(1)
           );
         },
         { name: 'Burn Test Suite: Alice burns more than debt' }
@@ -155,7 +155,7 @@ describe('zkUSD Vault Burn Test Suite', () => {
   });
 
   it('should track debt correctly after multiple burns', async () => {
-    const initialVault = await th.retrieveVault('alice');
+    const initialVault = await th.retrieveVaultState('alice');
 
     // Perform multiple small burns
     for (let i = 0; i < 3; i++) {
@@ -171,11 +171,11 @@ describe('zkUSD Vault Burn Test Suite', () => {
       );
     }
 
-    const finalVault = await th.retrieveVault('alice');
+    const finalVault = await th.retrieveVaultState('alice');
 
     assert.deepStrictEqual(
-      finalVault.state.debtAmount,
-      initialVault.state.debtAmount.sub(TestAmounts.DEBT_10_CENT_ZKUSD.mul(3))
+      finalVault.debtAmount,
+      initialVault.debtAmount.sub(TestAmounts.DEBT_10_CENT_ZKUSD.mul(3))
     );
   });
 

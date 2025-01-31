@@ -2,6 +2,7 @@ import { PrivateKey, PublicKey } from 'o1js';
 import { blockchain } from '../mina/networks.js';
 import { KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
+
 export interface NetworkKeyPairs {
   deployer?: KeyPair;
   protocolAdmin: KeyPair;
@@ -10,6 +11,12 @@ export interface NetworkKeyPairs {
   oracles?: [KeyPair, ...KeyPair[]] & {
     length: typeof OracleWhitelist.MAX_PARTICIPANTS;
   };
+  agents?: Record<string, AgentKeys>;
+}
+
+export interface AgentKeys {
+  keys: KeyPair;
+  vault: KeyPair;
 }
 
 const localKeys: NetworkKeyPairs = {
@@ -105,8 +112,122 @@ const localKeys: NetworkKeyPairs = {
   ],
 };
 
+const lightnetAgentKeys: Record<string, AgentKeys> = {
+  alice: {
+    keys: {
+      privateKey: PrivateKey.fromBase58(
+        'EKEkwS2sbJB8SgGmZXCGMyxSu52jde9ZXRKNb2MtvbK7eNoZbNUh'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qictqXwJ8SXfHgifQsSn65YndG3AUqxnuG7dtZRsKcvBQDanCU3q'
+      ),
+    },
+    vault: {
+      privateKey: PrivateKey.fromBase58(
+        'EKEkfMVK6s2Rs6YnbeMvw9SvN5bSvZ8TQ93JMj55FtyKC7CmLhNy'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qoJqGx3WitVCiL38RKJQ175xvtHUuyEKE2MiXbv8xkLrDrodeYfq'
+      ),
+    },
+  },
+  bob: {
+    keys: {
+      privateKey: PrivateKey.fromBase58(
+        'EKE1xWEyomwTCdMm1Aroc1SMUjw32KmkwmPrmjiYJGZDjVjwjwe9'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qpf9cqF4U887MyNSBgqVPBshhtcE6bD2vJMMbX9V4e5odz8Jsuqm'
+      ),
+    },
+    vault: {
+      privateKey: PrivateKey.fromBase58(
+        'EKEVTTsxRE3eviFgQ3Z57Ge7TKgxcdouuNcKVFXidWpekp5jZzjw'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qrdiErKhPG4by5bWRkCnWof5xF5tmUXXW4Qgpri5Ge3DSbCkAkdZ'
+      ),
+    },
+  },
+  charlie: {
+    keys: {
+      privateKey: PrivateKey.fromBase58(
+        'EKEPYvqhBWe5kLFhtJJz9HxPK3j9Hw1AvdzNjQAYUBQvTH9GAB4b'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qm6HBx2MEcYYiJFFYT4NGb2LxGa1SACCPyg6aPfGk145K5fbeBUQ'
+      ),
+    },
+    vault: {
+      privateKey: PrivateKey.fromBase58(
+        'EKE42Z93wxhgGqgv7Ukhwu9Drm9xXbLnJ9AihSepTHdCgVkJtxqZ'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qqwDNcWaAkBbuiQ4x2dBp1BGgQ2Nwx4ehtAYBEa6vrojjBrM8YHj'
+      ),
+    },
+  },
+  dave: {
+    keys: {
+      privateKey: PrivateKey.fromBase58(
+        'EKFKZA1MGJJdFMaaV8zb5U727ScGdkkHgEzm7ZncqJwvWnZ7LZN4'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qkyRcD5Ft9dwoHaGPmjoAiy4jSREYiKr4VZH5becFDJykREGNEiM'
+      ),
+    },
+    vault: {
+      privateKey: PrivateKey.fromBase58(
+        'EKFX7cexV3DD2E3wJdFGxmqc2cCdCGbSKjm34svM4XYtcmhZtrUa'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qopcrUjQrcTcv2kCxzYpBSjJjV7YuSp4W6VWXSvErhSFWEUxx5dx'
+      ),
+    },
+  },
+  eve: {
+    keys: {
+      privateKey: PrivateKey.fromBase58(
+        'EKEpMiNACkRt6aBWrBvggwijG8k3pmDHXW6G37UqpXUSQNDw5s6c'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qqDZEcmc29ovde8E1xmpFimjrFd6nxgdGzyh2QCM1ZooZKyyV9Sv'
+      ),
+    },
+    vault: {
+      privateKey: PrivateKey.fromBase58(
+        'EKFJkuqfqnjdNdGpShZq1cX39Tq3cwYt574w2LUCtEsfHQ44LH1T'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qoSLRfea4ngNqk9w8XxBiBZ72mWKe6321iQ71ozPVfxRGFbQ31VS'
+      ),
+    },
+  },
+  fred: {
+    keys: {
+      privateKey: PrivateKey.fromBase58(
+        'EKF3d28HmasSDmEwDicsH1LmHBhad2YmqAnHcsYMPdjZ9XMgFrAx'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qrnQQYwQirzXsfBS4x2qHZiVuB79eFBELQpqhpN1nr1FGVBavD8h'
+      ),
+    },
+    vault: {
+      privateKey: PrivateKey.fromBase58(
+        'EKEnMbyyCGFodfGU8udKsFHWgcEFGrDnCsmx4L1vVajeG3XV21ij'
+      ),
+      publicKey: PublicKey.fromBase58(
+        'B62qoYAXnb1tKmSDQKstvZasTsgSyPpeUFeo745njPnLm4WFYtmi1oi'
+      ),
+    },
+  },
+};
+
 // For now, using same keys for lightnet
-const lightnetKeys: NetworkKeyPairs = localKeys;
+const lightnetKeys: NetworkKeyPairs = {
+  ...localKeys,
+  agents: lightnetAgentKeys,
+};
 
 export function getNetworkKeys(network: blockchain): NetworkKeyPairs {
   switch (network) {

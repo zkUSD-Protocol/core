@@ -93,7 +93,7 @@ describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
 
-    await th.createAgents('alice');
+    await th.createLocalAgents('alice');
     await th.createVaults('alice');
 
     priceOneUsd = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);

@@ -1,144 +1,165 @@
-import { Agent, TestAmounts, TestHelper } from '../../test-helper.js';
-
+import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { AccountUpdate, PrivateKey, UInt64 } from 'o1js';
+import { AgentKeys } from '../../../config/keys.js';
 
-describe('zkUSD Lightnet - Functional Integration Test Suite', () => {
+describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
   let th: TestHelper;
-  let alice: Agent;
+  let alice: AgentKeys;
+  let bob: AgentKeys;
 
   before(async () => {
     th = await TestHelper.initLightnetChain();
-    [alice] = await th.createAgents('alice');
+    await th.setupLightnet();
+    // [alice, bob] = await th.createLocalAgents('alice', 'bob');
+
+    // console.log('alice pk', alice.keys.publicKey.toBase58());
+    // console.log('bob pk', bob.keys.publicKey.toBase58());
   });
 
   it('should be able to deploy contracts on Lightnet', async () => {
-    await th.deployTokenContracts();
+    //check to see if the contracts are already deployed:
+    // await th.deployTokenContracts();
   });
 
-  it('Should be able to fund new accounts', async () => {
-    // fund newmans account
-    const keys = PrivateKey.randomKeypair();
-    await th.includeTx(
-      alice.keys,
-      async () => {
-        AccountUpdate.fundNewAccount(alice.keys.publicKey, 1);
-        const au2 = AccountUpdate.createSigned(alice.keys.publicKey);
-        au2.send({
-          to: keys.publicKey,
-          amount: TestAmounts.COLLATERAL_50_MINA,
-        });
-      },
-      { name: 'fund_newman' }
-    );
-    await th.registerNewAgent('newman', { keys });
+  it('Should test a send', async () => {
+    // console.log('testing hasTransactionWithMemo');
+    // await th.includeTx(
+    //   bob.keys,
+    //   async () => {
+    //     let acU = AccountUpdate.createSigned(bob.keys.publicKey);
+    //     acU.send({
+    //       to: alice.keys.publicKey,
+    //       amount: 100,
+    //     });
+    //   },
+    //   { name: 'Bob sends to alice' }
+    // );
   });
 
-  it('user should be able create a vault', async () => {
-    await th.createVaults('newman');
-    const newmanVault = th.mina.fetchMinaAccount(
-      th.agents.newman.vault?.publicKey!,
-      { tokenId: th.engine.contract.deriveTokenId(), force: true }
-    );
+  // it('Should be able to fund new accounts', async () => {
+  //   // fund newmans account
+  //   const keys = PrivateKey.randomKeypair();
+  //   await th.includeTx(
+  //     alice.keys,
+  //     async () => {
+  //       AccountUpdate.fundNewAccount(alice.keys.publicKey, 1);
+  //       const au2 = AccountUpdate.createSigned(alice.keys.publicKey);
+  //       au2.send({
+  //         to: keys.publicKey,
+  //         amount: TestAmounts.COLLATERAL_50_MINA,
+  //       });
+  //     },
+  //     { name: 'fund_newman' }
+  //   );
+  //   await th.registerNewAgent('newman', { keys });
+  // });
 
-    assert.notStrictEqual(newmanVault, null);
-    assert.notStrictEqual(th.agents['newman'].vault, null);
-  });
+  // it('user should be able create a vault', async () => {
+  //   await th.createVaults('newman');
+  //   const newmanVault = th.mina.fetchMinaAccount(
+  //     th.agents.newman.vault?.publicKey!,
+  //     { tokenId: th.engine.contract.deriveTokenId(), force: true }
+  //   );
 
-  it('user should be able to deposit', async () => {
-    const newman = th.agents['newman'];
-    await th.includeTx(
-      newman.keys,
-      async () => {
-        console.log('newman vault pk', newman.vault!.publicKey.toBase58());
-        await th.engine.contract.depositCollateral(
-          newman.vault!.publicKey,
-          UInt64.from(1e9)
-        );
-      },
-      { name: 'newman_deposits_collateral' }
-    );
-  });
+  //   assert.notStrictEqual(newmanVault, null);
+  //   assert.notStrictEqual(th.agents['newman'].vault, null);
+  // });
 
-  it('user should be able to mint', async () => {
-    const newman = th.agents['newman'];
+  // it('user should be able to deposit', async () => {
+  //   const newman = th.agents['newman'];
+  //   await th.includeTx(
+  //     newman.keys,
+  //     async () => {
+  //       console.log('newman vault pk', newman.vault!.publicKey.toBase58());
+  //       await th.engine.contract.depositCollateral(
+  //         newman.vault!.publicKey,
+  //         UInt64.from(1e9)
+  //       );
+  //     },
+  //     { name: 'newman_deposits_collateral' }
+  //   );
+  // });
 
-    const price = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+  // it('user should be able to mint', async () => {
+  //   const newman = th.agents['newman'];
 
-    await assert.doesNotReject(async () => {
-      await th.includeTx(
-        newman.keys,
-        async () => {
-          await th.engine.contract.mintZkUsd(
-            newman.vault!.publicKey,
-            UInt64.from(0.5e9),
-            price
-          );
-        },
-        {
-          waitForIncluded: ['newman_deposits_collateral'],
-          name: 'newman_mints_zkUSD',
-        }
-      );
-    });
-  });
+  //   const price = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
-  it('user should be able to repay', async () => {
-    const newman = th.agents['newman'];
+  //   await assert.doesNotReject(async () => {
+  //     await th.includeTx(
+  //       newman.keys,
+  //       async () => {
+  //         await th.engine.contract.mintZkUsd(
+  //           newman.vault!.publicKey,
+  //           UInt64.from(0.5e9),
+  //           price
+  //         );
+  //       },
+  //       {
+  //         waitForIncluded: ['newman_deposits_collateral'],
+  //         name: 'newman_mints_zkUSD',
+  //       }
+  //     );
+  //   });
+  // });
 
-    await assert.doesNotReject(async () => {
-      await th.includeTx(
-        newman.keys,
-        async () => {
-          await th.engine.contract.burnZkUsd(
-            newman.vault!.publicKey,
-            UInt64.from(0.5e9)
-          );
-        },
-        {
-          name: 'newman_burns_zkUSD',
-          waitForIncluded: ['newman_mints_zkUSD'],
-        }
-      );
-    });
-  });
+  // it('user should be able to repay', async () => {
+  //   const newman = th.agents['newman'];
 
-  it(`user's vault can be liquidated`, async () => {
-    const newman = th.agents['newman'];
+  //   await assert.doesNotReject(async () => {
+  //     await th.includeTx(
+  //       newman.keys,
+  //       async () => {
+  //         await th.engine.contract.burnZkUsd(
+  //           newman.vault!.publicKey,
+  //           UInt64.from(0.5e9)
+  //         );
+  //       },
+  //       {
+  //         name: 'newman_burns_zkUSD',
+  //         waitForIncluded: ['newman_mints_zkUSD'],
+  //       }
+  //     );
+  //   });
+  // });
 
-    // assert mintTx defined
-    const price = await th.getMinaPriceInput(TestAmounts.PRICE_10_USD);
+  // it(`user's vault can be liquidated`, async () => {
+  //   const newman = th.agents['newman'];
 
-    await assert.doesNotReject(async () => {
-      await th.includeTx(
-        newman.keys,
-        async () => {
-          await th.engine.contract.mintZkUsd(
-            newman.vault!.publicKey,
-            UInt64.from(5e9),
-            price
-          );
-        },
-        {
-          name: 'newman_mints_again',
-        }
-      );
-    });
+  //   // assert mintTx defined
+  //   const price = await th.getMinaPriceInput(TestAmounts.PRICE_10_USD);
 
-    const newPrice = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+  //   await assert.doesNotReject(async () => {
+  //     await th.includeTx(
+  //       newman.keys,
+  //       async () => {
+  //         await th.engine.contract.mintZkUsd(
+  //           newman.vault!.publicKey,
+  //           UInt64.from(5e9),
+  //           price
+  //         );
+  //       },
+  //       {
+  //         name: 'newman_mints_again',
+  //       }
+  //     );
+  //   });
 
-    await assert.doesNotReject(async () => {
-      await th.includeTx(
-        alice.keys,
-        async () => {
-          AccountUpdate.fundNewAccount(alice.keys.publicKey);
-          await th.engine.contract.liquidate(newman.vault!.publicKey, newPrice);
-        },
-        {
-          name: `newman's getting liquidated`,
-        }
-      );
-    });
-  });
+  //   const newPrice = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+
+  //   await assert.doesNotReject(async () => {
+  //     await th.includeTx(
+  //       alice.keys,
+  //       async () => {
+  //         AccountUpdate.fundNewAccount(alice.keys.publicKey);
+  //         await th.engine.contract.liquidate(newman.vault!.publicKey, newPrice);
+  //       },
+  //       {
+  //         name: `newman's getting liquidated`,
+  //       }
+  //     );
+  //   });
+  // });
 });

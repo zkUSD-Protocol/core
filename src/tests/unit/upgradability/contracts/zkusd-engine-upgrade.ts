@@ -158,7 +158,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       );
 
       //Get the vault
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -235,7 +235,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         vaultAddress,
         this.deriveTokenId()
       );
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Update the owner
       const newVaultState = vault.updateOwner(newOwner, owner);
@@ -312,7 +312,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -369,7 +369,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -429,7 +429,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
@@ -480,7 +480,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Get the owner of the zkUSD
       // we have sender signature from zkUSD.burn
@@ -528,7 +528,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         vaultAddress,
         this.deriveTokenId()
       );
-      const vault = Vault.get(vaultUpdate);
+      const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
@@ -621,7 +621,7 @@ export function ZkUsdEngineUpgradeContract(args: {
         vaultAddress,
         this.deriveTokenId()
       );
-      return Vault.get(vaultUpdate);
+      return Vault.getAndRequireEquals(vaultUpdate);
     }
 
     /**

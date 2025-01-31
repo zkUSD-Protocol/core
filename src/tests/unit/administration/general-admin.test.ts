@@ -12,7 +12,7 @@ describe('zkUSD Protocol Administration Test Suite', async () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice');
+    await th.createLocalAgents('alice');
     await th.createVaults('alice');
 
     //Alice deposits 100 Mina

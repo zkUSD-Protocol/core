@@ -13,7 +13,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice', 'bob', 'charlie', 'rewards');
+    await th.createLocalAgents('alice', 'bob', 'charlie', 'rewards');
 
     //deploy alice's vault
     await th.createVaults('alice', 'bob');
@@ -68,7 +68,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   };
 
   it('should allow alice to redeem collateral', async () => {
-    const initialCollateral = (await th.retrieveVault('alice')).state
+    const initialCollateral = (await th.retrieveVaultState('alice'))
       .collateralAmount;
     const aliceBalanceBefore = th.mina.Mina.getBalance(
       th.agents.alice.keys.publicKey
@@ -76,7 +76,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
 
     await redeemCollateral(TestAmounts.COLLATERAL_1_MINA);
 
-    const finalCollateral = (await th.retrieveVault('alice')).state
+    const finalCollateral = (await th.retrieveVaultState('alice'))
       .collateralAmount;
     const aliceBalanceAfter = th.mina.Mina.getBalance(
       th.agents.alice.keys.publicKey
@@ -203,9 +203,9 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   });
 
   it('should fail if redemption amount would undercollateralize the vault', async () => {
-    const vault = await th.retrieveVault('alice');
-    const currentCollateral = vault.state.collateralAmount;
-    const currentDebt = vault.state.debtAmount;
+    const vault = await th.retrieveVaultState('alice');
+    const currentCollateral = vault.collateralAmount;
+    const currentDebt = vault.debtAmount;
 
     assert.strictEqual(
       currentDebt!.toBigInt() > TestAmounts.ZERO.toBigInt(),
@@ -223,7 +223,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
   });
 
   it('should track collateral correctly after multiple redemptions', async () => {
-    const initialCollateral = (await th.retrieveVault('alice')).state
+    const initialCollateral = (await th.retrieveVaultState('alice'))
       .collateralAmount;
 
     // Perform multiple small redemptions
@@ -231,7 +231,7 @@ describe('zkUSD Vault Redeem Test Suite', () => {
       await redeemCollateral(TestAmounts.COLLATERAL_1_MINA);
     }
 
-    const finalCollateral = (await th.retrieveVault('alice')).state
+    const finalCollateral = (await th.retrieveVaultState('alice'))
       .collateralAmount;
     assert.deepStrictEqual(
       finalCollateral,

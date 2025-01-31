@@ -1,8 +1,10 @@
 import {
   AccountUpdate,
   Bool,
+  fetchLastBlock,
   Field,
   IncludedTransaction,
+  Mina,
   PrivateKey,
   PublicKey,
   Signature,
@@ -11,7 +13,7 @@ import {
   VerificationKey,
 } from 'o1js';
 
-import { Vault } from '../types/vault.js';
+import { Vault, VaultState } from '../types/vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 
 import { FungibleTokenContract } from '@minatokens/token';
@@ -19,7 +21,7 @@ import {
   IMinaNetworkInterface,
   MinaNetworkInterface,
 } from '../mina/mina-network-interface.js';
-import { NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
+import { AgentKeys, NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
 import { DeploymentService } from '../services/deployment.js';
 import Client from 'mina-signer';
 import {
@@ -36,6 +38,8 @@ import {
 import { ensureLightnetRunning } from '../utils/lightnet-boot-script.js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
+import crypto from 'crypto';
+import { Agent } from 'https';
 
 const client = new Client({
   network: 'testnet',
@@ -62,6 +66,7 @@ export class TestAmounts {
   static DEBT_50_ZKUSD = UInt64.from(50e9); // 50 zkUSD
   static DEBT_40_ZKUSD = UInt64.from(40e9); // 40 zkUSD
   static DEBT_30_ZKUSD = UInt64.from(30e9); // 30 zkUSD
+  static DEBT_20_ZKUSD = UInt64.from(20e9); // 20 zkUSD
   static DEBT_10_ZKUSD = UInt64.from(10e9); // 10 zkUSD
   static DEBT_5_ZKUSD = UInt64.from(5e9); // 5 zkUSD
   static DEBT_4_ZKUSD = UInt64.from(4e9); // 4 zkUSD
@@ -83,14 +88,6 @@ export class TestAmounts {
   static PRICE_10_USD = UInt64.from(1e10); // 10 USD
 }
 
-export interface Agent {
-  keys: KeyPair;
-  vault?: {
-    publicKey: PublicKey;
-    privateKey: PrivateKey;
-  };
-}
-
 export class TestHelper {
   protocolResumeCounter = 0;
   protocolStopCounter = 0;
@@ -99,7 +96,7 @@ export class TestHelper {
   _deploymentService: DeploymentService;
 
   deployer: KeyPair;
-  agents: Record<string, Agent> = {};
+  agents: Record<string, AgentKeys> = {};
   oracles: Record<string, KeyPair> = {};
 
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
@@ -120,12 +117,27 @@ export class TestHelper {
     return getNetworkKeys(this.mina.network.chainId);
   }
 
-  createVaultKeyPair(): { publicKey: PublicKey; privateKey: PrivateKey } {
-    return PrivateKey.randomKeypair();
+  privateKeyFromSeed(seed: string): PrivateKey {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(seed);
+    const hashBuffer = crypto.createHash('sha256').update(data).digest();
+    const hashBigInt = BigInt('0x' + hashBuffer.toString('hex'));
+    return PrivateKey.fromBigInt(hashBigInt);
+  }
+
+  createVaultKeyPair(seed: string): {
+    publicKey: PublicKey;
+    privateKey: PrivateKey;
+  } {
+    const privateKey = this.privateKeyFromSeed(seed);
+    return {
+      publicKey: privateKey.toPublicKey(),
+      privateKey: privateKey,
+    };
   }
 
   public tx(
-    sender: Agent | KeyPair,
+    sender: AgentKeys | KeyPair,
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
@@ -138,7 +150,7 @@ export class TestHelper {
   }
 
   public async includeTx(
-    sender: Agent | KeyPair, // TODO: future: avoid passing the private key
+    sender: AgentKeys | KeyPair, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
@@ -175,10 +187,118 @@ export class TestHelper {
   }
 
   static async initLightnetChain() {
-    await ensureLightnetRunning()
+    await ensureLightnetRunning();
     const mina = await MinaNetworkInterface.initLightnet();
     const deployer = await mina.newAccount();
     return new TestHelper(mina, deployer);
+  }
+
+  async setupLightnet() {
+    if (this.mina.network.chainId !== 'lightnet') {
+      throw new Error('Not on lightnet');
+    }
+
+    //First lets deploy the contracts
+    await this.deployTokenContracts();
+
+    //Now lets get the agent keys
+    const agents = this.networkKeys.agents;
+
+    if (!agents) {
+      throw new Error('No agents found in network keys');
+    }
+
+    for (const agent of Object.keys(agents)) {
+      this.agents[agent] = agents[agent];
+    }
+
+    //Now we need to fund the agents
+
+    //Lets check to see whether the accounts already exist and are funded
+    let accountsNotCreated = false;
+    let accountUnderFunded = false;
+
+    console.log('Checking agent accounts...');
+
+    for (const agent of Object.keys(this.agents)) {
+      const account = await this._txMgr.mina.fetchMinaAccount(
+        this.agents[agent].keys.publicKey,
+        {
+          force: true,
+        }
+      );
+      if (!!account) {
+        if (
+          account.balance.toBigInt() <=
+          TestAmounts.COLLATERAL_100_MINA.toBigInt()
+        ) {
+          console.log(
+            `Account for ${agent} is underfunded, topping up agents now...`
+          );
+          accountUnderFunded = true;
+          break;
+        }
+      } else {
+        console.log(
+          'Agent accounts not created yet, creating and funding them now...'
+        );
+        accountsNotCreated = true;
+        break;
+      }
+    }
+
+    if (accountsNotCreated || accountUnderFunded) {
+      const funder = await this.mina.newAccount();
+
+      //Start everyone out with 200 Mina
+      await this.includeTx(
+        funder,
+        async () => {
+          let au;
+          if (accountsNotCreated) {
+            console.log('Funding new accounts');
+            au = AccountUpdate.fundNewAccount(
+              funder.publicKey,
+              Object.keys(this.agents).length
+            );
+          } else {
+            console.log('Funding existing accounts');
+            au = AccountUpdate.createSigned(funder.publicKey);
+          }
+          for (const agent of Object.keys(this.agents)) {
+            au.send({
+              to: this.agents[agent].keys.publicKey,
+              amount: TestAmounts.COLLATERAL_200_MINA,
+            });
+          }
+        },
+        {
+          name: 'Fund Lightnet Agents',
+        }
+      );
+    } else {
+      console.log('Agent accounts found and sufficently funded');
+    }
+
+    console.log('Creating agent vaults...');
+    await this.createVaults(...Object.keys(this.agents));
+
+    console.log('Depositing collateral for agents...');
+    await this.depositAgentCollateral(
+      TestAmounts.COLLATERAL_100_MINA,
+      ...Object.keys(this.agents)
+    );
+
+    console.log('Minting zkUSD for agents...');
+
+    await this.mintAgentZkUsd(
+      TestAmounts.DEBT_20_ZKUSD,
+      ...Object.keys(this.agents)
+    );
+
+    await this.printAgentState();
+
+    console.log('Lightnet Setup Complete');
   }
 
   async deployTokenContracts() {
@@ -201,6 +321,21 @@ export class TestHelper {
         this.whitelistedOracles.set(oracleName, i);
       }
 
+      const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
+
+      const engineOracleWhitelistHash =
+        await this.engine.contract.oracleWhitelistHash.fetch();
+
+      if (
+        !!engineOracleWhitelistHash &&
+        engineOracleWhitelistHash.toBigInt() == oracleWhitelistHash.toBigInt()
+      ) {
+        console.log('Oracle whitelist already set');
+        return;
+      } else {
+        console.log('Updating oracle whitelist');
+      }
+
       await this.includeTx(
         this.deployer,
         async () => {
@@ -214,7 +349,11 @@ export class TestHelper {
     }
   }
 
-  stringifyAgent(name: string, replacer?: (number | string)[] | null, space?: string | number) {
+  stringifyAgent(
+    name: string,
+    replacer?: (number | string)[] | null,
+    space?: string | number
+  ) {
     let x: Record<string, any> = {};
     x['name'] = name;
     x['keys'] = {
@@ -225,54 +364,131 @@ export class TestHelper {
       x['vault'] = {
         publicKey: this.agents[name].vault?.publicKey.toBase58(),
         privateKey: this.agents[name].vault?.privateKey.toBase58(),
-      }
+      };
     }
     return JSON.stringify(x, replacer, space);
   }
 
-  async createAgents(...names: string[]) {
-    const ret: Agent[] = [];
+  async createLocalAgents(...names: string[]) {
+    const ret: AgentKeys[] = [];
     for (const name of names) {
       if (name in this.agents) {
         ret.push(this.agents[name]);
       } else {
         const keys = await this.mina.newAccount();
         await this.mina.fetchMinaAccount(keys.publicKey);
-        this.agents[name] = { keys };
+        const vaultKeyPair = this.createVaultKeyPair(name);
+        this.agents[name] = { keys, vault: vaultKeyPair };
         ret.push(this.agents[name]);
       }
     }
     return ret;
   }
 
-  async registerNewAgent(name: string, agent: Agent) {
+  async registerNewAgent(name: string, agent: AgentKeys) {
     this.agents[name] = agent;
-    await this.mina.fetchMinaAccount(agent.keys.publicKey, {force:true});
+    await this.mina.fetchMinaAccount(agent.keys.publicKey, { force: true });
+  }
+
+  async depositAgentCollateral(amount: UInt64, ...names: string[]) {
+    const agentDepositTxs: TransactionHandle[] = [];
+
+    for (const name of names) {
+      const agent: AgentKeys | undefined = this.agents[name];
+      if (!agent) {
+        throw new Error(`Agent ${name} not found`);
+      }
+
+      const vault = await this.retrieveVaultState(name);
+
+      if (vault.collateralAmount.toBigInt() >= amount.toBigInt()) {
+        console.log(`Vault for ${name} is sufficently collateralised`);
+        continue;
+      }
+
+      const tx = await this.tx(
+        agent.keys,
+        async () => {
+          await this.engine.contract.depositCollateral(
+            agent.vault!.publicKey,
+            amount
+          );
+        },
+        { name: `Depositing ${amount} collateral for ${name}` }
+      );
+      agentDepositTxs.push(tx);
+    }
+
+    return await Promise.all(agentDepositTxs.map((t) => t.awaitIncluded()));
+  }
+
+  async mintAgentZkUsd(amount: UInt64, ...names: string[]) {
+    const agentMintTxs: TransactionHandle[] = [];
+
+    const oneUsd = await this.getMinaPriceInput(TestAmounts.PRICE_10_USD);
+
+    for (const name of names) {
+      const agent: AgentKeys | undefined = this.agents[name];
+      if (!agent) {
+        throw new Error(`Agent ${name} not found`);
+      }
+
+      const vault = await this.retrieveVaultState(name);
+
+      if (vault.debtAmount.toBigInt() >= amount.toBigInt()) {
+        console.log(`${name} has a sufficent amount of zkusd`);
+        continue;
+      }
+
+      const tx = await this.tx(
+        agent.keys,
+        async () => {
+          await this.engine.contract.mintZkUsd(
+            agent.vault!.publicKey,
+            amount,
+            oneUsd
+          );
+        },
+        { name: `Minting ${amount} zkUSD for ${name}` }
+      );
+
+      agentMintTxs.push(tx);
+    }
+
+    return await Promise.all(agentMintTxs.map((t) => t.awaitIncluded()));
   }
 
   async createVaults(...names: string[]) {
     const vaultCreationTxs: TransactionHandle[] = [];
 
     for (const name of names) {
-      const agent: Agent | undefined = this.agents[name];
+      const agent: AgentKeys | undefined = this.agents[name];
       if (!agent) {
         throw new Error(`Agent ${name} not found`);
       }
 
-      const vaultKeyPair = this.createVaultKeyPair();
+      const vaultKeyPair = agent.vault;
 
-      agent.vault = {
-        publicKey: vaultKeyPair.publicKey,
-        privateKey: vaultKeyPair.privateKey,
-      };
+      const vaultAccount = await this.mina.fetchMinaAccount(
+        vaultKeyPair.publicKey,
+        {
+          tokenId: this.engine.contract.deriveTokenId(),
+          force: true,
+        }
+      );
+
+      if (vaultAccount) {
+        console.log(`Vault for ${name} already exists`);
+        continue;
+      }
+
+      console.log(`Creating vault for ${name}`);
 
       const tx = await this.tx(
         agent.keys,
         async () => {
           AccountUpdate.fundNewAccount(agent.keys.publicKey, 2);
-          await this.engine.contract.createVault(
-            agent.vault!.publicKey
-          );
+          await this.engine.contract.createVault(agent.vault!.publicKey);
         },
         {
           name: `Create Vault for ${name}`,
@@ -345,9 +561,17 @@ export class TestHelper {
   }
 
   async getMinaPriceInput(price: UInt64) {
-    // const blockHeight = Mina.getNetworkState().blockchainLength;
-    const blockHeight = this.mina.getNetworkState().blockchainLength;
-    console.log('Building mina price input for block height:', blockHeight.toBigint());
+    let blockHeight: UInt32;
+    if (this.mina.network.chainId === 'local') {
+      blockHeight = this.mina.getNetworkState().blockchainLength;
+    } else {
+      blockHeight = (await fetchLastBlock()).blockchainLength;
+    }
+
+    console.log(
+      'Building mina price input for block height:',
+      blockHeight.toBigint()
+    );
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,
@@ -374,28 +598,86 @@ export class TestHelper {
     return minaPriceInput;
   }
 
-  public async retrieveVault(agentName: string): Promise<Vault> {
+  public async retrieveVaultState(agentName: string): Promise<VaultState> {
     if (!this.agents[agentName]) {
       throw new Error(`Agent ${agentName} not found`);
     }
 
-    await this.mina.fetchMinaAccount(this.agents[agentName].vault!.publicKey, {
-      tokenId: this.engine.contract.deriveTokenId(),
-      force: true,
-    });
-
-    const accountUpdate = AccountUpdate.create(
+    const vaultAccount = await this.mina.fetchMinaAccount(
       this.agents[agentName].vault!.publicKey,
-      this.engine.contract.deriveTokenId()
+      {
+        tokenId: this.engine.contract.deriveTokenId(),
+        force: true,
+      }
     );
 
-    return Vault.get(accountUpdate);
+    if (!vaultAccount) {
+      throw new Error(`Vault for ${agentName} does not exist`);
+    }
+
+    return Vault.fromAccount(vaultAccount);
   }
 
+  async printAgentState() {
+    console.log('\n=== Agent States ===\n');
+
+    for (const name of Object.keys(this.agents)) {
+      const agent = this.agents[name];
+      const vault = await this.retrieveVaultState(name);
+
+      const agentAccount = await this.mina.fetchMinaAccount(
+        agent.keys.publicKey,
+        { force: true }
+      );
+
+      if (!agentAccount) {
+        console.log(`Agent ${name} not found`);
+        continue;
+      }
+
+      const agentZkUsdAccount = await this.mina.fetchMinaAccount(
+        agent.keys.publicKey,
+        {
+          tokenId: this.token.contract.deriveTokenId(),
+          force: true,
+        }
+      );
+
+      if (!agentZkUsdAccount) {
+        console.log(`Agent ${name} zkUSD account not found`);
+        continue;
+      }
+
+      console.log(`📝 Agent: ${name.toUpperCase()}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`🔑 Agent Public Key: ${agent.keys.publicKey.toBase58()}`);
+      console.log(`💰 Agent Balances:`);
+      console.log(
+        `   • MINA: ${agentAccount?.balance.toBigInt() / BigInt(1e9)} MINA`
+      );
+      console.log(
+        `   • zkUSD: ${
+          agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
+        } zkUSD`
+      );
+
+      console.log(`\n🏦 Vault Details:`);
+      console.log(`   • Address: ${agent.vault!.publicKey.toBase58()}`);
+      console.log(
+        `   • Collateral: ${
+          vault.collateralAmount.toBigInt() / BigInt(1e9)
+        } MINA`
+      );
+      console.log(
+        `   • Debt: ${vault.debtAmount.toBigInt() / BigInt(1e9)} zkUSD`
+      );
+
+      console.log('\n'); // Add extra line between agents
+    }
+  }
   private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
     this.mina = mina;
     this._txMgr = TransactionManager.new(mina);
     this.deployer = deployer;
   }
 }
-

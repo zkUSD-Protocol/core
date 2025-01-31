@@ -51,7 +51,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: true });
     await th.deployTokenContracts();
-    await th.createAgents('alice');
+    await th.createLocalAgents('alice');
     await th.createVaults('alice');
 
     //Alice deposits 100 Mina

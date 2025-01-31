@@ -10,7 +10,7 @@ describe('zkUSD Vault Deposit Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice', 'bob');
+    await th.createLocalAgents('alice', 'bob');
 
     //deploy alice's vault
     await th.createVaults('alice');
@@ -32,17 +32,17 @@ describe('zkUSD Vault Deposit Test Suite', () => {
       { name: `Deposit Test Suite: Alice deposits 100 Mina` }
     );
 
-    const vault = await th.retrieveVault('alice');
+    const vault = await th.retrieveVaultState('alice');
 
     const aliceBalanceAfterDeposit = th.mina.Mina.getBalance(
       th.agents.alice.keys.publicKey
     );
 
     assert.deepStrictEqual(
-      vault.state.collateralAmount,
+      vault.collateralAmount,
       TestAmounts.COLLATERAL_100_MINA
     );
-    assert.deepStrictEqual(vault.state.debtAmount, TestAmounts.ZERO);
+    assert.deepStrictEqual(vault.debtAmount, TestAmounts.ZERO);
     assert.deepStrictEqual(
       aliceBalanceAfterDeposit,
       aliceBalanceBeforeDeposit.sub(TestAmounts.COLLATERAL_100_MINA)
@@ -177,7 +177,7 @@ describe('zkUSD Vault Deposit Test Suite', () => {
   });
 
   it('should track total deposits correctly across multiple transactions', async () => {
-    const initialVault = await th.retrieveVault('alice');
+    const initialVault = await th.retrieveVaultState('alice');
 
     // Make multiple deposits
     for (let i = 0; i < 3; i++) {
@@ -196,12 +196,10 @@ describe('zkUSD Vault Deposit Test Suite', () => {
         }
       );
     }
-    const finalVault = await th.retrieveVault('alice');
+    const finalVault = await th.retrieveVaultState('alice');
     assert.deepStrictEqual(
-      finalVault.state.collateralAmount,
-      initialVault.state.collateralAmount?.add(
-        TestAmounts.COLLATERAL_1_MINA.mul(3)
-      )
+      finalVault.collateralAmount,
+      initialVault.collateralAmount?.add(TestAmounts.COLLATERAL_1_MINA.mul(3))
     );
   });
 });

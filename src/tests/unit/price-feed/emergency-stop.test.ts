@@ -11,7 +11,7 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice');
+    await th.createLocalAgents('alice');
 
     await th.createVaults('alice');
 

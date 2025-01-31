@@ -10,11 +10,17 @@ describe('zkUSD Deployment Test Suite', () => {
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
     await testHelper.deployTokenContracts();
-    await testHelper.createAgents('alice', 'bob', 'charlie', 'david', 'eve');
+    await testHelper.createLocalAgents(
+      'alice',
+      'bob',
+      'charlie',
+      'david',
+      'eve'
+    );
   });
 
   it('should fail to create a vault from outside of the engine', async () => {
-    const keys = testHelper.createVaultKeyPair();
+    const keys = testHelper.createVaultKeyPair('random');
 
     await assert.rejects(async () => {
       await testHelper.includeTx(
@@ -78,11 +84,11 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('Deployed vault should have clean state and valid owner', async () => {
-    const vault = await testHelper.retrieveVault('alice');
+    const vault = await testHelper.retrieveVaultState('alice');
 
-    assert(vault?.state.collateralAmount.equals(TestAmounts.ZERO));
-    assert(vault?.state.debtAmount.equals(TestAmounts.ZERO));
-    assert(vault?.state.owner.equals(testHelper.agents.alice.keys.publicKey));
+    assert(vault?.collateralAmount.equals(TestAmounts.ZERO));
+    assert(vault?.debtAmount.equals(TestAmounts.ZERO));
+    assert(vault?.owner.equals(testHelper.agents.alice.keys.publicKey));
   });
 
   it('should create multiple vaults', async () => {

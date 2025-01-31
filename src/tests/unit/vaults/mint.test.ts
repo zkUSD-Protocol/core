@@ -2,8 +2,8 @@ import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
-import { UInt64 } from 'o1js';
-import { Vault, VaultErrors } from '../../../types/vault.js';
+import { AccountUpdate, UInt64 } from 'o1js';
+import { Vault, VaultErrors, VaultState } from '../../../types/vault.js';
 import { ZkUsdEngineErrors } from '../../../types/engine.js';
 
 describe('zkUSD Vault Mint Test Suite', () => {
@@ -13,7 +13,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
-    await th.createAgents('alice', 'bob');
+    await th.createLocalAgents('alice', 'bob');
 
     //deploy alice's vault
     await th.createVaults('alice');
@@ -42,7 +42,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       th.agents.alice.keys.publicKey
     );
 
-    const debtAmount = (await th.retrieveVault('alice')).state.debtAmount;
+    const debtAmount = (await th.retrieveVaultState('alice')).debtAmount;
 
     assert.deepStrictEqual(debtAmount, TestAmounts.DEBT_5_ZKUSD);
     assert.deepStrictEqual(aliceBalance, TestAmounts.DEBT_5_ZKUSD);
@@ -76,7 +76,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
 
   it('should track total debt correctly across multiple mint operations', async () => {
-    const initialDebt = (await th.retrieveVault('alice')).state.debtAmount;
+    const initialDebt = (await th.retrieveVaultState('alice')).debtAmount;
 
     // Perform multiple small mints
     for (let i = 0; i < 3; i++) {
@@ -97,7 +97,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       );
     }
 
-    const finalDebt = (await th.retrieveVault('alice')).state.debtAmount;
+    const finalDebt = (await th.retrieveVaultState('alice')).debtAmount;
     assert.deepStrictEqual(
       finalDebt,
       initialDebt?.add(TestAmounts.DEBT_1_ZKUSD.mul(3))
@@ -189,7 +189,13 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
 
   it('should maintain correct health factor after multiple mint operations', async () => {
-    let vault: Vault = await th.retrieveVault('alice');
+    const au = AccountUpdate.create(
+      th.agents.alice.vault!.publicKey,
+      th.engine.contract.deriveTokenId()
+    );
+
+    let vault: Vault = Vault.getAndRequireEquals(au);
+
     const initialCollateral = vault.state.collateralAmount;
     let currentDebt = vault.state.debtAmount;
 
@@ -218,7 +224,13 @@ describe('zkUSD Vault Mint Test Suite', () => {
             }/3)`,
           }
         );
-        vault = await th.retrieveVault('alice');
+
+        const au2 = AccountUpdate.create(
+          th.agents.alice.vault!.publicKey,
+          th.engine.contract.deriveTokenId()
+        );
+
+        vault = Vault.getAndRequireEquals(au2);
         currentDebt = currentDebt?.add(TestAmounts.DEBT_1_ZKUSD);
       }
     }

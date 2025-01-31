@@ -6,6 +6,7 @@ import {
   Field,
   fetchAccount,
   Account,
+  UInt64,
 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types/utility.js';
@@ -112,6 +113,9 @@ interface IMinaNetworkInterface extends ZkusdMinaApi {
   newAccount(): Promise<KeyPair>;
   moveChainForward(n?: number): Promise<void>;
   Mina: typeof Mina;
+  queryGraphQL<T extends GqlQuery<any, any>>(
+    queryCall: GqlQueryCall<GqlData<T>, GqlVars<T>>
+  ): Promise<GqlData<T>>;
 }
 
 // exported singleton mina api helper that works with both local and lightnet
@@ -141,8 +145,6 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   declare getNetworkConstants: MinaApi['getNetworkConstants'];
   declare getNetworkId: MinaApi['getNetworkId'];
   declare proofsEnabled: MinaApi['proofsEnabled'];
-
-
   public get Mina() {
     Mina.setActiveInstance(this.instance);
     return Mina;
