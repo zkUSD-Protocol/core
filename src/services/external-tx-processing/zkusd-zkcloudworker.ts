@@ -1,22 +1,27 @@
 import { Cloud, zkCloudWorker } from 'zkcloudworker';
 import { NetworkKeyPairs, getNetworkKeys } from '../../config/keys.js';
 import {
+  CompilationConfig,
   CompilationResults,
   ExecutedTx,
   ExecutorContext,
+  compilationConfigIsEqual,
   compileContracts,
   executeTransaction,
 } from './transaction-execution.js';
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
 import { VaultTransactionType } from '../../types/cloud-worker.js';
 import { TransactionStatus } from '../../mina/transaction-status.js';
+import { PublicKey } from 'o1js';
 
 /**
  * transaction proving and sending with zkCloudWorker
  */
 export class ZkUsdCloudWorker extends zkCloudWorker {
-  _compilationResults: CompilationResults;
-  _chain: MinaNetworkInterface;
+  static _compilationResults: CompilationResults;
+  static _compilationConfig: CompilationConfig;
+  static _compilationEngineKey: PublicKey;
+  static _chain: MinaNetworkInterface;
 
   constructor(cloud: Cloud) {
     super(cloud);
@@ -27,20 +32,43 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
   }
 
   private async compileContracts(): Promise<CompilationResults> {
-    if (!this._compilationResults) {
-      this._compilationResults = await compileContracts({
-        tokenPublicKey: this.keys.token.publicKey,
-        enginePublicKey: this.keys.engine.publicKey,
-      });
+    const currentConfig = {
+      tokenPublicKey: this.keys.token.publicKey,
+      enginePublicKey: this.keys.engine.publicKey,
+    };
+    // if contracts have not been compiled yet
+    if (!ZkUsdCloudWorker._compilationResults) {
+      ZkUsdCloudWorker._compilationConfig = currentConfig;
+      ZkUsdCloudWorker._compilationResults = await compileContracts(
+        ZkUsdCloudWorker._compilationConfig
+      );
+    } // Contracts are compiled
+
+    // Contracts have been compiled for different keys.
+    if (
+      !compilationConfigIsEqual(
+        ZkUsdCloudWorker._compilationConfig,
+        currentConfig
+      )
+    ) {
+      throw new Error(
+        'ZkUsdCloudWorker: Compilation keys mismatch. Contracts have been compiled for different keys'
+      );
     }
-    return this._compilationResults;
+
+    return ZkUsdCloudWorker._compilationResults;
   }
 
   private async getNetworkInterface(): Promise<MinaNetworkInterface> {
-    if (!this._chain) {
-      this._chain = await MinaNetworkInterface.initChain(this.cloud.chain);
+    if (!ZkUsdCloudWorker._chain) {
+      ZkUsdCloudWorker._chain = await MinaNetworkInterface.initChain(
+        this.cloud.chain
+      );
     }
-    return this._chain;
+    if (ZkUsdCloudWorker._chain.network.chainId !== this.cloud.chain) {
+      throw new Error('ZkUsdCloudWorker: Chain ID mismatch');
+    }
+    return ZkUsdCloudWorker._chain;
   }
 
   public async execute(transactions: string[]): Promise<string | undefined> {

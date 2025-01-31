@@ -41,9 +41,11 @@ import {
 } from '../../mina/transaction-status.js';
 
 export {
+  CompilationConfig,
   CompilationResults,
   ExecutorContext,
   compileContracts,
+  compilationConfigIsEqual,
   executeTransaction,
   proveAndSendTx,
   recreateTransaction,
@@ -64,6 +66,18 @@ interface ExecutorContext {
 interface CompilationConfig {
   tokenPublicKey: PublicKey;
   enginePublicKey: PublicKey;
+}
+
+function compilationConfigIsEqual(
+  a: CompilationConfig,
+  b: CompilationConfig
+): boolean {
+  return a.tokenPublicKey
+    .equals(b.tokenPublicKey)
+    .and(a.enginePublicKey.equals(b.enginePublicKey))
+    .toBoolean()
+    ? true
+    : false;
 }
 
 /**
@@ -263,7 +277,6 @@ type ExecutedTx_ =
     };
 
 export type ExecutedTx = ExecutedTx_ & { txId: string };
-
 
 async function proveAndSendTx(
   txId: string,
