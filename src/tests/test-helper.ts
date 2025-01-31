@@ -4,7 +4,6 @@ import {
   fetchLastBlock,
   Field,
   IncludedTransaction,
-  Mina,
   PrivateKey,
   PublicKey,
   Signature,
@@ -39,8 +38,11 @@ import { ensureLightnetRunning } from '../utils/lightnet-boot-script.js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
 import crypto from 'crypto';
-import { Agent } from 'https';
 import { ProtocolData } from '../types/engine.js';
+import {
+  ITransactionExecutor,
+  LocalTransactionExecutor,
+} from '../mina/transaction-executor.js';
 
 const client = new Client({
   network: 'testnet',
@@ -181,19 +183,28 @@ export class TestHelper {
   }
 
   static async initLocalChain(opts?: {
+    txExecutor?: ITransactionExecutor;
     proofsEnabled?: boolean | undefined;
     enforceTransactionLimits?: boolean | undefined;
   }) {
     const mina = await MinaNetworkInterface.initLocal(opts);
     const deployer = await mina.newAccount();
-    return new TestHelper(mina, deployer);
+    return new TestHelper(
+      mina,
+      opts?.txExecutor ?? new LocalTransactionExecutor(),
+      deployer
+    );
   }
 
-  static async initLightnetChain() {
+  static async initLightnetChain(opts?: { txExecutor?: ITransactionExecutor }) {
     await ensureLightnetRunning();
     const mina = await MinaNetworkInterface.initLightnet();
     const deployer = await mina.newAccount();
-    return new TestHelper(mina, deployer);
+    return new TestHelper(
+      mina,
+      opts?.txExecutor ?? new LocalTransactionExecutor(),
+      deployer
+    );
   }
 
   async setupLightnet() {
@@ -712,9 +723,13 @@ export class TestHelper {
       console.log('\n'); // Add extra line between agents
     }
   }
-  private constructor(mina: IMinaNetworkInterface, deployer: KeyPair) {
+  private constructor(
+    mina: IMinaNetworkInterface,
+    txExecutor: ITransactionExecutor,
+    deployer: KeyPair
+  ) {
     this.mina = mina;
-    this._txMgr = TransactionManager.new(mina);
+    this._txMgr = TransactionManager.new(mina, txExecutor);
     this.deployer = deployer;
   }
 }

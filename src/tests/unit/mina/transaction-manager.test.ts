@@ -3,14 +3,18 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import {
   TransactionHandle,
-  TransactionManager,
 } from '../../../mina/transaction-manager.js';
 import { AccountUpdate, PrivateKey } from 'o1js';
-import { statusIsFailed, statusIsFinal, statusIsOfKind, statusIsRejected } from '../../../mina/transaction-status.js';
+import {
+  statusIsFailed,
+  statusIsFinal,
+  statusIsOfKind,
+  statusIsRejected,
+} from '../../../mina/transaction-status.js';
 
 describe('Local tests of TransactionManager', async () => {
   const helper = await TestHelper.initLocalChain();
-  const txMgr = TransactionManager.new(helper.mina);
+  const txMgr = helper.txMgr;
 
   before(async () => {});
 

@@ -6,7 +6,6 @@ import {
   Field,
   fetchAccount,
   Account,
-  UInt64,
 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types/utility.js';
@@ -26,7 +25,8 @@ import {
   blockchain,
   fetchMinaAccount as zkCWfetchMinaAccount,
 } from 'zkcloudworker';
-import { setActiveInstance } from 'o1js/dist/node/lib/mina/mina-instance.js';
+import { extractAllTxParties } from './utils.js';
+import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update.js';
 
 type LocalOnlyApi = {
   // add more as needed
@@ -110,6 +110,9 @@ interface IMinaNetworkInterface extends ZkusdMinaApi {
     publicKey: string | PublicKey,
     options?: { tokenId?: Field | string; force?: boolean }
   ): Promise<Account | undefined>;
+  forceFetchAllTxParties(
+    tx: Record<string, any> & { transaction: ZkappCommand }
+  ): Promise<void>;
   newAccount(): Promise<KeyPair>;
   moveChainForward(n?: number): Promise<void>;
   Mina: typeof Mina;
@@ -284,6 +287,18 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     queryCall: GqlQueryCall<GqlData<T>, GqlVars<T>>
   ): Promise<GqlData<T>> {
     return queryGraphQL(queryCall, this.network.mina[0]);
+  }
+
+  // ----
+
+  async forceFetchAllTxParties(
+    tx: Record<string, any> & { transaction: ZkappCommand }
+  ): Promise<void> {
+    let requests: Promise<any>[] = [];
+    extractAllTxParties(tx.transaction).forEach(({ publicKey, tokenId }) => {
+      requests.push(this.fetchMinaAccount(publicKey, { tokenId, force: true }));
+    });
+    await Promise.all(requests);
   }
 
   // ----------- Extra “backend” methods -----------

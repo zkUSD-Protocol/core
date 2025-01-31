@@ -155,7 +155,7 @@ export function statusIsFinal(
 export function mkStatusFailedBeforeSending(
   txId: string,
   phase: string,
-  error: unknown,
+  error: unknown
 ): FailedBeforeSending {
   const errorMessage = error instanceof Error ? error.message : String(error);
   const err = `${txId} - error during ${phase}: ${errorMessage}`;
