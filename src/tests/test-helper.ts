@@ -40,6 +40,7 @@ import { ContractInstance, KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
 import crypto from 'crypto';
 import { Agent } from 'https';
+import { ProtocolData } from '../types/engine.js';
 
 const client = new Client({
   network: 'testnet',
@@ -108,6 +109,8 @@ export class TestHelper {
   });
 
   whitelistedOracles: Map<string, number> = new Map();
+
+  static test: string | undefined = undefined;
 
   public get txMgr() {
     return this._txMgr;
@@ -402,7 +405,6 @@ export class TestHelper {
       const vault = await this.retrieveVaultState(name);
 
       if (vault.collateralAmount.toBigInt() >= amount.toBigInt()) {
-        console.log(`Vault for ${name} is sufficently collateralised`);
         continue;
       }
 
@@ -425,7 +427,7 @@ export class TestHelper {
   async mintAgentZkUsd(amount: UInt64, ...names: string[]) {
     const agentMintTxs: TransactionHandle[] = [];
 
-    const oneUsd = await this.getMinaPriceInput(TestAmounts.PRICE_10_USD);
+    let oneUsd: MinaPriceInput | undefined;
 
     for (const name of names) {
       const agent: AgentKeys | undefined = this.agents[name];
@@ -436,8 +438,11 @@ export class TestHelper {
       const vault = await this.retrieveVaultState(name);
 
       if (vault.debtAmount.toBigInt() >= amount.toBigInt()) {
-        console.log(`${name} has a sufficent amount of zkusd`);
         continue;
+      }
+
+      if (!oneUsd) {
+        oneUsd = await this.getMinaPriceInput(TestAmounts.PRICE_10_USD);
       }
 
       const tx = await this.tx(
@@ -446,7 +451,7 @@ export class TestHelper {
           await this.engine.contract.mintZkUsd(
             agent.vault!.publicKey,
             amount,
-            oneUsd
+            oneUsd!
           );
         },
         { name: `Minting ${amount} zkUSD for ${name}` }
@@ -478,7 +483,6 @@ export class TestHelper {
       );
 
       if (vaultAccount) {
-        console.log(`Vault for ${name} already exists`);
         continue;
       }
 
@@ -501,6 +505,20 @@ export class TestHelper {
   }
 
   async stopTheProtocol() {
+    const packedProtocolData =
+      await this.engine.contract.protocolDataPacked.fetch();
+
+    if (!packedProtocolData) {
+      throw new Error('Protocol data not found');
+    }
+
+    //Check to see if the protocol is already stopped
+    const protocolData = ProtocolData.unpack(packedProtocolData);
+    if (protocolData.emergencyStop.toBoolean()) {
+      console.log('Protocol is already stopped');
+      return;
+    }
+
     this.protocolStopCounter++;
     await this.includeTx(
       this.deployer,
@@ -515,6 +533,19 @@ export class TestHelper {
   }
 
   async resumeTheProtocol() {
+    const packedProtocolData =
+      await this.engine.contract.protocolDataPacked.fetch();
+
+    if (!packedProtocolData) {
+      throw new Error('Protocol data not found');
+    }
+
+    const protocolData = ProtocolData.unpack(packedProtocolData);
+    if (!protocolData.emergencyStop.toBoolean()) {
+      console.log('Protocol is already running');
+      return;
+    }
+
     this.protocolResumeCounter++;
     await this.includeTx(
       this.deployer,
@@ -528,9 +559,13 @@ export class TestHelper {
     );
   }
 
-  async getPriceSubmissions({ oraclePrice }: { oraclePrice: UInt64 }) {
-    const blockHeight = this.mina.getNetworkState().blockchainLength;
-
+  async getPriceSubmissions({
+    oraclePrice,
+    blockHeight,
+  }: {
+    oraclePrice: UInt64;
+    blockHeight: UInt32;
+  }) {
     const oraclePriceSubmissions: OraclePriceSubmissions = {
       submissions: [],
     };
@@ -560,12 +595,13 @@ export class TestHelper {
     return oraclePriceSubmissions;
   }
 
-  async getMinaPriceInput(price: UInt64) {
-    let blockHeight: UInt32;
-    if (this.mina.network.chainId === 'local') {
-      blockHeight = this.mina.getNetworkState().blockchainLength;
-    } else {
-      blockHeight = (await fetchLastBlock()).blockchainLength;
+  async getMinaPriceInput(price: UInt64, blockHeight?: UInt32) {
+    if (!blockHeight) {
+      if (this.mina.network.chainId === 'local') {
+        blockHeight = this.mina.getNetworkState().blockchainLength;
+      } else {
+        blockHeight = (await fetchLastBlock()).blockchainLength;
+      }
     }
 
     console.log(
@@ -575,6 +611,7 @@ export class TestHelper {
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,
+      blockHeight,
     });
 
     const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);

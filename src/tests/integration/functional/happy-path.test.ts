@@ -6,160 +6,150 @@ import { AgentKeys } from '../../../config/keys.js';
 
 describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
   let th: TestHelper;
-  let alice: AgentKeys;
-  let bob: AgentKeys;
+  let startingFee: UInt64 = UInt64.from(1e8);
 
   before(async () => {
     th = await TestHelper.initLightnetChain();
     await th.setupLightnet();
-    // [alice, bob] = await th.createLocalAgents('alice', 'bob');
-
-    // console.log('alice pk', alice.keys.publicKey.toBase58());
-    // console.log('bob pk', bob.keys.publicKey.toBase58());
   });
 
-  it('should be able to deploy contracts on Lightnet', async () => {
-    //check to see if the contracts are already deployed:
-    // await th.deployTokenContracts();
+  it('should have deployed the contracts', async () => {
+    const engineTokenAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+      {
+        tokenId: th.engine.contract.deriveTokenId(),
+      }
+    );
+    assert.notStrictEqual(engineTokenAccount, undefined);
   });
 
-  it('Should test a send', async () => {
-    // console.log('testing hasTransactionWithMemo');
-    // await th.includeTx(
-    //   bob.keys,
-    //   async () => {
-    //     let acU = AccountUpdate.createSigned(bob.keys.publicKey);
-    //     acU.send({
-    //       to: alice.keys.publicKey,
-    //       amount: 100,
-    //     });
-    //   },
-    //   { name: 'Bob sends to alice' }
-    // );
+  it('should have created the vaults', async () => {
+    const aliceVault = await th.retrieveVaultState('alice');
+
+    assert.deepStrictEqual(aliceVault.owner, th.agents.alice.keys.publicKey);
   });
 
-  // it('Should be able to fund new accounts', async () => {
-  //   // fund newmans account
-  //   const keys = PrivateKey.randomKeypair();
-  //   await th.includeTx(
-  //     alice.keys,
-  //     async () => {
-  //       AccountUpdate.fundNewAccount(alice.keys.publicKey, 1);
-  //       const au2 = AccountUpdate.createSigned(alice.keys.publicKey);
-  //       au2.send({
-  //         to: keys.publicKey,
-  //         amount: TestAmounts.COLLATERAL_50_MINA,
-  //       });
-  //     },
-  //     { name: 'fund_newman' }
-  //   );
-  //   await th.registerNewAgent('newman', { keys });
-  // });
+  it('should have deposited collateral', async () => {
+    const aliceVault = await th.retrieveVaultState('alice');
 
-  // it('user should be able create a vault', async () => {
-  //   await th.createVaults('newman');
-  //   const newmanVault = th.mina.fetchMinaAccount(
-  //     th.agents.newman.vault?.publicKey!,
-  //     { tokenId: th.engine.contract.deriveTokenId(), force: true }
-  //   );
+    assert(aliceVault.collateralAmount.toBigInt() > 0n);
+  });
 
-  //   assert.notStrictEqual(newmanVault, null);
-  //   assert.notStrictEqual(th.agents['newman'].vault, null);
-  // });
+  it('should should have minted zkusd ', async () => {
+    const aliceZkUsdAccount = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys!.publicKey,
+      { tokenId: th.token.contract.deriveTokenId(), force: true }
+    );
 
-  // it('user should be able to deposit', async () => {
-  //   const newman = th.agents['newman'];
-  //   await th.includeTx(
-  //     newman.keys,
-  //     async () => {
-  //       console.log('newman vault pk', newman.vault!.publicKey.toBase58());
-  //       await th.engine.contract.depositCollateral(
-  //         newman.vault!.publicKey,
-  //         UInt64.from(1e9)
-  //       );
-  //     },
-  //     { name: 'newman_deposits_collateral' }
-  //   );
-  // });
+    assert(aliceZkUsdAccount?.balance.toBigInt()! > 0n);
+  });
 
-  // it('user should be able to mint', async () => {
-  //   const newman = th.agents['newman'];
+  it('should allow repaying debt ', async () => {
+    const aliceVaultBefore = await th.retrieveVaultState('alice');
 
-  //   const price = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+    const aliceZkUsdAccountBefore = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys!.publicKey,
+      { tokenId: th.token.contract.deriveTokenId(), force: true }
+    );
 
-  //   await assert.doesNotReject(async () => {
-  //     await th.includeTx(
-  //       newman.keys,
-  //       async () => {
-  //         await th.engine.contract.mintZkUsd(
-  //           newman.vault!.publicKey,
-  //           UInt64.from(0.5e9),
-  //           price
-  //         );
-  //       },
-  //       {
-  //         waitForIncluded: ['newman_deposits_collateral'],
-  //         name: 'newman_mints_zkUSD',
-  //       }
-  //     );
-  //   });
-  // });
+    await th.includeTx(
+      th.agents.alice.keys,
 
-  // it('user should be able to repay', async () => {
-  //   const newman = th.agents['newman'];
+      async () => {
+        await th.engine.contract.burnZkUsd(
+          th.agents.alice.vault!.publicKey,
+          TestAmounts.DEBT_1_ZKUSD
+        );
+      },
+      {
+        name: 'Happy Path Test Suite: Alice Repays Debt',
+        startingFee,
+      }
+    );
 
-  //   await assert.doesNotReject(async () => {
-  //     await th.includeTx(
-  //       newman.keys,
-  //       async () => {
-  //         await th.engine.contract.burnZkUsd(
-  //           newman.vault!.publicKey,
-  //           UInt64.from(0.5e9)
-  //         );
-  //       },
-  //       {
-  //         name: 'newman_burns_zkUSD',
-  //         waitForIncluded: ['newman_mints_zkUSD'],
-  //       }
-  //     );
-  //   });
-  // });
+    const aliceVaultAfter = await th.retrieveVaultState('alice');
 
-  // it(`user's vault can be liquidated`, async () => {
-  //   const newman = th.agents['newman'];
+    const aliceZkUsdAccountAfter = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys!.publicKey,
+      { tokenId: th.token.contract.deriveTokenId(), force: true }
+    );
 
-  //   // assert mintTx defined
-  //   const price = await th.getMinaPriceInput(TestAmounts.PRICE_10_USD);
+    assert.deepStrictEqual(
+      aliceVaultAfter.debtAmount,
+      aliceVaultBefore.debtAmount.sub(TestAmounts.DEBT_1_ZKUSD)
+    );
 
-  //   await assert.doesNotReject(async () => {
-  //     await th.includeTx(
-  //       newman.keys,
-  //       async () => {
-  //         await th.engine.contract.mintZkUsd(
-  //           newman.vault!.publicKey,
-  //           UInt64.from(5e9),
-  //           price
-  //         );
-  //       },
-  //       {
-  //         name: 'newman_mints_again',
-  //       }
-  //     );
-  //   });
+    assert.deepStrictEqual(
+      aliceZkUsdAccountAfter?.balance.toBigInt(),
+      aliceZkUsdAccountBefore?.balance.toBigInt()! -
+        TestAmounts.DEBT_1_ZKUSD.toBigInt()
+    );
 
-  //   const newPrice = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+    // Verify burn event was emitted
+    const events = await th.engine.contract.fetchEvents();
+    const burnEvent = events.find((e) => e.type === 'BurnZkUsd');
+    assert(burnEvent, 'Burn event should be emitted');
+  });
 
-  //   await assert.doesNotReject(async () => {
-  //     await th.includeTx(
-  //       alice.keys,
-  //       async () => {
-  //         AccountUpdate.fundNewAccount(alice.keys.publicKey);
-  //         await th.engine.contract.liquidate(newman.vault!.publicKey, newPrice);
-  //       },
-  //       {
-  //         name: `newman's getting liquidated`,
-  //       }
-  //     );
-  //   });
-  // });
+  it('should allow liquidation of an undercollateralised vault', async () => {
+    // Get initial states
+    const aliceBalanceBefore = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys.publicKey
+    );
+    const aliceZkUsdBefore = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys.publicKey,
+      { tokenId: th.token.contract.deriveTokenId() }
+    );
+
+    // Set price very low to trigger liquidation
+    const lowPrice = await th.getMinaPriceInput(
+      UInt64.from(TestAmounts.DEBT_10_CENT_ZKUSD)
+    ); // $0.10
+
+    // Bob liquidates Alice's vault
+    await th.includeTx(
+      th.agents.alice.keys,
+      async () => {
+        await th.engine.contract.liquidate(
+          th.agents.bob.vault!.publicKey,
+          lowPrice
+        );
+      },
+      {
+        name: 'Happy Path Test Suite: Alice liquidates Bobs vault',
+        startingFee,
+      }
+    );
+
+    // Check post-liquidation states
+
+    const bobVaultAfter = await th.retrieveVaultState('bob');
+
+    const aliceBalanceAfter = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys.publicKey
+    );
+
+    const aliceZkUsdAfter = await th.mina.fetchMinaAccount(
+      th.agents.alice.keys.publicKey,
+      { tokenId: th.token.contract.deriveTokenId() }
+    );
+
+    // Verify vault was liquidated
+    assert.deepStrictEqual(bobVaultAfter.collateralAmount.toBigInt(), 0n);
+    assert.deepStrictEqual(bobVaultAfter.debtAmount.toBigInt(), 0n);
+
+    // Verify Bob paid the debt and received collateral
+    assert(
+      aliceZkUsdAfter!.balance.toBigInt() < aliceZkUsdBefore!.balance.toBigInt()
+    );
+    assert(
+      aliceBalanceAfter!.balance.toBigInt() >
+        aliceBalanceBefore!.balance.toBigInt()
+    );
+
+    // Verify liquidation event was emitted
+    const events = await th.engine.contract.fetchEvents();
+    const liquidationEvent = events.find((e) => e.type === 'Liquidate');
+    assert(liquidationEvent, 'Liquidation event should be emitted');
+  });
 });

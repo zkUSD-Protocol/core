@@ -13,35 +13,7 @@ async function main() {
   const MinaChain = await MinaNetworkInterface.initLightnet();
   const txMgr = TransactionManager.new(MinaChain);
   const deploymentService = await DeploymentService.create(txMgr);
-  const deployedContracts = await deploymentService.deploy();
-  const networkKeys = getNetworkKeys(txMgr.mina.network.chainId);
-
-  console.log('Updating Whitelist');
-
-  const whitelist = new OracleWhitelist({
-    addresses: [],
-  });
-
-  for (const key of networkKeys.oracles!) {
-    whitelist.addresses.push(key.publicKey);
-  }
-
-  // Fetch the engine account for the latest nonce
-  await txMgr.mina.fetchMinaAccount(networkKeys.engine.publicKey);
-  await txMgr.mina.fetchMinaAccount(networkKeys.protocolAdmin.publicKey);
-
-  const updateOracleWhitelistTx = await txMgr.tx(
-    deploymentService.deployer,
-    async () => {
-      await deployedContracts.engine.contract.updateOracleWhitelist(whitelist);
-    },
-    {
-      name: 'Update Oracle Whitelist',
-      extraSigners: [networkKeys.protocolAdmin.privateKey],
-    }
-  );
-
-  await Promise.all([updateOracleWhitelistTx.awaitIncluded()]);
+  await deploymentService.deploy();
 
   const receiverAccount = await txMgr.mina.fetchMinaAccount(
     RECEIVER_PUBLIC_KEY
@@ -66,10 +38,7 @@ async function main() {
     }
   );
 
-  await Promise.all([
-    updateOracleWhitelistTx.awaitIncluded(),
-    receiverAccountTx.awaitIncluded(),
-  ]);
+  await receiverAccountTx.awaitIncluded();
 }
 
 main();

@@ -54,7 +54,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 180000,
+  dependencyStatusPollTimeout: 300000,
   memo: '',
 };
 
