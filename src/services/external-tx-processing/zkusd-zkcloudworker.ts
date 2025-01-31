@@ -12,16 +12,16 @@ import {
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
 import { VaultTransactionType } from '../../types/cloud-worker.js';
 import { TransactionStatus } from '../../mina/transaction-status.js';
-import { PublicKey } from 'o1js';
+import { Mutex } from '../../utils/mutex.js';
 
 /**
  * transaction proving and sending with zkCloudWorker
  */
 export class ZkUsdCloudWorker extends zkCloudWorker {
-  static _compilationResults: CompilationResults;
-  static _compilationConfig: CompilationConfig;
-  static _compilationEngineKey: PublicKey;
-  static _chain: MinaNetworkInterface;
+  private static _mutex: Mutex = new Mutex();
+  private static _compilationResults: CompilationResults;
+  private static _compilationConfig: CompilationConfig;
+  private static _chain: MinaNetworkInterface;
 
   constructor(cloud: Cloud) {
     super(cloud);
@@ -36,13 +36,17 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
       tokenPublicKey: this.keys.token.publicKey,
       enginePublicKey: this.keys.engine.publicKey,
     };
-    // if contracts have not been compiled yet
-    if (!ZkUsdCloudWorker._compilationResults) {
-      ZkUsdCloudWorker._compilationConfig = currentConfig;
-      ZkUsdCloudWorker._compilationResults = await compileContracts(
-        ZkUsdCloudWorker._compilationConfig
-      );
-    } // Contracts are compiled
+    if (!ZkUsdCloudWorker._compilationResults) { // we don't lock if contracts have already been compiled
+      ZkUsdCloudWorker._mutex.runExclusive(async () => {
+        // if contracts have not been compiled yet
+        if (!ZkUsdCloudWorker._compilationResults) { // check again inside the lock
+          ZkUsdCloudWorker._compilationConfig = currentConfig;
+          ZkUsdCloudWorker._compilationResults = await compileContracts(
+            ZkUsdCloudWorker._compilationConfig
+          );
+        } // Contracts are compiled
+      });
+    }
 
     // Contracts have been compiled for different keys.
     if (
@@ -60,10 +64,15 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
   }
 
   private async getNetworkInterface(): Promise<MinaNetworkInterface> {
-    if (!ZkUsdCloudWorker._chain) {
-      ZkUsdCloudWorker._chain = await MinaNetworkInterface.initChain(
-        this.cloud.chain
-      );
+
+    if (!ZkUsdCloudWorker._chain) { // we don't acquire mutex if chain has already been initialized
+      ZkUsdCloudWorker._mutex.runExclusive(async () => {
+        if (!ZkUsdCloudWorker._chain) { // check again after waiting for mutex
+          ZkUsdCloudWorker._chain = await MinaNetworkInterface.initChain(
+            this.cloud.chain
+          );
+        }
+      });
     }
     if (ZkUsdCloudWorker._chain.network.chainId !== this.cloud.chain) {
       throw new Error('ZkUsdCloudWorker: Chain ID mismatch');
