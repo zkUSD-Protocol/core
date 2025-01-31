@@ -1,4 +1,4 @@
-import { Field, Mina, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
+import { Field, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
 import { KeyPair } from '../types/utility.js';
 import {
   IncludedTransaction,
@@ -11,6 +11,13 @@ import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
 import { NonceLock } from './nonce-manager.js';
+import {
+  TransactionStatus,
+  mkStatusFailedBeforeSending,
+  statusIsFailed,
+  statusIsRejectedTransaction,
+  statusShouldBeWaitedFor,
+} from './transaction-status.js';
 import { extractAllTxParties } from './utils.js';
 
 /**
@@ -88,155 +95,6 @@ export interface TransactionHandle {
     timeout?: number;
   }): Promise<IncludedTransaction>;
 }
-
-/**
- * Type guard: Checks whether a transaction is rejected.
- */
-export function statusIsRejectedTransaction(
-  tx: PendingTransaction | IncludedTransaction | RejectedTransaction
-): tx is RejectedTransaction {
-  return tx.status === 'rejected';
-}
-
-/**
- * Indicates that a transaction is waiting for other transactions to be included first.
- */
-export type AwaitingForOtherTx = {
-  kind: 'AwaitingForOtherTx';
-  txs: string[];
-};
-
-/**
- * Indicates that a transaction is being retried with a higher fee.
- */
-export type RetryingWithHigherFee = {
-  kind: 'RetryingWithHigherFee';
-  failureCount: number;
-};
-
-/**
- * Indicates that a transaction is scheduled for cancellation.
- */
-export type ScheduledForCancellation = {
-  kind: 'ScheduledForCancellation';
-  cancellationTx: string;
-};
-
-/**
- * Indicates that a transaction failed because a dependency was rejected or dropped.
- */
-export type DependencyRejectedFailedOrDropped = {
-  kind: 'DependencyRejectedFailedOrDropped';
-  depId: string;
-  depStatus: TransactionStatus;
-};
-
-/**
- * Indicates that a transaction failed because a dependency was rejected or dropped.
- */
-export type FailedBeforeSending = {
-  kind: 'FailedBeforeSending';
-  errors: string[];
-};
-
-export type RejectedOnReceive = {
-  kind: 'RejectedOnReceive';
-  errors: string[];
-};
-
-export type RejectedOnInclusion = {
-  kind: 'RejectedOnInclusion';
-  errors: string[];
-};
-
-export const statusIsOfKind = (
-  status: TransactionStatus,
-  ...kind: string[]
-): boolean => {
-  if (typeof status === 'object' && status !== null) {
-    return kind.includes(status.kind);
-  }
-  return kind.includes(status);
-};
-
-export const statusIsRejected = (
-  status: TransactionStatus
-): status is RejectedOnReceive | RejectedOnInclusion => {
-  return statusIsOfKind(status, 'RejectedOnReceive', 'RejectedOnInclusion');
-};
-
-/**
- * Processing states for a transaction that is still in progress.
- */
-type ProcessingTxStatus =
-  | 'Scheduled'
-  | AwaitingForOtherTx
-  | 'Pending'
-  | ScheduledForCancellation
-  | RetryingWithHigherFee;
-
-/**
- * Failure states for a transaction that cannot progress further.
- */
-type FailedTxStatus =
-  | RejectedOnInclusion
-  | RejectedOnReceive
-  | FailedBeforeSending
-  | 'Cancelled'
-  | 'DroppedFromMempool' // still not "implemented"
-  | 'StuckInMempool' // Timed out while waiting; treated as failed
-  | DependencyRejectedFailedOrDropped;
-
-/**
- * Represents all possible states of a transaction.
- */
-export type TransactionStatus =
-  | ProcessingTxStatus
-  | FailedTxStatus
-  | 'Included';
-
-/**
- * Checks whether a transaction status indicates that it should still be awaited (i.e., it's in progress).
- */
-export function statusShouldBeWaitedFor(
-  status: TransactionStatus
-): status is ProcessingTxStatus {
-  const inProgressStates = [
-    'Scheduled',
-    'Pending',
-    'AwaitingForOtherTx',
-    'ScheduledForCancellation',
-    'RetryingWithHigherFee',
-  ];
-  return statusIsOfKind(status, ...inProgressStates);
-}
-
-/**
- * Checks whether a transaction status indicates that it has failed.
- */
-export function statusIsFailed(
-  status: TransactionStatus
-): status is FailedTxStatus {
-  const failureStates = [
-    'RejectedOnInclusion',
-    'RejectedOnReceive',
-    'FailedBeforeSending',
-    'Cancelled',
-    'DroppedFromMempool',
-    'DependencyRejectedFailedOrDropped',
-  ];
-  return statusIsOfKind(status, ...failureStates);
-}
-
-/**
- * Checks whether a transaction status is final (either included or failed).
- */
-export function statusIsFinal(
-  status: TransactionStatus
-): status is 'Included' | FailedTxStatus {
-  return !statusShouldBeWaitedFor(status);
-}
-
 /**
  * A proven transaction disallows direct `send` or `sign` to avoid accidental usage.
  */
@@ -487,101 +345,6 @@ export class TransactionManager {
     return r;
   }
 
-  /**
-   * Extracts basic transaction parameters from serialized transaction data.
-   */
-  public getTransactionParams(
-    serializedTransaction: string,
-    signedJson: any
-  ): {
-    fee: UInt64;
-    sender: PublicKey;
-    nonce: number;
-    memo: string;
-  } {
-    const { sender, nonce, tx } = JSON.parse(serializedTransaction);
-    const transaction = Mina.Transaction.fromJSON(JSON.parse(tx));
-    const memo = transaction.transaction.memo;
-    return {
-      fee: UInt64.from(signedJson.zkappCommand.feePayer.body.fee),
-      sender: PublicKey.fromBase58(sender),
-      nonce: Number(signedJson.zkappCommand.feePayer.body.nonce),
-      memo,
-    };
-  }
-
-  /**
-   * Deserializes a transaction from serialized data.
-   */
-  public deserializeTransaction(
-    serializedTransaction: string,
-    txNew: Mina.Transaction<false, false>,
-    signedJson: any
-  ) {
-    const { tx, blindingValues, length } = JSON.parse(serializedTransaction);
-    const transaction = Mina.Transaction.fromJSON(JSON.parse(tx));
-    if (length !== txNew.transaction.accountUpdates.length) {
-      throw new Error('New Transaction length mismatch');
-    }
-    if (length !== transaction.transaction.accountUpdates.length) {
-      throw new Error('Serialized Transaction length mismatch');
-    }
-    for (let i = 0; i < length; i++) {
-      transaction.transaction.accountUpdates[i].lazyAuthorization =
-        txNew.transaction.accountUpdates[i].lazyAuthorization;
-      if (blindingValues[i] !== '')
-        (
-          transaction.transaction.accountUpdates[i].lazyAuthorization as any
-        ).blindingValue = Field.fromJSON(blindingValues[i]);
-    }
-    transaction.transaction.feePayer.authorization =
-      signedJson.zkappCommand.feePayer.authorization;
-    transaction.transaction.feePayer.body.fee = UInt64.from(
-      signedJson.zkappCommand.feePayer.body.fee
-    );
-    for (let i = 0; i < length; i++) {
-      const signature =
-        signedJson.zkappCommand.accountUpdates[i].authorization.signature;
-      if (signature !== undefined && signature !== null) {
-        transaction.transaction.accountUpdates[i].authorization.signature =
-          signedJson.zkappCommand.accountUpdates[i].authorization.signature;
-      }
-    }
-    return transaction;
-  }
-
-  /**
-   * Serializes a transaction to a string.
-   */
-  public serializeTransaction(tx: Mina.Transaction<false, false>): string {
-    const length = tx.transaction.accountUpdates.length;
-    let i: number;
-    let blindingValues: string[] = [];
-    for (i = 0; i < length; i++) {
-      const la = tx.transaction.accountUpdates[i].lazyAuthorization;
-      if (
-        la !== undefined &&
-        (la as any).blindingValue !== undefined &&
-        la.kind === 'lazy-proof'
-      )
-        blindingValues.push(la.blindingValue.toJSON());
-      else blindingValues.push('');
-    }
-    const serializedTransaction = JSON.stringify(
-      {
-        tx: tx.toJSON(),
-        blindingValues,
-        length,
-        fee: tx.transaction.feePayer.body.fee.toJSON(),
-        sender: tx.transaction.feePayer.body.publicKey.toBase58(),
-        nonce: tx.transaction.feePayer.body.nonce.toBigint().toString(),
-      },
-      null,
-      2
-    );
-    return serializedTransaction;
-  }
-
   txHandle(txId: string): TransactionHandle | undefined {
     return this.transactions.get(txId)?.handle;
   }
@@ -665,13 +428,10 @@ export class TransactionManager {
     //=== prepare promises that will manage the transaction lifecycle
     const mgr = this;
 
-    function failed_before_sending(phase: string, error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      const err = `${tx.getId()} - error during ${phase}: ${errorMessage}`;
-      const status = { kind: 'FailedBeforeSending', errors: [err] };
-      return status;
-    }
+    // const failed_before_sending = (phase: string, error: unknown) =>
+    const failed_before_sending = (phase: string, error: unknown) => {
+      return mkStatusFailedBeforeSending(tx.getId(), phase, error);
+    };
 
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
@@ -912,15 +672,18 @@ export async function transactionBuildAndProve(
   sender: KeyPair,
   callback: () => Promise<void>,
   options: TransactionOptions & {
-    nonce?: UInt32,
-    forceFetchAllTxParties?: (tx: Record<string, any> & { transaction: ZkappCommand }) => Promise<void>} = {}
+    nonce?: UInt32;
+    forceFetchAllTxParties?: (
+      tx: Record<string, any> & { transaction: ZkappCommand }
+    ) => Promise<void>;
+  } = {}
 ): Promise<Transaction<true, false>> {
   const {
     printTx = false,
     startingFee,
     printAccountUpdates = false,
     nonce,
-    forceFetchAllTxParties
+    forceFetchAllTxParties,
   } = options;
 
   const tx = await mutex.runExclusive(
@@ -975,7 +738,7 @@ export async function transactionBuildAndProve(
   }
 
   try {
-    if(forceFetchAllTxParties){
+    if (forceFetchAllTxParties) {
       await forceFetchAllTxParties(tx);
     }
     return await mutex.runExclusive(async () => await tx.prove());
