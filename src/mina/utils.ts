@@ -1,6 +1,8 @@
 import { Field, PublicKey } from 'o1js';
 import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 
+export { extractAllTxParties };
+
 type Account = { publicKey: PublicKey, tokenId?: Field }
 
 /** Extracts all parties involved in a tx that may require a local state updated. */
@@ -17,5 +19,3 @@ function extractAllTxParties(zkAppCommand: ZkappCommand): Set<Account> {
   }
   return parties;
 }
-
-export { extractAllTxParties };

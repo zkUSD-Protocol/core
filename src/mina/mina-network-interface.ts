@@ -199,11 +199,15 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     return networkInterface;
   }
 
-  public static async initChain(chain: blockchain) {
+  public static async initChain(
+    chain: blockchain
+  ): Promise<MinaNetworkInterface> {
     if (chain === 'local') {
       return await MinaNetworkInterface.initLocal();
     } else if (chain === 'lightnet') {
       return await MinaNetworkInterface.initLightnet();
+    } else {
+      throw new Error(`Unsupported (yet) chain: ${chain}`);
     }
   }
 
