@@ -89,7 +89,7 @@ export class LocalNonceManager implements INonceManager {
           version: 'MOCK',
           pooledZkappCommands: [],
           pooledUserCommands: [],
-        } as any),
+        }) as any,
     };
     this._nonceManager = new NonceManager(mockConfig);
   }

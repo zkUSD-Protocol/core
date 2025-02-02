@@ -1,9 +1,8 @@
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
-import { getNetworkKeys } from '../../config/keys.js';
-import { OracleWhitelist } from '../../types/oracle.js';
 import { TransactionManager } from '../../mina/transaction-manager.js';
 import { DeploymentService } from '../../services/deployment.js';
 import { AccountUpdate, PublicKey } from 'o1js';
+import { LocalTransactionExecutor } from '../../mina/transaction-executor.js';
 
 const RECEIVER_PUBLIC_KEY =
   'B62qmbTQ56amhVUBTH3umviEEnnQhTbKf5EkpyXb62Rzho3T3A1dPYx';
@@ -11,7 +10,8 @@ const AMOUNT = 500e9; // 100 Mina
 
 async function main() {
   const MinaChain = await MinaNetworkInterface.initLightnet();
-  const txMgr = TransactionManager.new(MinaChain);
+  const executor = new LocalTransactionExecutor();
+  const txMgr = TransactionManager.new(MinaChain, executor);
   const deploymentService = await DeploymentService.create(txMgr);
   await deploymentService.deploy();
 

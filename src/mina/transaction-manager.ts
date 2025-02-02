@@ -10,15 +10,18 @@ import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
-import { NonceLock } from './nonce-manager.js';
 import {
   TransactionStatus,
   mkStatusFailedBeforeSending,
   statusIsFailed,
-  statusIsRejectedTransaction,
   statusShouldBeWaitedFor,
 } from './transaction-status.js';
-import { extractAllTxParties } from './utils.js';
+import {
+  ITransactionExecutor,
+  PreparedTransaction,
+  TransactionLifecycle,
+} from './transaction-executor.js';
+import { NonceLock } from './nonce-manager.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -112,6 +115,8 @@ export class TransactionInternal {
 
   public status: TransactionStatus = 'Scheduled';
 
+  private _signingPromise?: TrackedPromise<Transaction<false, true>>;
+
   private _sendingPromise?: TrackedPromise<
     PendingTransaction | RejectedTransaction
   >;
@@ -128,6 +133,7 @@ export class TransactionInternal {
     | PendingTransaction
     | RejectedTransaction
     | IncludedTransaction
+    | Transaction<false, true>
     | undefined {
     if (
       this._waitingPromise?.state === 'fulfilled' &&
@@ -140,6 +146,9 @@ export class TransactionInternal {
     }
     if (this._provingPromise?.state === 'fulfilled') {
       return this._provingPromise.result;
+    }
+    if (this._signingPromise?.state === 'fulfilled') {
+      return this._signingPromise.result;
     }
     return undefined;
   }
@@ -222,19 +231,10 @@ export class TransactionInternal {
   /**
    * Installs the promises for proving, sending, and waiting on this transaction.
    */
-  public installPromises(args: {
-    provingPromise: TrackedPromise<Transaction<true, false>>;
-    waitingPromise: TrackedPromise<
-      IncludedTransaction | RejectedTransaction | undefined
-    >;
-    sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction>;
-    mkSendingPromise: (
-      fee: UInt64
-    ) => TrackedPromise<PendingTransaction | RejectedTransaction>;
-  }): void {
-    this._waitingPromise = args.waitingPromise;
-    this._sendingPromise = args.sendingPromise;
-    this._provingPromise = args.provingPromise;
+  public installLifecycle(txLifecycle: TransactionLifecycle): void {
+    this._provingPromise = txLifecycle.provingPromise;
+    this._sendingPromise = txLifecycle.sendingPromise;
+    this._waitingPromise = txLifecycle.waitingPromise;
     // this._sendingPromiseMaker = args.mkSendingPromise;
   }
 
@@ -323,19 +323,26 @@ export class TransactionInternal {
 
 //  Do not call from concurrent threads
 export class TransactionManager {
-  private _provingMutex: Mutex = new Mutex();
+  private _o1jsMutex: Mutex = new Mutex();
   private _mina: IMinaNetworkInterface;
+
+  // in theory you can change the executor without interrupting
+  // transacton manager
+  public transactionExecutor: ITransactionExecutor;
 
   public get mina(): IMinaNetworkInterface {
     return this._mina;
   }
 
   /**
-   * Retrieve an existing TransactionManager for the given TxApiProvider,
-   * or create a new one if none exists.
+   * There should only be one TransactionManager per chain.
+   * TODO: use singleton map here?
    */
-  public static new(minaInterface: IMinaNetworkInterface): TransactionManager {
-    return new TransactionManager(minaInterface);
+  public static new(
+    minaInterface: IMinaNetworkInterface,
+    transactionExecutor: ITransactionExecutor
+  ): TransactionManager {
+    return new TransactionManager(minaInterface, transactionExecutor);
   }
 
   private transactions: Map<string, TransactionInternal> = new Map();
@@ -349,18 +356,6 @@ export class TransactionManager {
 
   txHandle(txId: string): TransactionHandle | undefined {
     return this.transactions.get(txId)?.handle;
-  }
-
-  private async forceFetchAllTxParties(
-    tx: Record<string, any> & { transaction: ZkappCommand }
-  ): Promise<void> {
-    let requests: Promise<any>[] = [];
-    extractAllTxParties(tx.transaction).forEach(({ publicKey, tokenId }) => {
-      requests.push(
-        this.mina.fetchMinaAccount(publicKey, { tokenId, force: true })
-      );
-    });
-    await Promise.all(requests);
   }
 
   // this will create a new transaction
@@ -426,32 +421,10 @@ export class TransactionManager {
     // --
 
     //=== the transaction is included in the manager at this point
-
-    //=== prepare promises that will manage the transaction lifecycle
-    const mgr = this;
-
     // const failed_before_sending = (phase: string, error: unknown) =>
     const failed_before_sending = (phase: string, error: unknown) => {
       return mkStatusFailedBeforeSending(tx.getId(), phase, error);
     };
-
-    // schedule proving
-    const provingPromise = new TrackedPromise(async () => {
-      try {
-        if (options?.printTx) {
-          console.log(`${tx.getId()} - Proving transaction ...`);
-        }
-        return await transactionBuildAndProve(
-          mgr._provingMutex,
-          mgr.mina,
-          sender,
-          callback,
-          options
-        );
-      } catch (error) {
-        throw failed_before_sending('proving the tx', error);
-      }
-    });
 
     // schedule waiting for dependencies to be included
     const depsAwaitingPromise = new TrackedPromise(async () => {
@@ -489,144 +462,86 @@ export class TransactionManager {
       }
     });
 
-    // make a function that will schedule getting nonce and sign
-    const mkSigningPromise = function (fee: UInt64) {
-      return (ptx: Transaction<true, false>) =>
-        new TrackedPromise(async () => {
-          let nonceLock: NonceLock | undefined;
-          try {
-            try {
-              nonceLock = await mgr.mina.nonceManager.getAccountNonce(
-                sender.publicKey
-              );
-            } catch (error) {
-              const err = `Error during getting the tx nonce: ${error}`;
-              console.error(err);
-              throw err;
-            }
-            ptx.transaction.feePayer.body.nonce = nonceLock.nonce;
-            ptx.transaction.feePayer.body.fee = fee;
-            if (options?.printTx) {
-              console.log(
-                `${tx.getId()} - Signing transaction: {nonce: ${
-                  nonceLock.nonce
-                }, fee: ${fee}} ...`
-              );
-            }
+    const builtTx = await transactionBuild(
+      this._o1jsMutex,
+      this.mina,
+      sender,
+      callback,
+      options
+    );
 
-            // TODO use signing service instead, do not pass private keys around
-            const signers = options?.extraSigners
-              ? [sender.privateKey, ...options.extraSigners]
-              : [sender.privateKey];
-            return { signedTx: ptx.sign(signers), nonceLock };
-          } catch (error) {
-            nonceLock?.unlock();
-            throw failed_before_sending('signing the tx', error);
-          }
-        });
-    };
-
-    // create sending promise maker
-    const mkSendingPromise = function (fee: UInt64) {
+    const mgr = this;
+    const mkSigningPromise = <T extends boolean>(
+      fee: UInt64,
+      unsignedTx: Transaction<T, false>
+    ) => {
       return new TrackedPromise(async () => {
-        const results = await Promise.all([
-          provingPromise,
-          depsAwaitingPromise,
-        ]);
-        const provenTx = results[0];
-        const signedTx = await mkSigningPromise(fee)(provenTx);
-        // send the transaction
         let nonceLock: NonceLock | undefined;
         try {
-          const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
-          nonceLock = lock;
+          try {
+            nonceLock = await mgr.mina.nonceManager.getAccountNonce(
+              sender.publicKey
+            );
+          } catch (error) {
+            const err = `Error during getting the tx nonce: ${error}`;
+            console.error(err);
+            throw err;
+          }
+          unsignedTx.transaction.feePayer.body.nonce = nonceLock.nonce;
+          unsignedTx.transaction.feePayer.body.fee = fee;
           if (options?.printTx) {
-            console.log(`${tx.getId()} - Sending transaction ...`);
-            console.log('Pretty printing signed tx', signedTxResult.toPretty());
+            console.log(
+              `${tx.getId()} - Signing transaction: {nonce: ${
+                nonceLock.nonce
+              }, fee: ${fee}} ...`
+            );
           }
 
-          const sentTx = await signedTxResult.safeSend();
-          // unlock the nonce after sending
-          await nonceLock.unlock();
-          switch (sentTx.status) {
-            case 'pending': {
-              tx.status = 'Pending';
-              break;
-            }
-            case 'rejected': {
-              tx.status = {
-                kind: 'RejectedOnReceive',
-                errors: ['error when the tx has been sent', ...sentTx.errors],
-              };
-              break;
-            }
-          }
-          return sentTx;
+          // TODO use signing service instead, do not pass private keys around
+          const signers = options?.extraSigners
+            ? [sender.privateKey, ...options.extraSigners]
+            : [sender.privateKey];
+          return { signedTx: unsignedTx.sign(signers), nonceLock };
         } catch (error) {
-          await nonceLock?.unlock();
-          throw failed_before_sending('sending the tx', error);
+          nonceLock?.unlock();
+          throw failed_before_sending('signing the tx', error);
         }
       });
     };
-    // schedule sending
-    const sendingPromise: TrackedPromise<
-      PendingTransaction | RejectedTransaction
-    > = mkSendingPromise(options?.startingFee ?? defaultOptions.startingFee);
 
-    // schedule waiting for the transaction to be included
-    const waitingPromise: TrackedPromise<
-      IncludedTransaction | RejectedTransaction | undefined
-    > = new TrackedPromise(async () => {
-      try {
-        const sentTx = await sendingPromise;
-        if (statusIsRejectedTransaction(sentTx)) return sentTx;
-        if (options?.printTx) {
-          console.log(`${tx.getId()} - Awaiting inclusion ...`);
-        }
-        const awaitedTx = await sentTx.safeWait();
-        if (awaitedTx.status === 'included') {
-          tx.status = 'Included';
-          // make sure that the local state matches the state after tx
-          await this.forceFetchAllTxParties(awaitedTx);
-        } else {
-          // TODO check if actually rejected or stuck in mempool
-          // if stuck then retry with higher fee
-          console.log('TODO - rejected or stuck in mempool');
-          const actualStatus = 'rejected';
+    //=== prepare promises that will manage the transaction lifecycle
 
-          if (actualStatus === 'rejected') {
-            tx.status = {
-              kind: 'RejectedOnInclusion',
-              errors: [
-                'error during awaiting for inclusion',
-                ...awaitedTx.errors,
-              ],
-            };
-          }
-        }
-        return awaitedTx;
-      } catch (error) {
-        if (typeof error === 'object' && error !== null && 'kind' in error) {
-          const status = error as TransactionStatus;
-          tx.status = status;
-        }
-        return undefined;
+    const preparedTx: PreparedTransaction = {
+      getId: () => tx.getId(),
+      tx: builtTx,
+      depsAwaitingPromise,
+      setStatus: (s: TransactionStatus) => {
+        tx.status = s;
+      },
+      mkSigningPromise,
+    };
+
+    //=== delegate the rest of execution
+
+    const lifecycle = await this.transactionExecutor.executeTransaction(
+      preparedTx,
+      {
+        o1jsMutex: this._o1jsMutex,
+        mina: this.mina,
+        startingFee: options?.startingFee ?? defaultOptions.startingFee,
+        printTx: options?.printTx,
       }
-    });
+    );
 
-    // TODO later install timestamps in the tx
-
-    tx.installPromises({
-      sendingPromise,
-      waitingPromise,
-      provingPromise,
-      mkSendingPromise,
-    });
-
+    tx.installLifecycle(lifecycle);
     return tx.handle;
   }
 
-  private constructor(networkInterface: IMinaNetworkInterface) {
+  private constructor(
+    networkInterface: IMinaNetworkInterface,
+    transactionExecutor: ITransactionExecutor
+  ) {
+    this.transactionExecutor = transactionExecutor;
     this._mina = networkInterface;
   }
 }
@@ -668,7 +583,7 @@ function getCallerAtDepth(depth: number = 1): string {
 
 // DEV: possibly refactor later
 // it does not send the transaction to the network
-export async function transactionBuildAndProve(
+export async function transactionBuild(
   mutex: Mutex,
   chain: IMinaNetworkInterface,
   sender: KeyPair,
@@ -679,14 +594,13 @@ export async function transactionBuildAndProve(
       tx: Record<string, any> & { transaction: ZkappCommand }
     ) => Promise<void>;
   } = {}
-): Promise<Transaction<true, false>> {
+): Promise<Transaction<false, false>> {
   const {
     printTx = false,
     startingFee,
     printAccountUpdates = false,
     nonce,
     memo,
-    forceFetchAllTxParties,
   } = options;
 
   const tx = await mutex.runExclusive(
@@ -740,14 +654,5 @@ export async function transactionBuildAndProve(
     }
     console.log(tx.transaction.accountUpdates);
   }
-
-  try {
-    if (forceFetchAllTxParties) {
-      await forceFetchAllTxParties(tx);
-    }
-    return await mutex.runExclusive(async () => await tx.prove());
-  } catch (error) {
-    console.error('Error during transaction processing:', error);
-    throw error; // Propagate the error to the caller
-  }
+  return tx;
 }
