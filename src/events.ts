@@ -8,6 +8,7 @@ export class VaultOwnerUpdatedEvent extends Struct({
 
 export class NewVaultEvent extends Struct({
   vaultAddress: PublicKey,
+  owner: PublicKey,
 }) {}
 
 export class DepositCollateralEvent extends Struct({
@@ -48,20 +49,6 @@ export class LiquidateEvent extends Struct({
   minaPrice: UInt64,
 }) {}
 
-export class MinaPriceUpdateEvent extends Struct({
-  newPrice: UInt64,
-}) {}
-
-export class FallbackMinaPriceUpdateEvent extends Struct({
-  newPrice: UInt64,
-}) {}
-
-export class MinaPriceSubmissionEvent extends Struct({
-  submitter: PublicKey,
-  price: UInt64,
-  oracleFee: UInt64,
-}) {}
-
 export class EmergencyStopToggledEvent extends Struct({
   emergencyStop: Bool,
 }) {}
@@ -76,18 +63,7 @@ export class AdminUpdatedEvent extends Struct({
   newAdmin: PublicKey,
 }) {}
 
-export class VerificationKeyUpdatedEvent extends Struct({}) {}
-
 export class OracleWhitelistUpdatedEvent extends Struct({
   previousHash: Field,
   newHash: Field,
-}) {}
-
-export class OracleFeeUpdated extends Struct({
-  previousFee: UInt64,
-  newFee: UInt64,
-}) {}
-
-export class OracleFundsDepositedEvent extends Struct({
-  amount: UInt64,
 }) {}

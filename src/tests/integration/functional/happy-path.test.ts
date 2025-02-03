@@ -3,6 +3,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { AccountUpdate, PrivateKey, UInt64 } from 'o1js';
 import { AgentKeys } from '../../../config/keys.js';
+import { TransactionHandle } from '../../../mina/transaction-manager.js';
 
 describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
   let th: TestHelper;
@@ -93,11 +94,11 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
 
   it('should allow liquidation of an undercollateralised vault', async () => {
     // Get initial states
-    const aliceBalanceBefore = await th.mina.fetchMinaAccount(
-      th.agents.alice.keys.publicKey
+    const charlieBalanceBefore = await th.mina.fetchMinaAccount(
+      th.agents.charlie.keys.publicKey
     );
-    const aliceZkUsdBefore = await th.mina.fetchMinaAccount(
-      th.agents.alice.keys.publicKey,
+    const charlieZkUsdBefore = await th.mina.fetchMinaAccount(
+      th.agents.charlie.keys.publicKey,
       { tokenId: th.token.contract.deriveTokenId() }
     );
 
@@ -108,7 +109,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
 
     // Bob liquidates Alice's vault
     await th.includeTx(
-      th.agents.alice.keys,
+      th.agents.charlie.keys,
       async () => {
         await th.engine.contract.liquidate(
           th.agents.bob.vault!.publicKey,
@@ -116,7 +117,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
         );
       },
       {
-        name: 'Happy Path Test Suite: Alice liquidates Bobs vault',
+        name: 'Happy Path Test Suite: Charlie liquidates Bobs vault',
         startingFee,
       }
     );
@@ -125,12 +126,12 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
 
     const bobVaultAfter = await th.retrieveVaultState('bob');
 
-    const aliceBalanceAfter = await th.mina.fetchMinaAccount(
-      th.agents.alice.keys.publicKey
+    const charlieBalanceAfter = await th.mina.fetchMinaAccount(
+      th.agents.charlie.keys.publicKey
     );
 
-    const aliceZkUsdAfter = await th.mina.fetchMinaAccount(
-      th.agents.alice.keys.publicKey,
+    const charlieZkUsdAfter = await th.mina.fetchMinaAccount(
+      th.agents.charlie.keys.publicKey,
       { tokenId: th.token.contract.deriveTokenId() }
     );
 
@@ -140,11 +141,12 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
 
     // Verify Bob paid the debt and received collateral
     assert(
-      aliceZkUsdAfter!.balance.toBigInt() < aliceZkUsdBefore!.balance.toBigInt()
+      charlieZkUsdAfter!.balance.toBigInt() <
+        charlieZkUsdBefore!.balance.toBigInt()
     );
     assert(
-      aliceBalanceAfter!.balance.toBigInt() >
-        aliceBalanceBefore!.balance.toBigInt()
+      charlieBalanceAfter!.balance.toBigInt() >
+        charlieBalanceBefore!.balance.toBigInt()
     );
 
     // Verify liquidation event was emitted
