@@ -25,15 +25,9 @@ import {
 
 import { Vault, VaultState } from '../types/vault.js';
 import {
-  MinaPriceUpdateEvent,
-  FallbackMinaPriceUpdateEvent,
-  OracleFundsDepositedEvent,
-  MinaPriceSubmissionEvent,
   EmergencyStopToggledEvent,
   AdminUpdatedEvent,
-  VerificationKeyUpdatedEvent,
   OracleWhitelistUpdatedEvent,
-  OracleFeeUpdated,
   NewVaultEvent,
   DepositCollateralEvent,
   RedeemCollateralEvent,
@@ -85,13 +79,8 @@ export function ZkUsdEngineContract(args: {
     static FungibleToken = FungibleTokenContract(ZkUsdEngine);
 
     readonly events = {
-      MinaPriceUpdate: MinaPriceUpdateEvent,
-      FallbackMinaPriceUpdate: FallbackMinaPriceUpdateEvent,
-      OracleFundsDeposited: OracleFundsDepositedEvent,
-      MinaPriceSubmission: MinaPriceSubmissionEvent,
       EmergencyStopToggled: EmergencyStopToggledEvent,
       AdminUpdated: AdminUpdatedEvent,
-      VerificationKeyUpdated: VerificationKeyUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
       ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
@@ -336,6 +325,7 @@ export function ZkUsdEngineContract(args: {
         'NewVault',
         new NewVaultEvent({
           vaultAddress: vaultAddress,
+          owner: owner,
         })
       );
     }

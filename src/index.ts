@@ -19,6 +19,19 @@ import {
   VaultTransactionType,
 } from './types/cloud-worker.js';
 import { OracleWhitelist } from './types/oracle.js';
+import {
+  MintZkUsdEvent,
+  BurnZkUsdEvent,
+  LiquidateEvent,
+  EmergencyStopToggledEvent,
+  ValidPriceBlockCountUpdatedEvent,
+  AdminUpdatedEvent,
+  OracleWhitelistUpdatedEvent,
+  DepositCollateralEvent,
+  NewVaultEvent,
+  RedeemCollateralEvent,
+  VaultOwnerUpdatedEvent,
+} from './events.js';
 
 export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
   console.log(`starting worker example version on chain ${cloud.chain}`);
@@ -47,4 +60,19 @@ export {
   VaultTransactionType,
   VaultTransactionArgs,
   Vault,
+};
+
+//export events
+export {
+  VaultOwnerUpdatedEvent,
+  NewVaultEvent,
+  DepositCollateralEvent,
+  RedeemCollateralEvent,
+  MintZkUsdEvent,
+  BurnZkUsdEvent,
+  LiquidateEvent,
+  EmergencyStopToggledEvent,
+  ValidPriceBlockCountUpdatedEvent,
+  AdminUpdatedEvent,
+  OracleWhitelistUpdatedEvent,
 };

@@ -198,6 +198,7 @@ export class TestHelper {
     await ensureLightnetRunning();
     const mina = await MinaNetworkInterface.initLightnet();
     const deployer = await mina.newAccount();
+
     return new TestHelper(
       mina,
       opts?.txExecutor ?? new LocalTransactionExecutor(),
@@ -212,17 +213,6 @@ export class TestHelper {
 
     //First lets deploy the contracts
     await this.deployTokenContracts();
-
-    //Now lets get the agent keys
-    const agents = this.networkKeys.agents;
-
-    if (!agents) {
-      throw new Error('No agents found in network keys');
-    }
-
-    for (const agent of Object.keys(agents)) {
-      this.agents[agent] = agents[agent];
-    }
 
     //Now we need to fund the agents
 
@@ -729,5 +719,18 @@ export class TestHelper {
     this.mina = mina;
     this._txMgr = TransactionManager.new(mina, txExecutor);
     this.deployer = deployer;
+
+    //Set up the agents for lightnet
+    if (this.mina.network.chainId === 'lightnet') {
+      const agents = this.networkKeys.agents;
+
+      if (!agents) {
+        throw new Error('No agents found in network keys');
+      }
+
+      for (const agent of Object.keys(agents)) {
+        this.agents[agent] = agents[agent];
+      }
+    }
   }
 }

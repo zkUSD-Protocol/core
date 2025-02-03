@@ -36,10 +36,12 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
       tokenPublicKey: this.keys.token.publicKey,
       enginePublicKey: this.keys.engine.publicKey,
     };
-    if (!ZkUsdCloudWorker._compilationResults) { // we don't lock if contracts have already been compiled
-      ZkUsdCloudWorker._mutex.runExclusive(async () => {
+    if (!ZkUsdCloudWorker._compilationResults) {
+      // we don't lock if contracts have already been compiled
+      await ZkUsdCloudWorker._mutex.runExclusive(async () => {
         // if contracts have not been compiled yet
-        if (!ZkUsdCloudWorker._compilationResults) { // check again inside the lock
+        if (!ZkUsdCloudWorker._compilationResults) {
+          // check again inside the lock
           ZkUsdCloudWorker._compilationConfig = currentConfig;
           ZkUsdCloudWorker._compilationResults = await compileContracts(
             ZkUsdCloudWorker._compilationConfig
@@ -64,10 +66,11 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
   }
 
   private async getNetworkInterface(): Promise<MinaNetworkInterface> {
-
-    if (!ZkUsdCloudWorker._chain) { // we don't acquire mutex if chain has already been initialized
-      ZkUsdCloudWorker._mutex.runExclusive(async () => {
-        if (!ZkUsdCloudWorker._chain) { // check again after waiting for mutex
+    if (!ZkUsdCloudWorker._chain) {
+      // we don't acquire mutex if chain has already been initialized
+      await ZkUsdCloudWorker._mutex.runExclusive(async () => {
+        if (!ZkUsdCloudWorker._chain) {
+          // check again after waiting for mutex
           ZkUsdCloudWorker._chain = await MinaNetworkInterface.initChain(
             this.cloud.chain
           );
