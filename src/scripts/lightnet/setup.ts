@@ -2,7 +2,7 @@ import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
 import { TransactionManager } from '../../mina/transaction-manager.js';
 import { DeploymentService } from '../../services/deployment.js';
 import { AccountUpdate, PublicKey } from 'o1js';
-import { LocalTransactionExecutor } from '../../mina/transaction-executor.js';
+import { LocalTransactionExecutor } from '../../mina/local-transaction-executor.js';
 
 const RECEIVER_PUBLIC_KEY =
   'B62qmbTQ56amhVUBTH3umviEEnnQhTbKf5EkpyXb62Rzho3T3A1dPYx';

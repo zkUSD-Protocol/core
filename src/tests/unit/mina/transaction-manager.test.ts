@@ -1,9 +1,7 @@
 import { TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import {
-  TransactionHandle,
-} from '../../../mina/transaction-manager.js';
+import { TransactionHandle } from '../../../mina/transaction-manager.js';
 import { AccountUpdate, PrivateKey } from 'o1js';
 import {
   statusIsFailed,

@@ -39,10 +39,8 @@ import { ContractInstance, KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../types/oracle.js';
 import crypto from 'crypto';
 import { ProtocolData } from '../types/engine.js';
-import {
-  ITransactionExecutor,
-  LocalTransactionExecutor,
-} from '../mina/transaction-executor.js';
+import { ITransactionExecutor } from '../mina/transaction-executor.js';
+import { LocalTransactionExecutor } from '../mina/local-transaction-executor.js';
 
 const client = new Client({
   network: 'testnet',

@@ -1,0 +1,154 @@
+import {
+  IncludedTransaction,
+  PendingTransaction,
+  RejectedTransaction,
+  Transaction,
+  UInt64,
+} from 'o1js';
+import { TrackedPromise } from '../utils/tracked-promise.js';
+import {
+  ITransactionExecutor,
+  PreparedTransaction,
+  TransactionExecutionConfig,
+  TransactionLifecycle,
+} from './transaction-executor.js';
+import {
+  TransactionStatus,
+  mkStatusFailedBeforeSending,
+  statusIsRejectedTransaction,
+} from './transaction-status.js';
+import { NonceLock } from './nonce-manager.js';
+import { IMinaNetworkInterface } from './mina-network-interface.js';
+import { Mutex } from '../utils/mutex.js';
+
+export class LocalTransactionExecutor implements ITransactionExecutor {
+  executeTransaction(
+    tx: PreparedTransaction,
+    config: TransactionExecutionConfig,
+    _options?: unknown
+  ): Promise<TransactionLifecycle> {
+    // const failed_before_sending = (phase: string, error: unknown) =>
+    const failed_before_sending = (phase: string, error: unknown) => {
+      return mkStatusFailedBeforeSending(tx.getId(), phase, error);
+    };
+
+    // schedule proving
+    const provingPromise = new TrackedPromise(async () => {
+      try {
+        if (config?.printTx) {
+          console.log(`${tx.getId()} - Proving transaction ...`);
+        }
+        return await transactionProve(tx.tx, config.mina, config.o1jsMutex);
+      } catch (error) {
+        throw failed_before_sending('proving the tx', error);
+      }
+    });
+
+    // create sending promise maker
+    const mkSendingPromise = function (fee: UInt64) {
+      return new TrackedPromise(async () => {
+        const results = await Promise.all([
+          provingPromise,
+          tx.depsAwaitingPromise,
+        ]);
+        const signedTx = await tx.mkSigningPromise(fee, results[0]);
+        // send the transaction
+        let nonceLock: NonceLock | undefined;
+        try {
+          const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
+          nonceLock = lock;
+          if (config?.printTx) {
+            console.log(`${tx.getId()} - Sending transaction ...`);
+            console.log('Pretty printing signed tx', signedTxResult.toPretty());
+          }
+
+          const sentTx = await signedTxResult.safeSend();
+          // unlock the nonce after sending
+          await nonceLock.unlock();
+          switch (sentTx.status) {
+            case 'pending': {
+              tx.setStatus('Pending');
+              break;
+            }
+            case 'rejected': {
+              tx.setStatus({
+                kind: 'RejectedOnReceive',
+                errors: ['error when the tx has been sent', ...sentTx.errors],
+              });
+              break;
+            }
+          }
+          return sentTx;
+        } catch (error) {
+          await nonceLock?.unlock();
+          throw failed_before_sending('sending the tx', error);
+        }
+      });
+    };
+    // schedule sending
+    const sendingPromise: TrackedPromise<
+      PendingTransaction | RejectedTransaction
+    > = mkSendingPromise(config.startingFee);
+
+    // schedule waiting for the transaction to be included
+    const waitingPromise: TrackedPromise<
+      IncludedTransaction | RejectedTransaction | undefined
+    > = new TrackedPromise(async () => {
+      try {
+        const sentTx = await sendingPromise;
+        if (statusIsRejectedTransaction(sentTx)) return sentTx;
+        if (config?.printTx) {
+          console.log(`${tx.getId()} - Awaiting inclusion ...`);
+        }
+        const awaitedTx = await sentTx.safeWait();
+        if (awaitedTx.status === 'included') {
+          tx.setStatus('Included');
+          // make sure that the local state matches the state after tx
+          await config.mina.forceFetchAllTxParties(awaitedTx);
+        } else {
+          // TODO check if actually rejected or stuck in mempool
+          // if stuck then retry with higher fee
+          console.log('TODO - rejected or stuck in mempool');
+          const actualStatus = 'rejected';
+
+          if (actualStatus === 'rejected') {
+            tx.setStatus({
+              kind: 'RejectedOnInclusion',
+              errors: [
+                'error during awaiting for inclusion',
+                ...awaitedTx.errors,
+              ],
+            });
+          }
+        }
+        return awaitedTx;
+      } catch (error) {
+        if (typeof error === 'object' && error !== null && 'kind' in error) {
+          const status = error as TransactionStatus;
+          tx.setStatus(status);
+        }
+        return undefined;
+      }
+    });
+
+    return Promise.resolve({
+      provingPromise,
+      sendingPromise,
+      waitingPromise,
+    });
+  }
+}
+
+export async function transactionProve<T extends boolean>(
+  tx: Transaction<false, T>,
+  mina: IMinaNetworkInterface,
+  mutex: Mutex
+): Promise<Transaction<true, T>> {
+  try {
+    await mina.forceFetchAllTxParties(tx);
+    return await mutex.runExclusive(async () => await tx.prove());
+  } catch (error) {
+    console.error('Error during transaction proving:', error);
+    throw error; // Propagate the error to the caller
+  }
+}
