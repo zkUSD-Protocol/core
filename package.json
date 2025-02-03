@@ -45,10 +45,14 @@
   },
   "dependencies": {
     "@minatokens/token": "^0.5.5",
+    "@types/express": "4.17.21",
+    "@types/uuid": "^10.0.0",
+    "express": "^4.21.2",
     "mina-signer": "^3.0.7",
     "node-fetch": "2.6.1",
     "o1js": "2.2.0",
     "redis": "^4.7.0",
+    "uuid": "^11.0.5",
     "zkcloudworker": "^0.23.11"
   }
 }
