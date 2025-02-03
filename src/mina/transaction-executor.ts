@@ -1,30 +1,69 @@
 // TODO - document this file, refactor for better readability
 import {
+  Empty,
   IncludedTransaction,
   PendingTransaction,
+  Proof,
   RejectedTransaction,
   Transaction,
   UInt64,
+  ZkappPublicInput,
 } from 'o1js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
-import { TransactionStatus } from './transaction-status.js';
+import {
+  RejectedOnInclusion,
+  RejectedOnReceive,
+  TransactionStatus,
+} from './transaction-status.js';
 import { Mutex } from '../utils/mutex.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { NonceLock } from './nonce-manager.js';
 
 export {
-  TransactionExecutionConfig,
+  AwaitedTransaction,
   ITransactionExecutor,
-  TransactionLifecycle,
   PreparedTransaction,
+  ProvenTransaction,
+  SentTransaction,
+  TransactionExecutionConfig,
+  TransactionLifecycle,
+  TransactionState,
 };
 
+type ProvenTransaction =
+  | { isLocal: true; transaction: Transaction<true, any> }
+  | { isLocal: false; proofs: (Proof<ZkappPublicInput, Empty> | undefined)[] }
+  | { isLocal: false; errors: string[] };
+
+type SentTransaction =
+  | { isLocal: true; transaction: PendingTransaction | RejectedTransaction }
+  | { isLocal: false; hash: string }
+  | { isLocal: false; errors: string[] };
+
+type AwaitedTransaction =
+  | {
+      isLocal: true;
+      transaction:
+        | IncludedTransaction
+        | RejectedTransaction
+        | PendingTransaction
+        | undefined;
+    }
+  | {
+      isLocal: false;
+      status: 'Included' | RejectedOnInclusion | RejectedOnReceive;
+    };
+
+type TransactionState =
+  | Transaction<any, true>
+  | ProvenTransaction
+  | SentTransaction
+  | AwaitedTransaction;
+
 type TransactionLifecycle = {
-  provingPromise: TrackedPromise<Transaction<true, true>>;
-  sendingPromise: TrackedPromise<PendingTransaction | RejectedTransaction>;
-  waitingPromise: TrackedPromise<
-    IncludedTransaction | RejectedTransaction | undefined
-  >;
+  provingPromise: TrackedPromise<ProvenTransaction>;
+  sendingPromise: TrackedPromise<SentTransaction>;
+  waitingPromise: TrackedPromise<AwaitedTransaction>;
 };
 
 interface TransactionExecutionConfig {

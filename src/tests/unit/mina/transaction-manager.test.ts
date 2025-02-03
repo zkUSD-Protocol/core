@@ -27,10 +27,9 @@ describe('Local tests of TransactionManager', async () => {
       });
     });
 
-    const includedTx = await txHandle.awaitIncluded();
+    await txHandle.awaitIncluded();
 
     assert(txHandle.txStatus === 'Included');
-    assert(includedTx.status === 'included');
   });
 
   it('can create a tx with dependencies and await until it is included', async () => {
@@ -66,11 +65,10 @@ describe('Local tests of TransactionManager', async () => {
       }
     );
 
-    const includedTx = await tx2Handle.awaitIncluded();
+    await tx2Handle.awaitIncluded();
 
     assert(tx2Handle.txStatus === 'Included');
     assert(txHandle.txStatus === 'Included');
-    assert(includedTx.status === 'included');
   });
 
   it('tx with dependencies will fail if a dep failed', async () => {

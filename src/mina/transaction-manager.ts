@@ -1,11 +1,6 @@
 import { Field, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
 import { KeyPair } from '../types/utility.js';
-import {
-  IncludedTransaction,
-  PendingTransaction,
-  RejectedTransaction,
-  Transaction,
-} from 'o1js/dist/node/lib/mina/mina';
+import { Transaction } from 'o1js/dist/node/lib/mina/mina';
 import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
@@ -20,6 +15,7 @@ import {
   ITransactionExecutor,
   PreparedTransaction,
   TransactionLifecycle,
+  TransactionState,
 } from './transaction-executor.js';
 import { NonceLock } from './nonce-manager.js';
 
@@ -86,8 +82,9 @@ export type TransactionRequest = {
 export interface TransactionHandle {
   readonly txId: string;
   readonly txStatus: TransactionStatus;
-  readonly nonce: UInt32 | undefined;
+  readonly signedTransaction: Transaction<any, true> | undefined;
   readonly sender: PublicKey;
+  readonly hash: string | undefined;
 
   awaitStatusChange(args: {
     until: (status: TransactionStatus) => boolean;
@@ -98,57 +95,38 @@ export interface TransactionHandle {
   awaitIncluded(args?: {
     statusPollInterval?: number;
     timeout?: number;
-  }): Promise<IncludedTransaction>;
+  }): Promise<void>;
 }
-/**
- * A proven transaction disallows direct `send` or `sign` to avoid accidental usage.
- */
-export type ProvenTransaction = Omit<Transaction<true, false>, 'send' | 'sign'>;
 
 /**
  * Internal representation of a transaction, holding its request, status, and associated promises.
  */
 export class TransactionInternal {
   private _request?: TransactionRequest;
+  // this is not a tx nonce, it is just an ordinal number of tx creation call site.
   private _callSiteNonce = 0;
   private _dependentTxIds: string[] = [];
 
+  public signedTransaction?: Transaction<any, true>
   public status: TransactionStatus = 'Scheduled';
 
-  private _signingPromise?: TrackedPromise<Transaction<false, true>>;
-
-  private _sendingPromise?: TrackedPromise<
-    PendingTransaction | RejectedTransaction
-  >;
-  private _waitingPromise?: TrackedPromise<
-    IncludedTransaction | RejectedTransaction | undefined
-  >;
-  private _provingPromise?: TrackedPromise<ProvenTransaction>;
+  private _lifecycle: Partial<TransactionLifecycle> = {};
 
   /**
    * Retrieves the most up-to-date transaction state from whichever promise has been fulfilled.
    */
-  public get transactionState():
-    | ProvenTransaction
-    | PendingTransaction
-    | RejectedTransaction
-    | IncludedTransaction
-    | Transaction<false, true>
-    | undefined {
+  public get transactionState(): TransactionState | undefined {
     if (
-      this._waitingPromise?.state === 'fulfilled' &&
-      this._waitingPromise.result
+      this._lifecycle.waitingPromise?.state === 'fulfilled' &&
+      this._lifecycle.waitingPromise.result
     ) {
-      return this._waitingPromise.result;
+      return this._lifecycle.waitingPromise.result;
     }
-    if (this._sendingPromise?.state === 'fulfilled') {
-      return this._sendingPromise.result;
+    if (this._lifecycle.sendingPromise?.state === 'fulfilled') {
+      return this._lifecycle.sendingPromise.result;
     }
-    if (this._provingPromise?.state === 'fulfilled') {
-      return this._provingPromise.result;
-    }
-    if (this._signingPromise?.state === 'fulfilled') {
-      return this._signingPromise.result;
+    if (this._lifecycle.provingPromise?.state === 'fulfilled') {
+      return this._lifecycle.provingPromise.result;
     }
     return undefined;
   }
@@ -157,9 +135,17 @@ export class TransactionInternal {
    * Returns the transaction hash if available.
    */
   public get hash(): string | undefined {
-    return this.transactionState && 'hash' in this.transactionState
-      ? this.transactionState.hash
-      : undefined;
+    const s = this._lifecycle.sendingPromise;
+    if (s?.state === 'fulfilled') {
+      if (s.result.isLocal) {
+        return  s.result.transaction.hash;
+      } else if('hash' in s.result){
+        return s.result.hash;
+      } else {
+        return undefined;
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -232,10 +218,7 @@ export class TransactionInternal {
    * Installs the promises for proving, sending, and waiting on this transaction.
    */
   public installLifecycle(txLifecycle: TransactionLifecycle): void {
-    this._provingPromise = txLifecycle.provingPromise;
-    this._sendingPromise = txLifecycle.sendingPromise;
-    this._waitingPromise = txLifecycle.waitingPromise;
-    // this._sendingPromiseMaker = args.mkSendingPromise;
+    this._lifecycle = txLifecycle;
   }
 
   /**
@@ -270,7 +253,7 @@ export class TransactionInternal {
   public async awaitIncluded(args?: {
     statusPollInterval?: number;
     timeout?: number;
-  }): Promise<IncludedTransaction> {
+  }): Promise<void> {
     const statusPollInterval =
       args?.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
     const timeout = args?.timeout ?? defaultOptions.dependencyStatusPollTimeout;
@@ -289,7 +272,6 @@ export class TransactionInternal {
         )}`
       );
     }
-    return this.transactionState as IncludedTransaction;
   }
 
   /**
@@ -298,14 +280,17 @@ export class TransactionInternal {
   public get handle(): TransactionHandle {
     const self = this;
     return {
+      get hash() {
+        return self.hash;
+      },
       get txId() {
         return self.getId();
       },
       get txStatus(): TransactionStatus {
         return self.status;
       },
-      get nonce(): UInt32 | undefined {
-        return self.nonce;
+      get signedTransaction(): Transaction<any, true> | undefined {
+        return self.signedTransaction;
       },
       get sender(): PublicKey {
         return self.sender;
@@ -501,7 +486,10 @@ export class TransactionManager {
           const signers = options?.extraSigners
             ? [sender.privateKey, ...options.extraSigners]
             : [sender.privateKey];
-          return { signedTx: unsignedTx.sign(signers), nonceLock };
+          const signedTx = unsignedTx.sign(signers);
+          tx.signedTransaction = signedTx;
+
+          return { signedTx, nonceLock };
         } catch (error) {
           nonceLock?.unlock();
           throw failed_before_sending('signing the tx', error);

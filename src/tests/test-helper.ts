@@ -161,7 +161,7 @@ export class TestHelper {
       startingFee?: UInt64;
     },
     callDepth = 4
-  ): Promise<IncludedTransaction> {
+  ): Promise<void> {
     let startingFee: UInt64 | undefined;
 
     if (this._txMgr.mina.network.chainId === 'local') {
@@ -177,7 +177,7 @@ export class TestHelper {
       },
       callDepth
     );
-    return await h.awaitIncluded();
+    await h.awaitIncluded();
   }
 
   static async initLocalChain(opts?: {

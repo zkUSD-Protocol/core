@@ -1,10 +1,4 @@
-import {
-  IncludedTransaction,
-  PendingTransaction,
-  RejectedTransaction,
-  Transaction,
-  UInt64,
-} from 'o1js';
+import { Transaction, UInt64 } from 'o1js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import {
   ITransactionExecutor,
@@ -32,13 +26,19 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       return mkStatusFailedBeforeSending(tx.getId(), phase, error);
     };
 
+    const mkState = <T>(transaction: T) => {
+      return { isLocal: true as true, transaction };
+    };
+
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
       try {
         if (config?.printTx) {
           console.log(`${tx.getId()} - Proving transaction ...`);
         }
-        return await transactionProve(tx.tx, config.mina, config.o1jsMutex);
+        return mkState(
+          await transactionProve(tx.tx, config.mina, config.o1jsMutex)
+        );
       } catch (error) {
         throw failed_before_sending('proving the tx', error);
       }
@@ -51,7 +51,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           provingPromise,
           tx.depsAwaitingPromise,
         ]);
-        const signedTx = await tx.mkSigningPromise(fee, results[0]);
+        const signedTx = await tx.mkSigningPromise(fee, results[0].transaction);
         // send the transaction
         let nonceLock: NonceLock | undefined;
         try {
@@ -78,7 +78,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
               break;
             }
           }
-          return sentTx;
+          return mkState(sentTx);
         } catch (error) {
           await nonceLock?.unlock();
           throw failed_before_sending('sending the tx', error);
@@ -86,17 +86,13 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       });
     };
     // schedule sending
-    const sendingPromise: TrackedPromise<
-      PendingTransaction | RejectedTransaction
-    > = mkSendingPromise(config.startingFee);
+    const sendingPromise = mkSendingPromise(config.startingFee);
 
     // schedule waiting for the transaction to be included
-    const waitingPromise: TrackedPromise<
-      IncludedTransaction | RejectedTransaction | undefined
-    > = new TrackedPromise(async () => {
+    const waitingPromise = new TrackedPromise(async () => {
       try {
-        const sentTx = await sendingPromise;
-        if (statusIsRejectedTransaction(sentTx)) return sentTx;
+        const { transaction: sentTx } = await sendingPromise;
+        if (statusIsRejectedTransaction(sentTx)) return mkState(sentTx);
         if (config?.printTx) {
           console.log(`${tx.getId()} - Awaiting inclusion ...`);
         }
@@ -121,13 +117,13 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
             });
           }
         }
-        return awaitedTx;
+        return mkState(awaitedTx);
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           const status = error as TransactionStatus;
           tx.setStatus(status);
         }
-        return undefined;
+        return mkState(undefined)
       }
     });
 
