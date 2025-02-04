@@ -6,10 +6,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { ChildProcess } from 'child_process';
 
-import { ExternalProcessManager } from '../../../services/proving/external-process-manager.js';
-import { InMemoryJobStore } from '../../../services/proving/in-memory-job-store.js';
-import { ProvingJobType } from '../../../services/proving/shared-types.js';
-import { NodeScriptProver } from '../../../services/proving/node-script-prover.js';
+import { ExternalProcessManager } from '../../../services/external-tx-processing/external-process-manager.js';
+import { InMemoryJobStore } from '../../../services/external-tx-processing/in-memory-job-store.js';
+import { ProvingJobType } from '../../../services/external-tx-processing/shared-types.js';
+import { NodeScriptProver } from '../../../services/external-tx-processing/node-script-prover.js';
 import { VaultTransactionType } from '../../../types/cloud-worker.js';
 
 const TEST_PORT = 4647; // Use a distinct port for tests
