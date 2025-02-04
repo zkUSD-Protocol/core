@@ -1,4 +1,3 @@
-
 // shared-types.ts
 export enum ProvingJobType {
   ProveTransaction = 'ProveTransaction',
@@ -9,11 +8,11 @@ export interface ProveTransactionJobPayload {
   serializedTransaction: string;
   // vaultTransactionType: VaultTransactionType;
 }
-export type ProveAndSendTransactionResult = {error: string} | {txHash: string};
+export type ProveAndSendTransactionResult =
+  | { error: string }
+  | { txHash: string };
 
-export interface ProveTransactionResult {
-
-}
+export interface ProveTransactionResult {}
 
 export type ProvingJobPayload = {
   [ProvingJobType.ProveTransaction]: ProveTransactionJobPayload;
@@ -44,8 +43,9 @@ interface ProvingJobDefinition<T extends ProvingJobType> {
 }
 
 // A union covering all possible job variants (future-proof).
-export type AnyProvingJob = ProvingJob[ProvingJobType.ProveTransaction | ProvingJobType.ProveAndSendTransaction];
-
+export type AnyProvingJob = ProvingJob[
+  | ProvingJobType.ProveTransaction
+  | ProvingJobType.ProveAndSendTransaction];
 
 /**
  * IProver can be parameterized by a subset (or all) of ProvingJobType.
@@ -54,7 +54,9 @@ export type AnyProvingJob = ProvingJob[ProvingJobType.ProveTransaction | Proving
  * - `proveJob` only accepts jobs whose `type` is in `SupportedTypes`
  *   and returns the matching result type from ProvingJobResult.
  */
-export interface IProver<SupportedTypes extends ProvingJobType = ProvingJobType> {
+export interface IProver<
+  SupportedTypes extends ProvingJobType = ProvingJobType,
+> {
   readonly supportedJobTypes: SupportedTypes[];
 
   proveJob<T extends SupportedTypes>(

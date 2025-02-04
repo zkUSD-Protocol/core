@@ -1,18 +1,23 @@
 /**
-  * This script is used to run a Node.js script as an external prover process.
-  * It is a simple example of how to run a prover in a separate process using Node.js.
-  *
-  * The script is executed with the following command:
-  * ```
-  * node node-script-prover.ts <external prover manager url>
-  * ```
-  *
-  * The script will run in a loop, polling the external prover manager for new jobs.
-  * When a job is received, the script will process the job and submit the result back to the manager.
-  */
+ * This script is used to run a Node.js script as an external prover process.
+ * It is a simple example of how to run a prover in a separate process using Node.js.
+ *
+ * The script is executed with the following command:
+ * ```
+ * node node-script-prover.ts <external prover manager url>
+ * ```
+ *
+ * The script will run in a loop, polling the external prover manager for new jobs.
+ * When a job is received, the script will process the job and submit the result back to the manager.
+ */
 import { ChildProcess, spawn } from 'child_process';
 import { fileURLToPath } from 'node:url';
-import { AnyProvingJob, ProvingJob, ProvingJobResult, ProvingJobType } from './shared-types.js';
+import {
+  AnyProvingJob,
+  ProvingJob,
+  ProvingJobResult,
+  ProvingJobType,
+} from './shared-types.js';
 import { TransactionProver } from './transaction-prover.js';
 
 // Resolve the correct file path
@@ -26,7 +31,9 @@ export class NodeScriptProver {
   constructor(private scriptPath: string = __filename) {}
 
   get proverId(): string {
-    return `node-script-prover${this.index !== undefined ? `-${this.index}` : ''}`;
+    return `node-script-prover${
+      this.index !== undefined ? `-${this.index}` : ''
+    }`;
   }
 
   spawn(serverUrl: string, proverIndex?: number): void {
@@ -53,7 +60,9 @@ export class NodeScriptProver {
     });
   }
 
-  onExit(callback: (exitCode: number | null, signal: string | null) => void): void {
+  onExit(
+    callback: (exitCode: number | null, signal: string | null) => void
+  ): void {
     this.exitCallback = callback;
   }
 
@@ -77,7 +86,9 @@ if (process.argv[1] === __filename) {
     process.exit(1);
   }
 
-  console.log(`ExternalProcess started. Polling for jobs at ${EPM_BASE_URL}...`);
+  console.log(
+    `ExternalProcess started. Polling for jobs at ${EPM_BASE_URL}...`
+  );
 
   async function main() {
     while (true) {
@@ -103,14 +114,19 @@ if (process.argv[1] === __filename) {
         const proofResult = await performProof(job);
 
         // Submit the proof result back to the EPM using fetch
-        const submitResponse = await fetch(`${EPM_BASE_URL}/jobs/${job.id}/result`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ result: proofResult }),
-        });
+        const submitResponse = await fetch(
+          `${EPM_BASE_URL}/jobs/${job.id}/result`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ result: proofResult }),
+          }
+        );
 
         if (!submitResponse.ok) {
-          console.error(`Failed to submit job result, status: ${submitResponse.status}`);
+          console.error(
+            `Failed to submit job result, status: ${submitResponse.status}`
+          );
         } else {
           console.log(`Submitted result for job ${job.id}`);
         }
@@ -121,7 +137,9 @@ if (process.argv[1] === __filename) {
     }
   }
 
-  async function proveTransaction(job: ProvingJob[ProvingJobType.ProveTransaction]): Promise<ProvingJobResult[ProvingJobType.ProveTransaction]> {
+  async function proveTransaction(
+    job: ProvingJob[ProvingJobType.ProveTransaction]
+  ): Promise<ProvingJobResult[ProvingJobType.ProveTransaction]> {
     await sleep(1000);
     return await prover.proveJob(job);
   }

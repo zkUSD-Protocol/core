@@ -11,7 +11,6 @@ import { JobStore } from './job-store.js';
 import { ExternalProcess } from './external-process.js';
 import { Mutex } from '../../utils/mutex.js';
 
-
 // TODO rename to ExternalTxExecutor
 export class ExternalProcessManager {
   private mutex = new Mutex();
