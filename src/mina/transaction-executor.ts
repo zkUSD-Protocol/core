@@ -1,13 +1,13 @@
 // TODO - document this file, refactor for better readability
 import {
-  Empty,
+  Field,
   IncludedTransaction,
   PendingTransaction,
-  Proof,
+  PrivateKey,
+  PublicKey,
   RejectedTransaction,
   Transaction,
   UInt64,
-  ZkappPublicInput,
 } from 'o1js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import {
@@ -18,6 +18,7 @@ import {
 import { Mutex } from '../utils/mutex.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { NonceLock } from './nonce-manager.js';
+import { KeyPair } from '../types/utility.js';
 
 export {
   AwaitedTransaction,
@@ -32,7 +33,7 @@ export {
 
 type ProvenTransaction =
   | { isLocal: true; transaction: Transaction<true, any> }
-  | { isLocal: false; proofs: (Proof<ZkappPublicInput, Empty> | undefined)[] }
+  | { isLocal: false; proofs: string[] }
   | { isLocal: false; errors: string[] };
 
 type SentTransaction =
@@ -76,16 +77,20 @@ interface TransactionExecutionConfig {
 interface PreparedTransaction {
   getId: () => string;
   tx: Transaction<false, false>;
+  keys:{
+    sender: KeyPair; // should not pass around private keys
+    extraSigners: PrivateKey[]
+  },
   depsAwaitingPromise: TrackedPromise<void>;
-  mkSigningPromise: <T extends boolean>(
-    fee: UInt64,
-    tx: Transaction<T, false>
-  ) => TrackedPromise<{ signedTx: Transaction<T, true>; nonceLock: NonceLock }>; // nonceLock is used to unlock the nonce after sending
+  nonceLock: (
+    publicKey: string | PublicKey,
+    tokenId?: Field
+  ) => Promise<NonceLock>;
   setStatus: (status: TransactionStatus) => void;
 }
 
 interface ITransactionExecutor {
-  executeTransaction(
+  scheduleTx(
     preparedTx: PreparedTransaction,
     config: TransactionExecutionConfig,
     options?: unknown

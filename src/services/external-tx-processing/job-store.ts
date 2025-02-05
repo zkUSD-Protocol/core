@@ -1,19 +1,24 @@
-// job-store.ts
-import { AnyProvingJob } from './shared-types';
+/**
+ * Represents a job with optional timeout settings.
+ */
+export interface AnyJob {
+  id: string;
+  assignmentTimeoutMs?: number;
+}
 
 /**
  * An interface for storing, retrieving, and updating proving jobs.
  */
-export interface JobStore {
+export interface JobStore<J extends AnyJob> {
   /**
    * Inserts a new job into the store.
    */
-  addJob(job: AnyProvingJob): Promise<void>;
+  addJob(job: J): Promise<void>;
 
   /**
    * Returns the next available job for proving (or `undefined` if none).
    */
-  getNextAvailableJob(): Promise<AnyProvingJob | undefined>;
+  getNextAvailableJob(): Promise<J | undefined>;
 
   /**
    * Marks a job as assigned (so it’s no longer available).

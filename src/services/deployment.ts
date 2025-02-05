@@ -42,7 +42,9 @@ export class DeploymentService {
    * Creates a new instance of the DeploymentService.
    * Initializes the deployer account and compiles necessary contracts.
    */
-  public static async create(txMgr: TransactionManager) {
+  public static async create(
+    txMgr: TransactionManager
+  ) {
     const service = new DeploymentService(txMgr);
 
     if (service._networkKeys.deployer) {

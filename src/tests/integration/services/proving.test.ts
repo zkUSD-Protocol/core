@@ -8,9 +8,7 @@ import { ChildProcess } from 'child_process';
 
 import { ExternalProcessManager } from '../../../services/external-tx-processing/external-process-manager.js';
 import { InMemoryJobStore } from '../../../services/external-tx-processing/in-memory-job-store.js';
-import { ProvingJobType } from '../../../services/external-tx-processing/shared-types.js';
-import { NodeScriptProver } from '../../../services/external-tx-processing/node-script-prover.js';
-import { VaultTransactionType } from '../../../types/cloud-worker.js';
+import { WorkerJobType } from '../../../services/external-tx-processing/shared-types.js';
 
 const TEST_PORT = 4647; // Use a distinct port for tests
 
@@ -64,7 +62,7 @@ after(async () => {
  */
 test('Happy Path: single job is assigned, proved, and result is received', async () => {
   // Request proof from the manager
-  const jobResultPromise = epm.proveJob(ProvingJobType.ProveTransaction, {
+  const jobResultPromise = epm.proveJob(WorkerJobType.ProveTransaction, {
     serializedTransaction: 'test-123',
   });
 
@@ -94,7 +92,7 @@ test('Reassign job after timeout if not completed', async () => {
   // Make a short assignment timeout job
   const SHORT_TIMEOUT = 2000;
   const jobResultPromise = epm.proveJob(
-    ProvingJobType.ProveTransaction,
+    WorkerJobType.ProveTransaction,
     { serializedTransaction: 'slow-job-789' },
     SHORT_TIMEOUT
   );

@@ -17,7 +17,6 @@ import {
   TransactionLifecycle,
   TransactionState,
 } from './transaction-executor.js';
-import { NonceLock } from './nonce-manager.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -107,7 +106,7 @@ export class TransactionInternal {
   private _callSiteNonce = 0;
   private _dependentTxIds: string[] = [];
 
-  public signedTransaction?: Transaction<any, true>
+  public signedTransaction?: Transaction<any, true>;
   public status: TransactionStatus = 'Scheduled';
 
   private _lifecycle: Partial<TransactionLifecycle> = {};
@@ -138,8 +137,8 @@ export class TransactionInternal {
     const s = this._lifecycle.sendingPromise;
     if (s?.state === 'fulfilled') {
       if (s.result.isLocal) {
-        return  s.result.transaction.hash;
-      } else if('hash' in s.result){
+        return s.result.transaction.hash;
+      } else if ('hash' in s.result) {
         return s.result.hash;
       } else {
         return undefined;
@@ -455,48 +454,6 @@ export class TransactionManager {
       options
     );
 
-    const mgr = this;
-    const mkSigningPromise = <T extends boolean>(
-      fee: UInt64,
-      unsignedTx: Transaction<T, false>
-    ) => {
-      return new TrackedPromise(async () => {
-        let nonceLock: NonceLock | undefined;
-        try {
-          try {
-            nonceLock = await mgr.mina.nonceManager.getAccountNonce(
-              sender.publicKey
-            );
-          } catch (error) {
-            const err = `Error during getting the tx nonce: ${error}`;
-            console.error(err);
-            throw err;
-          }
-          unsignedTx.transaction.feePayer.body.nonce = nonceLock.nonce;
-          unsignedTx.transaction.feePayer.body.fee = fee;
-          if (options?.printTx) {
-            console.log(
-              `${tx.getId()} - Signing transaction: {nonce: ${
-                nonceLock.nonce
-              }, fee: ${fee}} ...`
-            );
-          }
-
-          // TODO use signing service instead, do not pass private keys around
-          const signers = options?.extraSigners
-            ? [sender.privateKey, ...options.extraSigners]
-            : [sender.privateKey];
-          const signedTx = unsignedTx.sign(signers);
-          tx.signedTransaction = signedTx;
-
-          return { signedTx, nonceLock };
-        } catch (error) {
-          nonceLock?.unlock();
-          throw failed_before_sending('signing the tx', error);
-        }
-      });
-    };
-
     //=== prepare promises that will manage the transaction lifecycle
 
     const preparedTx: PreparedTransaction = {
@@ -506,12 +463,13 @@ export class TransactionManager {
       setStatus: (s: TransactionStatus) => {
         tx.status = s;
       },
-      mkSigningPromise,
+      keys: {sender, extraSigners: options?.extraSigners ?? []},
+      nonceLock: this.mina.nonceManager.getAccountNonce,
     };
 
     //=== delegate the rest of execution
 
-    const lifecycle = await this.transactionExecutor.executeTransaction(
+    const lifecycle = await this.transactionExecutor.scheduleTx(
       preparedTx,
       {
         o1jsMutex: this._o1jsMutex,

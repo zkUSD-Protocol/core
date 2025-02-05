@@ -11,16 +11,22 @@ import {
   mkStatusFailedBeforeSending,
   statusIsRejectedTransaction,
 } from './transaction-status.js';
-import { NonceLock } from './nonce-manager.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
+import { o1jsSigner } from '../services/signing/o1js-signer.js';
 
 export class LocalTransactionExecutor implements ITransactionExecutor {
-  executeTransaction(
+
+  public get signer() {
+    return o1jsSigner;
+  }
+
+  scheduleTx(
     tx: PreparedTransaction,
     config: TransactionExecutionConfig,
     _options?: unknown
   ): Promise<TransactionLifecycle> {
+    const self = this;
     // const failed_before_sending = (phase: string, error: unknown) =>
     const failed_before_sending = (phase: string, error: unknown) => {
       return mkStatusFailedBeforeSending(tx.getId(), phase, error);
@@ -51,18 +57,24 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           provingPromise,
           tx.depsAwaitingPromise,
         ]);
-        const signedTx = await tx.mkSigningPromise(fee, results[0].transaction);
+        const transaction = results[0].transaction;
+        // TODO don't we need token as well?
+        let nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
         // send the transaction
-        let nonceLock: NonceLock | undefined;
         try {
-          const { signedTx: signedTxResult, nonceLock: lock } = signedTx;
-          nonceLock = lock;
+          const { signedTx } = await self.signer({
+            keys: tx.keys,
+            nonce: nonceLock.nonce,
+            fee,
+            tx: transaction,
+          });
+
           if (config?.printTx) {
             console.log(`${tx.getId()} - Sending transaction ...`);
-            console.log('Pretty printing signed tx', signedTxResult.toPretty());
+            console.log('Pretty printing signed tx', signedTx.toPretty());
           }
 
-          const sentTx = await signedTxResult.safeSend();
+          const sentTx = await signedTx.safeSend();
           // unlock the nonce after sending
           await nonceLock.unlock();
           switch (sentTx.status) {
@@ -123,7 +135,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           const status = error as TransactionStatus;
           tx.setStatus(status);
         }
-        return mkState(undefined)
+        return mkState(undefined);
       }
     });
 

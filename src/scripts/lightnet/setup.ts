@@ -8,8 +8,7 @@ const RECEIVER_PUBLIC_KEY =
   'B62qmbTQ56amhVUBTH3umviEEnnQhTbKf5EkpyXb62Rzho3T3A1dPYx';
 const AMOUNT = 500e9; // 100 Mina
 
-async function main() {
-  const MinaChain = await MinaNetworkInterface.initLightnet();
+async function main() {  const MinaChain = await MinaNetworkInterface.initLightnet();
   const executor = new LocalTransactionExecutor();
   const txMgr = TransactionManager.new(MinaChain, executor);
   const deploymentService = await DeploymentService.create(txMgr);

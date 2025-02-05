@@ -44,6 +44,7 @@ export {
   CompilationConfig,
   CompilationResults,
   ExecutorContext,
+  TxLifecycleTracker,
   compileContracts,
   compilationConfigIsEqual,
   executeTransaction,
@@ -53,6 +54,19 @@ export {
 
 type ZkUsdEngineType = ReturnType<typeof ZkUsdEngineContract>;
 type FungibleTokenType = ReturnType<typeof FungibleTokenContract>;
+
+type TxLifecycleTracker = {
+  proving: {
+    resolver: (proofs: string[]) => void;
+    rejector: (error: { status: FailedBeforeSending }) => void;
+  };
+  sending: {
+    resolver: (result: { hash: string; status: 'Pending' }) => void;
+    rejector: (error: {
+      status: RejectedOnReceive | FailedBeforeSending;
+    }) => void;
+  };
+};
 
 interface ExecutorContext {
   workerId: string;
@@ -281,7 +295,8 @@ export type ExecutedTx = ExecutedTx_ & { txId: string };
 async function proveAndSendTx(
   txId: string,
   workerId: string,
-  tx: Transaction<false, false>
+  tx: Transaction<false, false>,
+  executionTracker?: Partial<TxLifecycleTracker>
 ): Promise<ExecutedTx> {
   let provenTx;
   try {
@@ -290,6 +305,13 @@ async function proveAndSendTx(
     provenTx = await tx.prove();
     console.timeEnd('proved');
   } catch (err: unknown) {
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        txId,
+        `{proving the tx by worker: ${workerId}}`,
+        err
+      ),
+    });
     return {
       txId,
       unprovenTx: tx,
@@ -300,6 +322,10 @@ async function proveAndSendTx(
       ),
     };
   }
+  // proving was successful
+  executionTracker?.proving?.resolver(
+    provenTx.proofs.map((p) => JSON.stringify(p?.toJSON()))
+  );
 
   let sentTx;
   try {
@@ -308,6 +334,11 @@ async function proveAndSendTx(
     switch (sentTx.status) {
       case 'pending': {
         let txStatus: 'Pending' = 'Pending';
+        // sending was successful
+        executionTracker?.sending?.resolver({
+          hash: sentTx.hash,
+          status: 'Pending',
+        });
         return { txId, pendingTx: sentTx, txStatus };
       }
       case 'rejected': {
@@ -315,10 +346,20 @@ async function proveAndSendTx(
           kind: 'RejectedOnReceive',
           errors: ['error when the tx has been sent', ...sentTx.errors],
         };
+        // inclusion rejected
+        executionTracker?.sending?.rejector({ status: txStatus });
         return { txId, rejectedTx: sentTx as RejectedTransaction, txStatus };
       }
     }
   } catch (err) {
+    // other sending error
+    executionTracker?.sending?.rejector({
+      status: mkStatusFailedBeforeSending(
+        txId,
+        `{sending the tx by worker: ${workerId}}`,
+        err
+      ),
+    });
     return {
       txId,
       provenTx,
@@ -333,19 +374,38 @@ async function proveAndSendTx(
 
 async function executeTransaction(
   context: ExecutorContext,
-  transaction: string
+  transaction: string,
+  executionTracker?: Partial<TxLifecycleTracker>
 ): Promise<ExecutedTx> {
   console.log('Executing transaction');
 
   // Identify the transaction config
   const task = context.task; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
-  if (!context.compilationResults.transactionConfigs)
+  if (!context.compilationResults.transactionConfigs) {
+    // if proving rejector is defined then reject
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        'unknown',
+        'proving',
+        `Worker ${context.workerId} - transactionConfigs not initialized`
+      ),
+    });
     throw new Error('transactionConfigs not initialized');
+  }
 
   const config = context.compilationResults.transactionConfigs[
     task
   ] as TransactionConfig<typeof task>;
-  if (!config) throw new Error(`Unknown task: ${task}`);
+  if (!config) {
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        'unknown',
+        'proving',
+        `Worker ${context.workerId} - invalid  task parameter`
+      ),
+    });
+    throw new Error(`Unknown task: ${task}`);
+  }
 
   // Parse arguments from context.args
   const vaultArgs = JSON.parse(
@@ -353,16 +413,34 @@ async function executeTransaction(
   ) as VaultTransactionArgs[typeof task];
 
   // Recreate the transaction
-  const tx = await recreateTransaction({
-    tx: transaction,
-    txArgs: vaultArgs,
-    chain: context.chain,
-    config: config,
-    oracleAggregationVk: context.compilationResults.oracleAggregationVk,
-    engineInstance: context.compilationResults.engineInstance,
-    engineKey: context.keys.engine.publicKey,
-  });
+  let tx;
+  try {
+    tx = await recreateTransaction({
+      tx: transaction,
+      txArgs: vaultArgs,
+      chain: context.chain,
+      config: config,
+      oracleAggregationVk: context.compilationResults.oracleAggregationVk,
+      engineInstance: context.compilationResults.engineInstance,
+      engineKey: context.keys.engine.publicKey,
+    });
+  } catch (err) {
+    // if proving rejector is defined then reject
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        'unknown',
+        'proving',
+        `Worker ${context.workerId} - error recreating transaction: ${err}`
+      ),
+    });
+    throw new Error(`Error recreating transaction: ${err}`);
+  }
 
   // prove and send
-  return proveAndSendTx(vaultArgs.transactionId, context.workerId, tx);
+  return proveAndSendTx(
+    vaultArgs.transactionId,
+    context.workerId,
+    tx,
+    executionTracker
+  );
 }
