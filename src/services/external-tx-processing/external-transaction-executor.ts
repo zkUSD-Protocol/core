@@ -22,10 +22,12 @@ import { ZkappCommand } from 'mina-signer/dist/node/mina-signer/src/types.js';
 import { Signed } from 'o1js/dist/node/mina-signer/src/types.js';
 import { ProvingResult, SendingResult } from './shared-types.js';
 import { VaultTransactionType } from '../../types/cloud-worker.js';
+import { InMemoryJobStore } from './in-memory-job-store.js';
+import { NodeScriptExecutor } from './node-script-tx-executor.js';
 
-/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
-/*                            TxLifecycleTracker                             */
-/* ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+/* ------------------------------------------------------------------------*/
+/*                            TxLifecycleTracker                           */
+/* ------------------------------------------------------------------------*/
 
 /**
  * Collection of resolvers/rejectors to handle the asynchronous lifecycles of a
@@ -61,23 +63,39 @@ function makeEmptyTxLifecycleTracker(): TxLifecycleTracker {
 }
 
 // so that we can easily mock things
-interface ExecutorInternal {
+interface TxExecutorInternal {
   scheduleTxExecution(args: {
     signedTx: Signed<ZkappCommand>;
     lifecycleTracker: TxLifecycleTracker;
   }): Promise<void>;
 }
 
-/* ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
-/*                        ExternalTransactionExecutor                         */
-/* ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------------*/
+/*                        ExternalTransactionExecutor                          */
+/* ----------------------------------------------------------------------------*/
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving
  * and sending to an external manager via some scheduling mechanism.
  */
 export class ExternalTransactionExecutor implements ITransactionExecutor {
-  constructor(private workerManager: ExecutorInternal) {}
+  private constructor(private workerManager: TxExecutorInternal) {}
+
+  //start
+  public static async start(
+    args:
+      | { executor: TxExecutorInternal }
+      | { workers: NodeScriptExecutor[] | number }
+  ): Promise<ExternalTransactionExecutor> {
+    let e: TxExecutorInternal;
+    // if workers then create new TransactionWorkerManager
+    if ('workers' in args) {
+      e = await TransactionWorkerManager.start(args.workers);
+    } else {
+      e = args.executor;
+    }
+    return new ExternalTransactionExecutor(e);
+  }
 
   /**
    * Returns the global Mina-signer instance.
@@ -205,9 +223,9 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     }
   }
 }
-/* ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
-/*                       TransactionWorkerManager                             */
-/* ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+/* ------------------------------------------------------------------------*/
+/*                       TransactionWorkerManager                          */
+/* ------------------------------------------------------------------------*/
 
 export type TransactionExecutionJob = {
   id: string;
@@ -228,7 +246,7 @@ export type TxExternalExecutionPayload = {
  *   2. Tracking job states via `jobStore`.
  *   3. Exposing endpoints for prove/sent callbacks.
  */
-export class TransactionWorkerManager implements ExecutorInternal {
+export class TransactionWorkerManager implements TxExecutorInternal {
   private mutex = new Mutex(); // no concurrent job-store access
   private isShuttingDown = false; // when shutting down we dont restart workers
   private app = express();
@@ -236,16 +254,41 @@ export class TransactionWorkerManager implements ExecutorInternal {
   private workers: ExternalProcess[] = [];
   private jobTrackers: Map<string, TxLifecycleTracker> = new Map();
 
+  // after 8 minutes after scheduling.
+  private static readonly _jobTimeout: number = 8 * 60 * 1000; // 8 minutes
+
   /**
    * @param jobStore - An object responsible for storing and retrieving job data.
    * @param port - The HTTP port the manager's server will listen on.
    */
-  constructor(
-    private jobStore: JobStore<TransactionExecutionJob>,
+  private constructor(
+    private jobStore: JobStore<TransactionExecutionJob> = new InMemoryJobStore(
+      TransactionWorkerManager._jobTimeout
+    ),
     private port: number = 4646
   ) {
     this.app.use(express.json());
     this.setupRoutes();
+  }
+
+  public static async start(
+    workers: NodeScriptExecutor[] | number,
+    jobStore?: JobStore<TransactionExecutionJob>,
+    port?: number
+  ): Promise<TransactionWorkerManager> {
+    const manager = new TransactionWorkerManager(jobStore, port);
+    await manager.init();
+    if (!workers) {
+      throw new Error('No workers provided');
+    }
+    if (typeof workers === 'number') {
+      manager.spawnWorkers(
+        new Array(workers).fill(0).map((_, i) => new NodeScriptExecutor())
+      );
+    } else {
+      manager.spawnWorkers(workers);
+    }
+    return manager;
   }
 
   /**
@@ -362,9 +405,9 @@ export class TransactionWorkerManager implements ExecutorInternal {
     });
   }
 
-  /* --------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
-  /*                            HTTP ROUTE HANDLERS                          */
-  /* --------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+  /* ----------------------------------------------------------------------------*/
+  /*                            HTTP ROUTE HANDLERS                              */
+  /* ----------------------------------------------------------------------------*/
 
   // TODO use zod schemas to ensure safe transport
   /**

@@ -1,7 +1,7 @@
 import { Transaction } from 'o1js';
-import { TrackedPromise } from '../../utils/tracked-promise';
-import { Signer } from './types';
-import { insertField, renameField } from '../../types/utility';
+import { TrackedPromise } from '../../utils/tracked-promise.js';
+import { Signer } from './types.js';
+import { insertField, renameField } from '../../types/utility.js';
 import { Client as MinaSigner } from 'mina-signer';
 
 export { minaSigner };

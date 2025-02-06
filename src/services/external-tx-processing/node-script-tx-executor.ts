@@ -38,7 +38,7 @@ export class NodeScriptExecutor {
   private exitCallback?: (code: number | null, signal: string | null) => void;
 
   // By default, we spawn the same file. That’s how we run as a child worker.
-  constructor(private scriptPath: string = __filename) {}
+  constructor(private chain: blockchain='lightnet', private scriptPath: string = __filename,) {}
 
   get proverId(): string {
     // For naming consistency, we can call it "executor" or keep "prover"
@@ -55,7 +55,7 @@ export class NodeScriptExecutor {
       throw new Error('Server URL is required to spawn the worker');
     }
     this.index = workerIndex;
-    this.process = spawn('node', [this.scriptPath, serverUrl], {
+    this.process = spawn('node', [this.scriptPath, serverUrl, this.chain], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     });
 
