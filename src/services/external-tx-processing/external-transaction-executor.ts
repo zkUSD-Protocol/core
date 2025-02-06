@@ -123,6 +123,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     // Acquire a nonce lock to ensure we have a consistent nonce for this tx
     const nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
 
+
     try {
       // We sign and wait for any dependencies in parallel
       const [{ signedTx }] = await Promise.all([

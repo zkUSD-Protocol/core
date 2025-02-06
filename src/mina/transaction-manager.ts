@@ -455,7 +455,7 @@ export class TransactionManager {
     );
 
     //=== prepare promises that will manage the transaction lifecycle
-
+    const mgr=this;
     const preparedTx: PreparedTransaction = {
       getId: () => tx.getId(),
       tx: builtTx,
@@ -464,7 +464,7 @@ export class TransactionManager {
         tx.status = s;
       },
       keys: {sender, extraSigners: options?.extraSigners ?? []},
-      nonceLock: this.mina.nonceManager.getAccountNonce,
+      nonceLock: async (pk: PublicKey|string, tokenId?:Field) => { return await mgr.mina.nonceManager.getAccountNonce(pk, tokenId)},
     };
 
     //=== delegate the rest of execution
