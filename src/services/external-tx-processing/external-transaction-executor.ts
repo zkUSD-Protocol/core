@@ -8,6 +8,7 @@ import {
   PreparedTransaction,
   ProvenTransaction,
   SentTransaction,
+  TransactionArgs,
   TransactionExecutionConfig,
   TransactionLifecycle,
 } from '../../mina/transaction-executor.js';
@@ -17,13 +18,14 @@ import {
   RejectedOnReceive,
 } from '../../mina/transaction-status.js';
 import { TrackedPromise } from '../../utils/tracked-promise.js';
-import { minaSigner } from '../signing/mina-signer.js';
+import { testnetMinaSigner } from '../signing/mina-signer.js';
 import { ZkappCommand } from 'mina-signer/dist/node/mina-signer/src/types.js';
 import { Signed } from 'o1js/dist/node/mina-signer/src/types.js';
 import { ProvingResult, SendingResult } from './shared-types.js';
-import { VaultTransactionType } from '../../types/cloud-worker.js';
 import { InMemoryJobStore } from './in-memory-job-store.js';
 import { NodeScriptExecutor } from './node-script-tx-executor.js';
+import { serializeTransaction } from './transaction-serialization.js';
+import { blockchain } from 'zkcloudworker';
 
 /* ------------------------------------------------------------------------*/
 /*                            TxLifecycleTracker                           */
@@ -65,7 +67,7 @@ function makeEmptyTxLifecycleTracker(): TxLifecycleTracker {
 // so that we can easily mock things
 interface TxExecutorInternal {
   scheduleTxExecution(args: {
-    signedTx: Signed<ZkappCommand>;
+    payload: TxExternalExecutionPayload;
     lifecycleTracker: TxLifecycleTracker;
   }): Promise<void>;
 }
@@ -81,16 +83,32 @@ interface TxExecutorInternal {
 export class ExternalTransactionExecutor implements ITransactionExecutor {
   private constructor(private workerManager: TxExecutorInternal) {}
 
+  public static initializer(
+    args:
+      | { executor: TxExecutorInternal }
+      | { workers: NodeScriptExecutor[] | number }
+  ) {
+    return (chain: blockchain) => {
+      return ExternalTransactionExecutor.start(chain, args);
+    }
+  }
+
   //start
   public static async start(
+    chain: blockchain,
     args:
       | { executor: TxExecutorInternal }
       | { workers: NodeScriptExecutor[] | number }
   ): Promise<ExternalTransactionExecutor> {
+    if (chain === 'local') {
+      throw new Error(
+        'ExternalTransactionExecutor cannot be used with a local chain.'
+      );
+    }
     let e: TxExecutorInternal;
     // if workers then create new TransactionWorkerManager
     if ('workers' in args) {
-      e = await TransactionWorkerManager.start(args.workers);
+      e = await TransactionWorkerManager.start(chain, args.workers);
     } else {
       e = args.executor;
     }
@@ -101,7 +119,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
    * Returns the global Mina-signer instance.
    */
   public get signer() {
-    return minaSigner;
+    return testnetMinaSigner;
   }
 
   /**
@@ -120,9 +138,12 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     config: TransactionExecutionConfig,
     _options?: unknown
   ): Promise<TransactionLifecycle> {
+    if (!tx.args) {
+      throw new Error('Transaction args are in the external executor');
+    }
+
     // Acquire a nonce lock to ensure we have a consistent nonce for this tx
     const nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
-
 
     try {
       // We sign and wait for any dependencies in parallel
@@ -208,8 +229,16 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
 
       // Hand off to the external worker manager
       await this.workerManager.scheduleTxExecution({
-        signedTx,
         lifecycleTracker,
+        payload: {
+          txId: tx.getId(),
+          transaction: {
+            serializedTx: serializeTransaction(tx.tx),
+            signedData: signedTx,
+          },
+          ...tx.args,
+        },
+
       });
 
       // Return a structure that allows the caller to await each stage
@@ -236,10 +265,12 @@ export type TransactionExecutionJob = {
 };
 
 export type TxExternalExecutionPayload = {
-  serializedTx: string;
-  transactionType: VaultTransactionType;
-  args: any;
-};
+  txId: string;
+  transaction: {
+    serializedTx: string;
+    signedData: Signed<ZkappCommand>;
+  }
+} & TransactionArgs
 
 /**
  * Manages external worker processes (provers/senders). Responsible for:
@@ -273,7 +304,8 @@ export class TransactionWorkerManager implements TxExecutorInternal {
   }
 
   public static async start(
-    workers: NodeScriptExecutor[] | number,
+    chain: blockchain,
+    workers: ExternalProcess[] | number,
     jobStore?: JobStore<TransactionExecutionJob>,
     port?: number
   ): Promise<TransactionWorkerManager> {
@@ -284,7 +316,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
     }
     if (typeof workers === 'number') {
       manager.spawnWorkers(
-        new Array(workers).fill(0).map((_, i) => new NodeScriptExecutor())
+        new Array(workers).fill(0).map((_, i) => new NodeScriptExecutor(chain))
       );
     } else {
       manager.spawnWorkers(workers);
@@ -297,19 +329,18 @@ export class TransactionWorkerManager implements TxExecutorInternal {
    * External workers will pick up the work and update the job state via HTTP endpoints.
    *
    * @param args - The transaction execution details
-   * @param args.txId - Unique transaction job ID
    * @param args.payload - What is required by a worker.
    * @param args.lifecycleTracker - Tracker for transaction state updates
    *
    * @throws If job scheduling fails due to a database error or mutex contention.
    */
   public async scheduleTxExecution(args: {
-    txId: string;
     payload: TxExternalExecutionPayload;
     signedTx: Signed<ZkappCommand>;
     lifecycleTracker: TxLifecycleTracker;
   }): Promise<void> {
-    const { txId, payload, lifecycleTracker } = args;
+    const { payload, lifecycleTracker } = args;
+    const txId = payload.txId;
 
     try {
       // Lock access to prevent concurrent job queue modifications
@@ -425,7 +456,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
      */
     this.app.get('/jobs/next', async (_req: Request, res: Response) => {
       try {
-        let job;
+        let job: TransactionExecutionJob | undefined;
         await this.mutex.runExclusive(async () => {
           job = await this.jobStore.getNextAvailableJob();
           if (job) {
@@ -437,6 +468,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
         if (!job) {
           return res.status(204).send();
         }
+
         return res.json(job);
       } catch (err) {
         console.error(err);

@@ -19,6 +19,7 @@ import { Mutex } from '../utils/mutex.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { NonceLock } from './nonce-manager.js';
 import { KeyPair } from '../types/utility.js';
+import { VaultTransactionArgs, VaultTransactionType } from '../types/cloud-worker.js';
 
 export {
   AwaitedTransaction,
@@ -29,6 +30,7 @@ export {
   TransactionExecutionConfig,
   TransactionLifecycle,
   TransactionState,
+  TransactionArgs,
 };
 
 type ProvenTransaction =
@@ -77,6 +79,7 @@ interface TransactionExecutionConfig {
 interface PreparedTransaction {
   getId: () => string;
   tx: Transaction<false, false>;
+  args?: TransactionArgs;
   keys:{
     sender: KeyPair; // should not pass around private keys
     extraSigners: PrivateKey[]
@@ -96,3 +99,24 @@ interface ITransactionExecutor {
     options?: unknown
   ): Promise<TransactionLifecycle>;
 }
+
+type TransactionArgs = {
+  transactionType: VaultTransactionType.BURN_ZKUSD,
+  args: VaultTransactionArgs[VaultTransactionType.BURN_ZKUSD]
+} | {
+  transactionType: VaultTransactionType.CREATE_VAULT,
+  args: VaultTransactionArgs[VaultTransactionType.CREATE_VAULT]
+} | {
+  transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
+  args: VaultTransactionArgs[VaultTransactionType.DEPOSIT_COLLATERAL]
+} | {
+  transactionType: VaultTransactionType.LIQUIDATE,
+  args: VaultTransactionArgs[VaultTransactionType.LIQUIDATE]
+} | {
+  transactionType: VaultTransactionType.MINT_ZKUSD,
+  args: VaultTransactionArgs[VaultTransactionType.MINT_ZKUSD]
+} | {
+  transactionType: VaultTransactionType.REDEEM_COLLATERAL,
+  args: VaultTransactionArgs[VaultTransactionType.REDEEM_COLLATERAL]
+};
+

@@ -39,6 +39,7 @@ import {
   RejectedOnReceive,
   mkStatusFailedBeforeSending,
 } from '../../mina/transaction-status.js';
+import { TransactionArgs } from '../../mina/transaction-executor.js';
 
 export {
   CompilationConfig,
@@ -71,8 +72,7 @@ type TxLifecycleTracker = {
 interface ExecutorContext {
   workerId: string;
   chain: MinaNetworkInterface;
-  task: VaultTransactionType;
-  args: string;
+  args:  TransactionArgs;
   keys: NetworkKeyPairs;
   compilationResults: CompilationResults;
 }
@@ -380,7 +380,7 @@ async function executeTransaction(
   console.log('Executing transaction');
 
   // Identify the transaction config
-  const task = context.task; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
+  const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
   if (!context.compilationResults.transactionConfigs) {
     // if proving rejector is defined then reject
     executionTracker?.proving?.rejector({
@@ -408,9 +408,7 @@ async function executeTransaction(
   }
 
   // Parse arguments from context.args
-  const vaultArgs = JSON.parse(
-    context.args
-  ) as VaultTransactionArgs[typeof task];
+  const vaultArgs = context.args.args;
 
   // Recreate the transaction
   let tx;
@@ -443,4 +441,51 @@ async function executeTransaction(
     tx,
     executionTracker
   );
+}
+
+
+export function buildArgs(task: VaultTransactionType, argsJson: string): TransactionArgs {
+  // Parse the JSON into a plain object.
+  const parsed = JSON.parse(argsJson);
+
+  switch (task) {
+    case VaultTransactionType.CREATE_VAULT:
+      return {
+        transactionType: VaultTransactionType.CREATE_VAULT,
+        args: parsed as VaultTransactionArgs[VaultTransactionType.CREATE_VAULT],
+      };
+
+    case VaultTransactionType.DEPOSIT_COLLATERAL:
+      return {
+        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
+        args: parsed as VaultTransactionArgs[VaultTransactionType.DEPOSIT_COLLATERAL],
+      };
+
+    case VaultTransactionType.REDEEM_COLLATERAL:
+      return {
+        transactionType: VaultTransactionType.REDEEM_COLLATERAL,
+        args: parsed as VaultTransactionArgs[VaultTransactionType.REDEEM_COLLATERAL],
+      };
+
+    case VaultTransactionType.MINT_ZKUSD:
+      return {
+        transactionType: VaultTransactionType.MINT_ZKUSD,
+        args: parsed as VaultTransactionArgs[VaultTransactionType.MINT_ZKUSD],
+      };
+
+    case VaultTransactionType.BURN_ZKUSD:
+      return {
+        transactionType: VaultTransactionType.BURN_ZKUSD,
+        args: parsed as VaultTransactionArgs[VaultTransactionType.BURN_ZKUSD],
+      };
+
+    case VaultTransactionType.LIQUIDATE:
+      return {
+        transactionType: VaultTransactionType.LIQUIDATE,
+        args: parsed as VaultTransactionArgs[VaultTransactionType.LIQUIDATE],
+      };
+
+    default:
+      throw new Error(`Unsupported task: ${task}`);
+  }
 }

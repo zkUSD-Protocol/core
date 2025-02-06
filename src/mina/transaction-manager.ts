@@ -14,6 +14,7 @@ import {
 import {
   ITransactionExecutor,
   PreparedTransaction,
+  TransactionArgs,
   TransactionLifecycle,
   TransactionState,
 } from './transaction-executor.js';
@@ -73,6 +74,8 @@ export type TransactionRequest = {
    */
   waitForIncluded: (string | TransactionHandle)[];
   callSite: string;
+
+  args?: TransactionArgs;
 };
 
 /**
@@ -360,7 +363,8 @@ export class TransactionManager {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     },
-    callDepth = 2
+    callDepth = 2,
+    args?: TransactionArgs,
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
 
@@ -373,6 +377,7 @@ export class TransactionManager {
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
       callSite: getCallSite(callDepth),
+      args,
     };
 
     // dependencies must be met
@@ -458,6 +463,7 @@ export class TransactionManager {
     const mgr=this;
     const preparedTx: PreparedTransaction = {
       getId: () => tx.getId(),
+      args: tx.request?.args ?? undefined,
       tx: builtTx,
       depsAwaitingPromise,
       setStatus: (s: TransactionStatus) => {

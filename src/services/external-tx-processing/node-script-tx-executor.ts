@@ -17,13 +17,13 @@ import {
 import { getNetworkKeys } from '../../config/keys.js';
 import { blockchain } from 'zkcloudworker';
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
-import { VaultTransactionType } from '../../types/cloud-worker.js';
 import { ProvingResult } from './shared-types.js';
 import {
   FailedBeforeSending,
   RejectedOnReceive,
 } from '../../mina/transaction-status.js';
 import { TransactionExecutionJob } from './external-transaction-executor.js';
+import { ExternalProcess } from './external-process.js';
 
 // So we can handle script path references
 const __filename = fileURLToPath(import.meta.url);
@@ -32,7 +32,7 @@ const __filename = fileURLToPath(import.meta.url);
  * This class is an adapter that spawns a separate Node.js process (this same file)
  * to act as a “transaction executor” worker.
  */
-export class NodeScriptExecutor {
+export class NodeScriptExecutor implements ExternalProcess {
   private index?: number;
   private process?: ChildProcess;
   private exitCallback?: (code: number | null, signal: string | null) => void;
@@ -135,14 +135,11 @@ if (process.argv[1] === __filename) {
 
         console.log(`Got job: ${job.id}`);
 
-        const task = job.payload.transactionType as VaultTransactionType;
-
         // Build the context
         const context: ExecutorContext = {
           workerId,
           chain: chainInterface,
-          task,
-          args: job.payload.args,
+          args: job.payload,
           keys,
           compilationResults,
         };
@@ -151,7 +148,7 @@ if (process.argv[1] === __filename) {
 
         await executeTransaction(
           context,
-          job.payload.serializedTx,
+          JSON.stringify(job.payload.transaction),
           executionTracker
         );
         // as our tracker does all the status communication

@@ -5,7 +5,7 @@ import { KeyPair } from '../../types/utility.js';
 import { Client as MinaSigner } from 'mina-signer';
 import { ZkappCommand } from 'o1js/dist/node/mina-signer/src/types.js';
 
-export { minaSigner };
+export { testnetMinaSigner };
 
 type FeePayer = {
   readonly feePayer: string;
@@ -15,7 +15,7 @@ type FeePayer = {
   readonly validUntil?: bigint | null;
 };
 
-const minaSigner: Signer<'MinaSigner'> = <P extends boolean>(args: {
+const testnetMinaSigner: Signer<'MinaSigner'> = <P extends boolean>(args: {
   fee: UInt64;
   nonce: UInt32;
   tx: Transaction<P, false>;

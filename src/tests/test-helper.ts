@@ -3,7 +3,6 @@ import {
   Bool,
   fetchLastBlock,
   Field,
-  IncludedTransaction,
   PrivateKey,
   PublicKey,
   Signature,
@@ -41,6 +40,7 @@ import crypto from 'crypto';
 import { ProtocolData } from '../types/engine.js';
 import { ITransactionExecutor } from '../mina/transaction-executor.js';
 import { LocalTransactionExecutor } from '../mina/local-transaction-executor.js';
+import { blockchain } from '../mina/networks.js';
 
 const client = new Client({
   network: 'testnet',
@@ -194,16 +194,20 @@ export class TestHelper {
     );
   }
 
-  static async initLightnetChain(opts?: { txExecutor?: ITransactionExecutor }) {
+  static async initLightnetChain(opts?: {
+    txExecutorInitializer?: (
+      chain: blockchain
+    ) => Promise<ITransactionExecutor>;
+  }) {
     await ensureLightnetRunning();
     const mina = await MinaNetworkInterface.initLightnet();
     const deployer = await mina.newAccount();
 
-    return new TestHelper(
-      mina,
-      opts?.txExecutor ?? new LocalTransactionExecutor(),
-      deployer
-    );
+    const txExecutor = opts?.txExecutorInitializer
+      ? await opts.txExecutorInitializer(mina.network.chainId)
+      : new LocalTransactionExecutor();
+
+    return new TestHelper(mina, txExecutor, deployer);
   }
 
   async setupLightnet() {

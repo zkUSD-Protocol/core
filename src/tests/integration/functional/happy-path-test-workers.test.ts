@@ -9,8 +9,11 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
   let startingFee: UInt64 = UInt64.from(1e8);
 
   before(async () => {
-    const txExecutor = await ExternalTransactionExecutor.start({workers: 8});
-    th = await TestHelper.initLightnetChain({txExecutor});
+    th = await TestHelper.initLightnetChain({
+      txExecutorInitializer: ExternalTransactionExecutor.initializer({
+        workers: 8,
+      }),
+    });
     await th.setupLightnet();
   });
 

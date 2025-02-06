@@ -5,6 +5,7 @@ import {
   CompilationResults,
   ExecutedTx,
   ExecutorContext,
+  buildArgs,
   compilationConfigIsEqual,
   compileContracts,
   executeTransaction,
@@ -95,6 +96,7 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
     const chain = await this.getNetworkInterface();
 
     const task = this.cloud.task as VaultTransactionType;
+
     if (!this.cloud.args) {
       throw new Error('No args provided');
     }
@@ -102,10 +104,9 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
     const context: ExecutorContext = {
       workerId: `ZkUsdCloudWorker(cloud_id: ${this.cloud.id}, job_id: ${this.cloud.jobId})`,
       chain,
-      task,
-      args: this.cloud.args,
-      keys: this.keys,
+      args: buildArgs(task, this.cloud.args),
       compilationResults,
+      keys: this.keys,
     };
 
     let ret: { txId: string; txStatus: TransactionStatus; hash?: string };
