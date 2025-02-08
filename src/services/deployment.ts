@@ -139,6 +139,7 @@ export class DeploymentService {
         {
           name: 'Creating Protocol Admin account',
           extraSigners: [this._networkKeys.protocolAdmin.privateKey],
+          executor: 'local'
         }
       );
       await txHandle.awaitIncluded();
@@ -180,6 +181,7 @@ export class DeploymentService {
             this._networkKeys.protocolAdmin.privateKey,
           ],
           name: 'Deploying Token and Engine contracts',
+          executor: 'local'
         }
       );
       await txHandle.awaitIncluded();
@@ -211,6 +213,7 @@ export class DeploymentService {
             this._networkKeys.engine.privateKey,
           ],
           name: 'Initializing Engine contract',
+          executor: 'local'
         }
       );
       await txHandle.awaitIncluded();

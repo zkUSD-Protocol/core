@@ -38,7 +38,10 @@ export class NodeScriptExecutor implements ExternalProcess {
   private exitCallback?: (code: number | null, signal: string | null) => void;
 
   // By default, we spawn the same file. That’s how we run as a child worker.
-  constructor(private chain: blockchain='lightnet', private scriptPath: string = __filename,) {}
+  constructor(
+    private chain: blockchain = 'lightnet',
+    private scriptPath: string = __filename
+  ) {}
 
   get proverId(): string {
     // For naming consistency, we can call it "executor" or keep "prover"
@@ -148,7 +151,10 @@ if (process.argv[1] === __filename) {
 
         await executeTransaction(
           context,
-          JSON.stringify(job.payload.transaction),
+          JSON.stringify({
+            signedData: job.payload.transaction.signedData.data,
+            serializedTx: job.payload.transaction.serializedTx,
+          }),
           executionTracker
         );
         // as our tracker does all the status communication

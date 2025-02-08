@@ -372,7 +372,10 @@ export class TransactionManager<E extends string> {
       accountsUpToDate: true,
       minaPriceInput,
     });
-
+    if (!options?.name) {
+      const name = args.args.transactionId;
+      return await this.tx(sender, callback, { ...options, name }, callDepth, args);
+    }
     return await this.tx(sender, callback, options, callDepth, args);
   }
 

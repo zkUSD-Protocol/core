@@ -176,27 +176,27 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
 
       // ---- Proving Promise ----
       const provingPromise = new TrackedPromise<ProvenTransaction>(() => {
-        if (config?.printTx) {
-          console.log(`${tx.getId()} - Proving ...`);
-        }
         return new Promise<string[]>((resolve, reject) => {
           lifecycleTracker.proving.resolvers.push(resolve);
           lifecycleTracker.proving.rejectors.push(reject);
         })
           .then((proofs) => {
+            if (config?.printTx) {
+              console.log(`${tx.getId()} - Proved.`);
+            }
             return wrapSuccess({ proofs });
           })
           .catch(({ status }) => {
             tx.setStatus(status);
+            if (config?.printTx) {
+              console.log(`${tx.getId()} - Proving failed with status ${JSON.stringify(status,null,2)}.`);
+            }
             return wrapError({ status });
           });
       }, `Proving tx: ${tx.getId()}`);
 
       // ---- Sending Promise ----
       const sendingPromise = new TrackedPromise<SentTransaction>(() => {
-        if (config?.printTx) {
-          console.log(`${tx.getId()} - Sending ...`);
-        }
         return new Promise<{ hash: string; status: 'Pending' }>(
           (resolve, reject) => {
             lifecycleTracker.sending.resolvers.push(resolve);
@@ -206,11 +206,17 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           .then(async ({ hash, status }) => {
             await nonceLock.unlock();
             tx.setStatus(status);
+            if (config?.printTx) {
+              console.log(`${tx.getId()} - Sent. Transaction pending inclusion.`);
+            }
             return wrapSuccess({ hash });
           })
           .catch(async ({ status }) => {
             await nonceLock.unlock();
             tx.setStatus(status);
+            if (config?.printTx) {
+              console.log(`${tx.getId()} - Failed on sent. Status: ${JSON.stringify(status,null,2)}.`);
+            }
             return wrapError({ status });
           });
       }, `Sending tx: ${tx.getId()}`);
@@ -221,7 +227,10 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           if (config?.printTx) {
             console.log(`${tx.getId()} - Awaiting inclusion ...`);
           }
-          // TODO
+          // sleep 60second
+          console.log('waiting not implemented.')
+          await new Promise((resolve) => setTimeout(resolve, 60000));
+
           return wrapSuccess({ status: 'Included' as const });
         },
         `Waiting tx: ${tx.getId()}`

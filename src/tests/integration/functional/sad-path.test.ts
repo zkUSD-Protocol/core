@@ -69,10 +69,9 @@ describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
 
     const expiredBlock = currentBlock.sub(15);
 
-    const expiredPrice = await th.getMinaPriceInput(
-      TestAmounts.PRICE_1_USD,
-      expiredBlock
-    );
+    const expiredPrice = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD, {
+      blockHeight: expiredBlock,
+    });
 
     console.log('Price expired, trying to mint');
 

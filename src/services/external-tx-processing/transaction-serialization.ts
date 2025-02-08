@@ -89,6 +89,7 @@ function getTransactionParams(
   const { sender, tx } = JSON.parse(serializedTransaction);
   const transaction = Transaction.fromJSON(JSON.parse(tx));
   const memo = transaction.transaction.memo;
+
   return {
     fee: UInt64.from(signedJson.zkappCommand.feePayer.body.fee),
     sender: PublicKey.fromBase58(sender),

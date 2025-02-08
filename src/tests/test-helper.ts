@@ -111,9 +111,11 @@ export class TestHelper<E extends string> {
   _deploymentService: DeploymentService;
 
   private _priceInputMgr: PriceInputManager;
-  private get priceInputMgr(): PriceInputManager{
-    if(!this._priceInputMgr){
-      throw new Error('PriceInputManager not initialized. Deploy contracts first.');
+  private get priceInputMgr(): PriceInputManager {
+    if (!this._priceInputMgr) {
+      throw new Error(
+        'PriceInputManager not initialized. Deploy contracts first.'
+      );
     }
     return this._priceInputMgr;
   }
@@ -398,6 +400,17 @@ export class TestHelper<E extends string> {
       const engineOracleWhitelistHash =
         await this.engine.contract.oracleWhitelistHash.fetch();
 
+      // initialize the price input manager
+      this._priceInputMgr = new PriceInputManager(
+        this._txMgr.o1jsMutex,
+        this.mina,
+        this.oracleAggregationVk,
+        this.whitelist,
+        this.oracles,
+        'price-inputs.json'
+      );
+      await this._priceInputMgr.init();
+
       if (
         !!engineOracleWhitelistHash &&
         engineOracleWhitelistHash.toBigInt() == oracleWhitelistHash.toBigInt()
@@ -416,20 +429,10 @@ export class TestHelper<E extends string> {
         {
           name: `Update Oracle Whitelist`,
           extraSigners: [this.networkKeys.protocolAdmin.privateKey],
-          executor: 'local', // use local executor for tx not supported by workers
+          executor: 'local', // use local executor when tx is not supported by workers
         }
       );
     }
-    // initialize the price input manager
-    this._priceInputMgr = new PriceInputManager(
-      this._txMgr.o1jsMutex,
-      this.mina,
-      this.oracleAggregationVk,
-      this.whitelist,
-      this.oracles,
-      'price-inputs.json'
-    );
-    await this._priceInputMgr.init();
   }
 
   stringifyAgent(
@@ -473,8 +476,45 @@ export class TestHelper<E extends string> {
     await this.mina.fetchMinaAccount(agent.keys.publicKey, { force: true });
   }
 
-  async engineTx(sender: KeyPair, args: TransactionArgs) {
-    return this.txMgr.engineTx(sender, args, this.engine.contract);
+  async engineTx(
+    sender: KeyPair,
+    args: TransactionArgs,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    },
+    callDepth = 2
+  ) {
+    let minaPriceInput: MinaPriceInput | undefined;
+    if ('minaPriceProof' in args.args) {
+      minaPriceInput = await this.priceInputMgr.getMinaPriceInputForProof(
+        args.args.minaPriceProof
+      );
+    } else {
+      minaPriceInput = undefined;
+    }
+
+    return this.txMgr.engineTx(
+      sender,
+      args,
+      this.engine.contract,
+      minaPriceInput,
+      options,
+      callDepth
+    );
+  }
+
+  async includeEngineTx(
+    sender: KeyPair,
+    args: TransactionArgs,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    },
+    callDepth = 3
+  ) {
+    const h = await this.engineTx(sender, args, options, callDepth);
+    return await h.awaitIncluded();
   }
 
   async depositAgentCollateral(amount: UInt64, ...names: string[]) {
@@ -523,15 +563,26 @@ export class TestHelper<E extends string> {
         continue;
       }
 
-      const tx = await this.engineTx(agent.keys, {
-        transactionType: VaultTransactionType.MINT_ZKUSD,
-        args: {
-          transactionId: `Minting ${amount} zkUSD for ${name}`,
-          vaultAddress: agent.vault!.publicKey.toBase58(),
-          zkusdAmount: amount.toString(),
-          minaPriceProof: (await this.priceInputMgr.requestProof(oneUsd)).proof,
+      const tx = await this.engineTx(
+        agent.keys,
+        {
+          transactionType: VaultTransactionType.MINT_ZKUSD,
+          args: {
+            transactionId: `Minting ${amount} zkUSD for ${name}`,
+            vaultAddress: agent.vault!.publicKey.toBase58(),
+            zkusdAmount: amount.toString(),
+            minaPriceProof: (
+              await this.priceInputMgr.requestProof(
+                oneUsd,
+                this.minimalPriceValidity
+              )
+            ).proof,
+          },
         },
-      });
+        {
+          printTx: true,
+        }
+      );
 
       agentMintTxs.push(tx);
     }
@@ -565,14 +616,17 @@ export class TestHelper<E extends string> {
       console.log(`Creating vault for ${name}`);
 
       // change to using engine tx
-      const tx = await this.tx(
+      const tx = await this.engineTx(
         agent.keys,
-        async () => {
-          AccountUpdate.fundNewAccount(agent.keys.publicKey, 2);
-          await this.engine.contract.createVault(agent.vault!.publicKey);
+        {
+          transactionType: VaultTransactionType.CREATE_VAULT,
+          args: {
+            transactionId: `Create Vault for ${name}`,
+            vaultAddress: vaultKeyPair.publicKey.toBase58(),
+            newAccounts: 2,
+          },
         },
         {
-          name: `Create Vault for ${name}`,
           extraSigners: [agent.vault!.privateKey],
         }
       );
@@ -638,8 +692,20 @@ export class TestHelper<E extends string> {
     );
   }
 
-  async getMinaPriceInput(price: UInt64, blockHeight?: UInt32) {
-    return this.priceInputMgr.getMinaPriceInput(price, blockHeight);
+  get minimalPriceValidity() {
+    return this.mina.network.chainId == 'local' ? 1n : 10n;
+  }
+
+  async getMinaPriceInput(
+    price: UInt64,
+    opts?: { minimalValidity?: bigint; blockHeight?: UInt32 }
+  ) {
+    const minimalValidity = opts?.minimalValidity ?? this.minimalPriceValidity;
+    return this.priceInputMgr.getMinaPriceInput(
+      price,
+      minimalValidity,
+      opts?.blockHeight
+    );
   }
 
   public async retrieveVaultState(agentName: string): Promise<VaultState> {
@@ -819,16 +885,15 @@ class PriceInputManager {
   }
 
   private async currentBlockHeight(): Promise<UInt32> {
-      if (this.mina.network.chainId === 'local') {
-        return this.mina.getNetworkState().blockchainLength;
-      } else {
-        return (await fetchLastBlock()).blockchainLength;
-      }
+    if (this.mina.network.chainId === 'local') {
+      return this.mina.getNetworkState().blockchainLength;
+    } else {
+      return (await fetchLastBlock()).blockchainLength;
     }
-
+  }
 
   async addNewProof(price: UInt64, blockHeight?: UInt32): Promise<Proof> {
-    const blockH = blockHeight ?? await this.currentBlockHeight();
+    const blockH = blockHeight ?? (await this.currentBlockHeight());
 
     console.log(
       'Building mina price input for block height:',
@@ -875,19 +940,25 @@ class PriceInputManager {
     await this.saveProofs();
     return storedProof;
   }
-
-  async getMinaPriceInput(
-    price: UInt64,
-    blockHeight?: UInt32
+  async getMinaPriceInputForProof(
+    jsonproof: JsonProof
   ): Promise<MinaPriceInput> {
-    const blockH = blockHeight ?? await this.currentBlockHeight();
-    const jsonProof = await this.requestProof(price, blockH);
-    const proof = await AggregateOraclePricesProof.fromJSON(jsonProof.proof);
+    const proof = await AggregateOraclePricesProof.fromJSON(jsonproof);
 
     return new MinaPriceInput({
       proof,
       verificationKey: this.oracleAggregationVk,
     });
+  }
+
+  async getMinaPriceInput(
+    price: UInt64,
+    minimalValidity = 1n,
+    blockHeight?: UInt32
+  ): Promise<MinaPriceInput> {
+    const blockH = blockHeight ?? (await this.currentBlockHeight());
+    const jsonProof = await this.requestProof(price, minimalValidity, blockH);
+    return this.getMinaPriceInputForProof(jsonProof.proof);
   }
 
   computeHash(price: UInt64) {
@@ -898,8 +969,12 @@ class PriceInputManager {
     ]);
   }
 
-  async requestProof(price: UInt64, blockHeight?: UInt32): Promise<Proof> {
-    const blockH = blockHeight ?? await this.currentBlockHeight();
+  async requestProof(
+    price: UInt64,
+    minimalValidity: bigint = 1n,
+    blockHeight?: UInt32
+  ): Promise<Proof> {
+    const blockH = blockHeight ?? (await this.currentBlockHeight());
     const proofHash = this.computeHash(price);
     const proofs = this.proofs.get(proofHash.toString());
 
@@ -910,7 +985,9 @@ class PriceInputManager {
       for (const proof of proofs) {
         if (
           BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
-          blockH.toBigint()
+            blockH.toBigint() + minimalValidity &&
+          // and already valid!
+          blockH.toBigint() >= BigInt(proof.blockHeight)
         ) {
           return proof;
         }

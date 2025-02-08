@@ -231,10 +231,9 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
 
   // Parse the transaction details
   const { serializedTx, signedData } = JSON.parse(tx);
-  const signedJson = JSON.parse(signedData);
   const { fee, sender, nonce, memo } = getTransactionParams(
     serializedTx,
-    signedJson
+    signedData
   );
 
   // Handle price proof if required
@@ -273,7 +272,7 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
     }
   );
 
-  return deserializeTransaction(serializedTx, txNew, signedJson);
+  return deserializeTransaction(serializedTx, txNew, signedData);
 }
 
 type ExecutedTx_ =
@@ -304,10 +303,10 @@ async function proveAndSendTx(
 ): Promise<ExecutedTx> {
   let provenTx;
   try {
-    console.log('Proving the transaction');
-    console.time('proved');
+    console.log(`${txId} - Proving ...`);
+    console.time(`${txId} - Proved.`);
     provenTx = await tx.prove();
-    console.timeEnd('proved');
+    console.timeEnd(`${txId} - Proved.`);
   } catch (err: unknown) {
     executionTracker?.proving?.rejector({
       status: mkStatusFailedBeforeSending(
@@ -333,12 +332,14 @@ async function proveAndSendTx(
 
   let sentTx;
   try {
+    console.log(`${txId} - Sending ...`);
     sentTx = await tx.safeSend();
     // unlock the nonce after sending
     switch (sentTx.status) {
       case 'pending': {
         let txStatus: 'Pending' = 'Pending';
         // sending was successful
+        console.log(`${txId} - Sending successful. Tx is pending inclusion`);
         executionTracker?.sending?.resolver({
           hash: sentTx.hash,
           status: 'Pending',
@@ -346,6 +347,7 @@ async function proveAndSendTx(
         return { txId, pendingTx: sentTx, txStatus };
       }
       case 'rejected': {
+        console.log(`${txId} - Sending not successful. ${sentTx.errors}`);
         let txStatus: RejectedOnReceive = {
           kind: 'RejectedOnReceive',
           errors: ['error when the tx has been sent', ...sentTx.errors],
