@@ -1,10 +1,8 @@
 import {
-  DynamicProof,
   Field,
   Struct,
   UInt32,
   VerificationKey,
-  verify,
 } from 'o1js';
 
 import { AggregateOraclePricesProof } from './prove.js';

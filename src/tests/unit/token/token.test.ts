@@ -6,7 +6,7 @@ import { FungibleTokenErrors } from '@minatokens/token';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Token Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let priceOneUsd: MinaPriceInput;
 
   before(async () => {

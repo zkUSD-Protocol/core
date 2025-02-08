@@ -6,7 +6,7 @@ import { AgentKeys } from '../../../config/keys.js';
 import { TransactionHandle } from '../../../mina/transaction-manager.js';
 
 describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let startingFee: UInt64 = UInt64.from(1e8);
 
   before(async () => {

@@ -5,7 +5,7 @@ import { AccountUpdate } from 'o1js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Ownership Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let priceOneUsd: MinaPriceInput;
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });

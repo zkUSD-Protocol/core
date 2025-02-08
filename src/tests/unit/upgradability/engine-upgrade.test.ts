@@ -39,7 +39,7 @@ const client = new Client({
 });
 
 describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let oneUsdPrice: MinaPriceInput;
   let originalEngineVerificationKey: VerificationKey;
   let upgradedEngineVerificationKey: VerificationKey;

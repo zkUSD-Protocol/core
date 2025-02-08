@@ -16,7 +16,6 @@ import { Mutex } from '../utils/mutex.js';
 import { o1jsSigner } from '../services/signing/o1js-signer.js';
 
 export class LocalTransactionExecutor implements ITransactionExecutor {
-
   public get signer() {
     return o1jsSigner;
   }

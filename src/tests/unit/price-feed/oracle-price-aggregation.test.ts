@@ -22,7 +22,7 @@ const client = new Client({
  */
 async function getDynamicPriceSubmissions(
   prices: (number | bigint)[],
-  th: TestHelper
+  th: TestHelper<'local'>
 ): Promise<OraclePriceSubmissions> {
   const oracleCount = th.whitelist.addresses.length;
   const blockHeight = Mina.getNetworkState().blockchainLength;
@@ -68,7 +68,7 @@ async function getDynamicPriceSubmissions(
 }
 
 describe('Oracle Price Aggregation Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
 
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });

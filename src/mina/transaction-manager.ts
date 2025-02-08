@@ -1,5 +1,5 @@
 import { Field, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
-import { KeyPair } from '../types/utility.js';
+import { KeyPair, WithDefault } from '../types/utility.js';
 import { Transaction } from 'o1js/dist/node/lib/mina/mina';
 import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
@@ -18,6 +18,9 @@ import {
   TransactionLifecycle,
   TransactionState,
 } from './transaction-executor.js';
+import { zkUsdTransaction } from '../services/external-tx-processing/transaction-execution.js';
+import { ZkUsdEngine } from '../services/external-tx-processing/transaction-config.js';
+import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -309,13 +312,18 @@ export class TransactionInternal {
 }
 
 //  Do not call from concurrent threads
-export class TransactionManager {
+export class TransactionManager<E extends string> {
   private _o1jsMutex: Mutex = new Mutex();
   private _mina: IMinaNetworkInterface;
 
+  // in case you need to build or prove tx outside of tx mgr
+  public get o1jsMutex(): Mutex {
+    return this._o1jsMutex;
+  }
+
   // in theory you can change the executor without interrupting
   // transacton manager
-  public transactionExecutor: ITransactionExecutor;
+  public transactionExecutors: WithDefault<E, ITransactionExecutor>;
 
   public get mina(): IMinaNetworkInterface {
     return this._mina;
@@ -325,11 +333,11 @@ export class TransactionManager {
    * There should only be one TransactionManager per chain.
    * TODO: use singleton map here?
    */
-  public static new(
+  public static new<E extends string>(
     minaInterface: IMinaNetworkInterface,
-    transactionExecutor: ITransactionExecutor
-  ): TransactionManager {
-    return new TransactionManager(minaInterface, transactionExecutor);
+    transactionExecutors: WithDefault<E, ITransactionExecutor>
+  ): TransactionManager<E> {
+    return new TransactionManager(minaInterface, transactionExecutors);
   }
 
   private transactions: Map<string, TransactionInternal> = new Map();
@@ -345,23 +353,47 @@ export class TransactionManager {
     return this.transactions.get(txId)?.handle;
   }
 
+  async engineTx(
+    sender: KeyPair,
+    args: TransactionArgs,
+    engine: InstanceType<ZkUsdEngine>,
+    minaPriceInput?: MinaPriceInput | undefined,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    },
+    callDepth = 3
+  ) {
+    const { callback } = await zkUsdTransaction({
+      kind: args.transactionType,
+      sender: sender.publicKey,
+      txArgs: args.args,
+      engine,
+      accountsUpToDate: true,
+      minaPriceInput,
+    });
+
+    return await this.tx(sender, callback, options, callDepth, args);
+  }
+
   // this will create a new transaction
   // and schedule it for proving signing and sending
   // it will also await for the dependencies to be included or failed
   // it will throw if tx cannot be created or is missing dependencies
   // the interaction with the transaction is done through the returned handle
-  // TODO:
-  // it will take care of nonce, and fee
-  // if the fee is too low, it will retry with higher fee
-  // the transaction will be retried until it is included or failed
-  // or timed out
+  // it will take care of nonce
   // do not call concurrently
+  // TODO:
+  // if the fee is too low, it should retry with higher fee
+  // the transaction should be retried until it is included or failed
+  // or timed out
   async tx(
     sender: KeyPair, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E
     },
     callDepth = 2,
     args?: TransactionArgs,
@@ -451,16 +483,26 @@ export class TransactionManager {
       }
     });
 
+    let buildOptions: TransactionOptions & {
+      nonce?: UInt32;
+      forceFetchAllTxParties: (
+        tx: Record<string, any> & { transaction: ZkappCommand }
+      ) => Promise<void>;
+    } = {
+      ...options,
+      forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(this.mina),
+    };
+
     const builtTx = await transactionBuild(
       this._o1jsMutex,
       this.mina,
       sender,
       callback,
-      options
+      buildOptions
     );
 
     //=== prepare promises that will manage the transaction lifecycle
-    const mgr=this;
+    const nonceLock = this.mina.nonceManager.getAccountNonce.bind(this.mina.nonceManager);
     const preparedTx: PreparedTransaction = {
       getId: () => tx.getId(),
       args: tx.request?.args ?? undefined,
@@ -469,21 +511,20 @@ export class TransactionManager {
       setStatus: (s: TransactionStatus) => {
         tx.status = s;
       },
-      keys: {sender, extraSigners: options?.extraSigners ?? []},
-      nonceLock: async (pk: PublicKey|string, tokenId?:Field) => { return await mgr.mina.nonceManager.getAccountNonce(pk, tokenId)},
+      keys: { sender, extraSigners: options?.extraSigners ?? [] },
+      nonceLock
     };
 
     //=== delegate the rest of execution
+    const executorKey = options?.executor ?? this.transactionExecutors.default;
+    const txExecutor = this.transactionExecutors[executorKey];
 
-    const lifecycle = await this.transactionExecutor.scheduleTx(
-      preparedTx,
-      {
-        o1jsMutex: this._o1jsMutex,
-        mina: this.mina,
-        startingFee: options?.startingFee ?? defaultOptions.startingFee,
-        printTx: options?.printTx,
-      }
-    );
+    const lifecycle = await txExecutor.scheduleTx(preparedTx, {
+      o1jsMutex: this._o1jsMutex,
+      mina: this.mina,
+      startingFee: options?.startingFee ?? defaultOptions.startingFee,
+      printTx: options?.printTx,
+    });
 
     tx.installLifecycle(lifecycle);
     return tx.handle;
@@ -491,9 +532,9 @@ export class TransactionManager {
 
   private constructor(
     networkInterface: IMinaNetworkInterface,
-    transactionExecutor: ITransactionExecutor
+    transactionExecutors: WithDefault<E, ITransactionExecutor>
   ) {
-    this.transactionExecutor = transactionExecutor;
+    this.transactionExecutors = transactionExecutors;
     this._mina = networkInterface;
   }
 }
@@ -542,10 +583,10 @@ export async function transactionBuild(
   callback: () => Promise<void>,
   options: TransactionOptions & {
     nonce?: UInt32;
-    forceFetchAllTxParties?: (
+    forceFetchAllTxParties: (
       tx: Record<string, any> & { transaction: ZkappCommand }
     ) => Promise<void>;
-  } = {}
+  }
 ): Promise<Transaction<false, false>> {
   const {
     printTx = false,
@@ -555,7 +596,23 @@ export async function transactionBuild(
     memo,
   } = options;
 
-  const tx = await mutex.runExclusive(
+  let tx = await mutex.runExclusive(
+    async () =>
+      await chain.transaction(
+        {
+          sender: sender.publicKey,
+          ...(startingFee && { fee: startingFee }),
+          ...(nonce && { nonce: Number(nonce) }),
+          ...(memo && { memo }),
+        },
+        callback
+      )
+  );
+
+  await options.forceFetchAllTxParties(tx);
+
+  // now we're sure that all constraints are up to date.
+  tx = await mutex.runExclusive(
     async () =>
       await chain.transaction(
         {

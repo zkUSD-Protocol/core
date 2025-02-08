@@ -6,7 +6,7 @@ import { MinaPrice } from '../../../types/oracle.js';
 import { Vault } from '../../../types/vault.js';
 
 describe('zkUSD Vault Health Factor Calculations Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let price: MinaPrice;
   let vault: Vault;
 

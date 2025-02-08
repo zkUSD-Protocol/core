@@ -1,5 +1,5 @@
 import { TestHelper, TestAmounts } from '../../test-helper.js';
-import { AccountUpdate, Field, Mina, Permissions, UInt64 } from 'o1js';
+import { AccountUpdate, Field, Permissions, UInt64 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
@@ -7,7 +7,7 @@ import { Vault, VaultErrors } from '../../../types/vault.js';
 import { ZkUsdEngineErrors } from '../../../types/engine.js';
 
 describe('zkUSD Vault Liquidation Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let priceTwoUsd: MinaPriceInput;
   let priceOneUsd: MinaPriceInput;
   let priceFiftyCent: MinaPriceInput;

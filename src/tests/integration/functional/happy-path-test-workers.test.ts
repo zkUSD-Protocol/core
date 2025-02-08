@@ -3,17 +3,28 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { UInt64 } from 'o1js';
 import { ExternalTransactionExecutor } from '../../../services/external-tx-processing/external-transaction-executor.js';
+import { LocalTransactionExecutor } from '../../../mina/local-transaction-executor.js';
+import { WithDefault } from '../../../types/utility.js';
+import { blockchain } from 'zkcloudworker';
+import { ITransactionExecutor } from '../../../mina/transaction-executor.js';
 
-describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
-  let th: TestHelper;
+describe('zkUSD Integration - Functional - Happy Path Test Suite (using external workers)', () => {
+  let th: TestHelper<'local' | 'workers'>;
   let startingFee: UInt64 = UInt64.from(1e8);
 
   before(async () => {
-    th = await TestHelper.initLightnetChain({
-      txExecutorInitializer: ExternalTransactionExecutor.initializer({
+    const txExecutorInitializers: WithDefault<
+      'local' | 'workers',
+      (chain: blockchain) => Promise<ITransactionExecutor>
+    > = {
+      local: async () => new LocalTransactionExecutor(),
+      workers: ExternalTransactionExecutor.initializer({
         workers: 8,
       }),
-    });
+      default: 'local', // use workers by default
+    };
+
+    th = await TestHelper.initLightnetChain({ txExecutorInitializers });
     await th.setupLightnet();
   });
 

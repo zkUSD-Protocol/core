@@ -139,7 +139,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     _options?: unknown
   ): Promise<TransactionLifecycle> {
     if (!tx.args) {
-      throw new Error('Transaction args are in the external executor');
+      throw new Error('Transaction args are required when using the external executor');
     }
 
     // Acquire a nonce lock to ensure we have a consistent nonce for this tx

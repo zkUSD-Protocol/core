@@ -10,10 +10,12 @@ interface MinaNetwork {
   explorerTransactionUrl?: string;
 }
 
-export const validPriceBlockCount: Record<string, number> = {
+export const validPriceBlockCount: Record<blockchain, number> = {
   local: 1,
   lightnet: 10,
-  devnet: 30,
+  devnet: 30, // TODO isn't it too high?
+  mainnet: 2,
+  zeko: 2,
 };
 
 const Local: MinaNetwork = {

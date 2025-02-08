@@ -5,7 +5,7 @@ import assert from 'node:assert';
 import { VaultErrors } from '../../../types/vault.js';
 
 describe('zkUSD Vault Deposit Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
 
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });

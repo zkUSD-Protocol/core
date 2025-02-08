@@ -48,4 +48,5 @@ export type VaultTransactionArgs = {
   [VaultTransactionType.MINT_ZKUSD]: ZkUSDAmountAndPriceProofArgs;
   [VaultTransactionType.BURN_ZKUSD]: ZkUSDAmountArgs;
   [VaultTransactionType.LIQUIDATE]: PriceProofArgs;
+  // TODO support also other engine methods?
 };

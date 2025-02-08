@@ -7,7 +7,7 @@ import { ZkUsdEngineErrors } from '../../../types/engine.js';
 import { VaultErrors } from '../../../types/vault.js';
 
 describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
 
   before(async () => {
     th = await TestHelper.initLightnetChain();

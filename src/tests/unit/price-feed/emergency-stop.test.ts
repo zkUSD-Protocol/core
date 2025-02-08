@@ -6,7 +6,7 @@ import assert from 'node:assert';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let priceOneUsd: MinaPriceInput;
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });

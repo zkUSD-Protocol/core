@@ -24,7 +24,7 @@ interface DeployedContracts {
  * while managing protocol admin accounts and verification keys.
  */
 export class DeploymentService {
-  private _txMgr: TransactionManager;
+  private _txMgr: TransactionManager<any>;
   private _deployer: KeyPair;
   private _mina: IMinaNetworkInterface;
   private _networkKeys: NetworkKeyPairs;
@@ -32,7 +32,7 @@ export class DeploymentService {
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
   private _oracleAggregationVk: VerificationKey;
 
-  private constructor(txMgr: TransactionManager) {
+  private constructor(txMgr: TransactionManager<any>) {
     this._txMgr = txMgr;
     this._mina = txMgr.mina;
     this._networkKeys = getNetworkKeys(this._mina.network.chainId);
@@ -43,7 +43,7 @@ export class DeploymentService {
    * Initializes the deployer account and compiles necessary contracts.
    */
   public static async create(
-    txMgr: TransactionManager
+    txMgr: TransactionManager<any>
   ) {
     const service = new DeploymentService(txMgr);
 

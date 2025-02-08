@@ -5,7 +5,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 
 describe('zkUSD Protocol Administration Test Suite', async () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
 
   const newAdmin = PrivateKey.randomKeypair();
 

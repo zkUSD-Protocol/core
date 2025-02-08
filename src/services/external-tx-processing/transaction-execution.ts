@@ -51,6 +51,7 @@ export {
   executeTransaction,
   proveAndSendTx,
   recreateTransaction,
+  zkUsdTransaction,
 };
 
 type ZkUsdEngineType = ReturnType<typeof ZkUsdEngineContract>;
@@ -72,7 +73,7 @@ type TxLifecycleTracker = {
 interface ExecutorContext {
   workerId: string;
   chain: MinaNetworkInterface;
-  args:  TransactionArgs;
+  args: TransactionArgs;
   keys: NetworkKeyPairs;
   compilationResults: CompilationResults;
 }
@@ -259,9 +260,12 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
     { sender, fee, nonce, memo },
     async () => {
       if (config.requiresNewAccounts) {
+        if(!("newAccounts" in txArgs)) {
+          throw new Error('New accounts are required');
+        }
         AccountUpdate.fundNewAccount(
           sender,
-          (txArgs as CreateVaultArgs).newAccounts
+          txArgs.newAccounts
         );
       }
       // Build the user-defined transaction instructions
@@ -274,21 +278,21 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
 
 type ExecutedTx_ =
   | {
-      unprovenTx: Transaction<false, false>;
-      txStatus: FailedBeforeSending;
-    }
+    unprovenTx: Transaction<false, false>;
+    txStatus: FailedBeforeSending;
+  }
   | {
-      provenTx: Transaction<true, false>;
-      txStatus: FailedBeforeSending;
-    }
+    provenTx: Transaction<true, false>;
+    txStatus: FailedBeforeSending;
+  }
   | {
-      rejectedTx: RejectedTransaction;
-      txStatus: RejectedOnReceive;
-    }
+    rejectedTx: RejectedTransaction;
+    txStatus: RejectedOnReceive;
+  }
   | {
-      pendingTx: PendingTransaction;
-      txStatus: 'Pending';
-    };
+    pendingTx: PendingTransaction;
+    txStatus: 'Pending';
+  };
 
 export type ExecutedTx = ExecutedTx_ & { txId: string };
 
@@ -488,4 +492,39 @@ export function buildArgs(task: VaultTransactionType, argsJson: string): Transac
     default:
       throw new Error(`Unsupported task: ${task}`);
   }
+}
+
+export type MinaPriceInputArgs<T> = T extends VaultTransactionType ? MinaPriceInput : undefined;
+
+const zkUsdTransaction = async <T extends VaultTransactionType>(
+  args: {
+    kind: T,
+    sender:  PublicKey,
+    txArgs: VaultTransactionArgs[T],
+    engine: InstanceType<ZkUsdEngineType>,
+    accountsUpToDate: boolean, // just to inform the function user
+    minaPriceInput: MinaPriceInput | undefined,
+  }
+) => {
+  const { kind, txArgs, engine, accountsUpToDate, sender, minaPriceInput} = args;
+  if(!accountsUpToDate) {
+    throw new Error('Accounts are not up to date');
+  }
+
+  const callback = async () => {
+      const config=mkVaultTransactionConfigs(engine)[kind];
+      if (config.requiresNewAccounts) {
+        if(!("newAccounts" in txArgs)) {
+          throw new Error('New accounts are required');
+        }
+        AccountUpdate.fundNewAccount(
+          sender,
+          (txArgs as CreateVaultArgs).newAccounts
+        );
+      }
+      // Build the user-defined transaction instructions
+      await config.buildTx(txArgs, minaPriceInput);
+    }
+
+  return {callback};
 }

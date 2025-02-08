@@ -5,7 +5,7 @@ import { Vault, VaultErrors } from '../../../types/vault.js';
 import { AccountUpdate } from 'o1js';
 
 describe('zkUSD Deployment Test Suite', () => {
-  let testHelper: TestHelper;
+  let testHelper: TestHelper<'local'>;
 
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });

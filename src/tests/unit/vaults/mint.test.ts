@@ -7,7 +7,7 @@ import { Vault, VaultErrors, VaultState } from '../../../types/vault.js';
 import { ZkUsdEngineErrors } from '../../../types/engine.js';
 
 describe('zkUSD Vault Mint Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let oneUsdPrice: MinaPriceInput;
 
   before(async () => {
