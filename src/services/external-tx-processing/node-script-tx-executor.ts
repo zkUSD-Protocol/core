@@ -7,7 +7,6 @@
 
 import { ChildProcess, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import fetch from 'node-fetch';
 import {
   ExecutorContext,
   TxLifecycleTracker,
@@ -24,6 +23,11 @@ import {
 } from '../../mina/transaction-status.js';
 import { TransactionExecutionJob } from './external-transaction-executor.js';
 import { ExternalProcess } from './external-process.js';
+import fetch from 'node-fetch';
+import { Agent } from 'http'; // Use 'http' for HTTP requests
+
+
+const agent = new Agent({ family: 6 }); // Force IPv6
 
 // So we can handle script path references
 const __filename = fileURLToPath(import.meta.url);
@@ -149,6 +153,8 @@ if (process.argv[1] === __filename) {
 
         let executionTracker: TxLifecycleTracker = mkExecutionTracker(job.id);
 
+        console.log(JSON.stringify(job.payload));
+
         await executeTransaction(
           context,
           JSON.stringify({
@@ -197,6 +203,7 @@ if (process.argv[1] === __filename) {
 
   async function postToManager(url: string, body: any) {
     await fetch(`${EPM_BASE_URL}${url}`, {
+	    agent,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -204,7 +211,7 @@ if (process.argv[1] === __filename) {
   }
 
   async function fetchNextJob(): Promise<TransactionExecutionJob | null> {
-    const resp = await fetch(`${EPM_BASE_URL}/jobs/next`);
+    const resp = await fetch(`${EPM_BASE_URL}/jobs/next`,{agent});
     if (resp.status === 204) {
       // no job
       return null;

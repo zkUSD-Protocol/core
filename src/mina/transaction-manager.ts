@@ -1,7 +1,6 @@
 import { Field, PrivateKey, PublicKey, UInt32, UInt64 } from 'o1js';
 import { KeyPair, WithDefault } from '../types/utility.js';
 import { Transaction } from 'o1js/dist/node/lib/mina/mina';
-import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from './mina-network-interface.js';
 import { Mutex } from '../utils/mutex.js';
@@ -21,6 +20,8 @@ import {
 import { zkUsdTransaction } from '../services/external-tx-processing/transaction-execution.js';
 import { ZkUsdEngine } from '../services/external-tx-processing/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
+import { Account } from './utils.js';
+import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update.js';
 
 /**
  * Default configuration options for constructing transactions.
@@ -38,6 +39,7 @@ export interface DefaultTransactionOptions {
   dependencyStatusPollTimeout: number;
   awaitingTimeoutMs: number;
   memo: string;
+  refreshAccounts: Account[];
 }
 
 /**
@@ -60,6 +62,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   dependencyStatusPollTimeout: 300000,
   awaitingTimeoutMs: 65000,
   memo: '',
+  refreshAccounts: [],
 };
 
 /**
@@ -490,6 +493,14 @@ export class TransactionManager<E extends string> {
       forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(this.mina),
     };
 
+
+    for (const acc of (options?.refreshAccounts ?? [])) {
+      await this.mina.fetchMinaAccount(acc.publicKey, {
+        tokenId: acc.tokenId,
+        force: true,
+      });
+    }
+
     const builtTx = await transactionBuild(
       this._o1jsMutex,
       this.mina,
@@ -629,4 +640,29 @@ export async function transactionBuild(
     console.log(tx.transaction.accountUpdates);
   }
   return tx;
+}
+
+
+async function fetchLatestAccounts(args: {
+  mina: IMinaNetworkInterface,
+  engineInstance: InstanceType<ZkUsdEngine>;
+  engineKey: PublicKey;
+  sender: PublicKey;
+  vaultAddress: string;
+}): Promise<void> {
+  const { mina, engineInstance, engineKey, sender, vaultAddress } = args;
+
+  await mina.fetchMinaAccount(    engineKey,
+    {force: true},
+);
+  await mina.fetchMinaAccount(
+    sender, {
+    force: true,
+  });
+
+  await mina.fetchMinaAccount(
+    PublicKey.fromBase58(vaultAddress), {
+    tokenId: engineInstance.deriveTokenId(),
+    force: true,
+  });
 }

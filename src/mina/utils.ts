@@ -1,7 +1,7 @@
 import { Field, PublicKey } from 'o1js';
 import { ZkappCommand } from 'o1js/dist/node/lib/mina/account-update';
 
-export { extractAllTxParties };
+export { Account, extractAllTxParties };
 
 type Account = { publicKey: PublicKey; tokenId?: Field };
 

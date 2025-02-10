@@ -55,6 +55,7 @@ import { LocalTransactionExecutor } from '../mina/local-transaction-executor.js'
 import { validPriceBlockCount } from '../mina/networks.js';
 import { VaultTransactionType } from '../types/cloud-worker.js';
 import { Mutex } from '../utils/mutex.js';
+import { Account } from '../mina/utils.js';
 
 const client = new Client({
   network: 'testnet',
@@ -111,7 +112,7 @@ export class TestHelper<E extends string> {
   _deploymentService: DeploymentService;
 
   private _priceInputMgr: PriceInputManager;
-  private get priceInputMgr(): PriceInputManager {
+  public get priceInputMgr(): PriceInputManager {
     if (!this._priceInputMgr) {
       throw new Error(
         'PriceInputManager not initialized. Deploy contracts first.'
@@ -170,7 +171,7 @@ export class TestHelper<E extends string> {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
       executor?: E | 'local';
-    },
+    }
   ) {
     const keys = 'keys' in sender ? sender.keys : sender;
     return this.txMgr.tx(keys, callback, options);
@@ -184,7 +185,7 @@ export class TestHelper<E extends string> {
       waitForIncluded?: (string | TransactionHandle)[];
       startingFee?: UInt64;
       executor?: E | 'local';
-    },
+    }
   ): Promise<void> {
     let startingFee: UInt64 | undefined;
 
@@ -192,14 +193,10 @@ export class TestHelper<E extends string> {
       startingFee = new UInt64(0);
     }
 
-    const h = await this.tx(
-      sender,
-      callback,
-      {
-        ...options,
-        startingFee: options?.startingFee ?? startingFee,
-      },
-    );
+    const h = await this.tx(sender, callback, {
+      ...options,
+      startingFee: options?.startingFee ?? startingFee,
+    });
     await h.awaitIncluded();
   }
 
@@ -224,14 +221,21 @@ export class TestHelper<E extends string> {
     return new TestHelper(mina, executor, deployer);
   }
 
-  static async initLightnetChain<E extends string = 'local'>(opts?: {
-    txExecutorInitializers?: WithDefault<
-      E | 'local',
-    (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
-    >;
-  }): Promise<TestHelper<E>> {
+  static async initLightnetChain<E extends string = 'local'>(
+    opts?: {
+      txExecutorInitializers?: WithDefault<
+        E | 'local',
+        (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+      >;
+      doNotEnsureLightnet?: boolean
+    },
+  ): Promise<TestHelper<E>> {
     // Ensure the lightnet environment is running.
-    await ensureLightnetRunning();
+
+    // if undefined we DO
+    if (!opts?.doNotEnsureLightnet){
+      await ensureLightnetRunning();
+    }
 
     // Initialize the network interface.
     const mina = await MinaNetworkInterface.initLightnet();
@@ -240,7 +244,7 @@ export class TestHelper<E extends string> {
     // If no initializers are provided, default to one keyed by "local".
     const initializers: WithDefault<
       E | 'local',
-    (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+      (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > =
       opts?.txExecutorInitializers ??
       (singleDefault(
@@ -248,7 +252,7 @@ export class TestHelper<E extends string> {
         async () => new LocalTransactionExecutor()
       ) as unknown as WithDefault<
         E | 'local',
-       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+        (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
       >);
 
     // Transform the record:
@@ -479,7 +483,7 @@ export class TestHelper<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    },
+    }
   ) {
     let minaPriceInput: MinaPriceInput | undefined;
     if ('minaPriceProof' in args.args) {
@@ -490,12 +494,21 @@ export class TestHelper<E extends string> {
       minaPriceInput = undefined;
     }
 
+    let refreshAccounts: Account[] = [
+      { publicKey: this.engine.contract.address }, // engine
+      // sender
+      { publicKey: sender.publicKey },
+      // vault
+      { publicKey: PublicKey.fromBase58(args.args.vaultAddress)
+      , tokenId: this.engine.contract.deriveTokenId() },
+    ]
+
     return this.txMgr.engineTx(
       sender,
       args,
       this.engine.contract,
       minaPriceInput,
-      options,
+      {...options, refreshAccounts} 
     );
   }
 
@@ -505,7 +518,7 @@ export class TestHelper<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    },
+    }
   ) {
     const h = await this.engineTx(sender, args, options);
     return await h.awaitIncluded();
@@ -701,15 +714,13 @@ export class TestHelper<E extends string> {
       opts?.blockHeight
     );
   }
-  public async retrieveVaultState(vault: PublicKey): Promise<VaultState | undefined > {
-
-    const vaultAccount = await this.mina.fetchMinaAccount(
-      vault,
-      {
-        tokenId: this.engine.contract.deriveTokenId(),
-        force: true,
-      }
-    );
+  public async retrieveVaultState(
+    vault: PublicKey
+  ): Promise<VaultState | undefined> {
+    const vaultAccount = await this.mina.fetchMinaAccount(vault, {
+      tokenId: this.engine.contract.deriveTokenId(),
+      force: true,
+    });
 
     if (!vaultAccount) {
       return undefined;
@@ -731,7 +742,6 @@ export class TestHelper<E extends string> {
     }
     return vaultState as VaultState;
   }
-
 
   async printAgentState() {
     console.log('\n=== Agent States ===\n');
@@ -771,14 +781,16 @@ export class TestHelper<E extends string> {
         `   • MINA: ${agentAccount?.balance.toBigInt() / BigInt(1e9)} MINA`
       );
       console.log(
-        `   • zkUSD: ${agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
+        `   • zkUSD: ${
+          agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
         } zkUSD`
       );
 
       console.log(`\n🏦 Vault Details:`);
       console.log(`   • Address: ${agent.vault!.publicKey.toBase58()}`);
       console.log(
-        `   • Collateral: ${vault.collateralAmount.toBigInt() / BigInt(1e9)
+        `   • Collateral: ${
+          vault.collateralAmount.toBigInt() / BigInt(1e9)
         } MINA`
       );
       console.log(
@@ -929,7 +941,6 @@ class PriceInputManager {
         ...price.toFields(),
       ]);
       return { proof, proofHash };
-
     });
 
     const storedProof: Proof = {
@@ -992,7 +1003,7 @@ class PriceInputManager {
       for (const proof of proofs) {
         if (
           BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
-          blockH.toBigint() + minimalValidity &&
+            blockH.toBigint() + minimalValidity &&
           // and already valid!
           blockH.toBigint() >= BigInt(proof.blockHeight)
         ) {

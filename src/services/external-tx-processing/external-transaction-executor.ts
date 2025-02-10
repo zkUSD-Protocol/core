@@ -549,15 +549,6 @@ export class TransactionWorkerManager implements TxExecutorInternal {
       let provingResult: ProvingResult = req.body;
 
       try {
-        // If proving failed, mark job as completed in a failing state
-        if (!provingResult.success) {
-          await this.mutex.runExclusive(async () => {
-            await this.jobStore.markJobAsCompleted(jobId, provingResult);
-          });
-          // Clean up the tracker
-          this.jobTrackers.delete(jobId);
-        }
-
         const tracker = this.jobTrackers.get(jobId);
         if (!tracker) {
           throw new Error(
@@ -570,10 +561,15 @@ export class TransactionWorkerManager implements TxExecutorInternal {
           const proofs = provingResult.proofs;
           tracker.proving.resolvers.forEach((resolve) => resolve(proofs));
         } else {
+          await this.mutex.runExclusive(async () => {
+            await this.jobStore.markJobAsCompleted(jobId, provingResult);
+          });
+
           const failure = provingResult as { status: FailedBeforeSending };
           tracker.proving.rejectors.forEach((reject) =>
             reject({ status: failure.status })
           );
+          this.jobTrackers.delete(jobId);
         }
         return res.json({ status: 'ok' });
       } catch (err) {
