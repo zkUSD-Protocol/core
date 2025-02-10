@@ -86,7 +86,7 @@ async function queryGraphQL<T extends GqlQuery<any, any>>(
 /**
  * The shape of data we expect back for "PooledNoncesQuery".
  */
-interface PooledNoncesQuery {
+interface PooledNoncesQueryResponse {
   version: string;
   pooledZkappCommands: Array<{
     zkappCommand: {
@@ -106,13 +106,34 @@ interface PooledNoncesQuery {
 }
 
 /**
+ * The shape of data we expect back for "TransactionStatuses".
+ */
+interface TransactionStatusesQueryResponse {
+  version: string;
+  bestChain: Array<{
+    transactions: {
+      zkappCommands: Array<{
+        hash: string;
+        failureReason: {
+          failures: Array<unknown>;
+        };
+      }>;
+      userCommands: Array<{
+        hash: string;
+        failureReason: unknown;
+      }>;
+    };
+  }>;
+}
+
+/**
  * Constructs a typed query definition for fetching pooled nonces.
  *
  * @param publicKey - The public key to use in the query
  */
 function mkPooledNoncesQuery(variables: {
   pubkey: PublicKey;
-}): GqlQueryCall<PooledNoncesQuery, { pubkey: PublicKey }> {
+}): GqlQueryCall<PooledNoncesQueryResponse, { pubkey: PublicKey }> {
   const pk = variables.pubkey.toBase58();
   const operationName = `PooledNoncesQuery_${pk}`;
   const query = {
@@ -140,6 +161,37 @@ query ${operationName}($pubkey: PublicKey) {
   return { query, variables };
 }
 
+/**
+ * Constructs a typed query definition for fetching pooled nonces.
+ *
+ * @param publicKey - The public key to use in the query
+ */
+function mkTransactionStatusesQuery(variables: {
+  lastBlocks: number;
+}): GqlQueryCall<TransactionStatusesQueryResponse, { lastBlocks: number }> {
+  const operationName = 'TransactionStatusQuery';
+  const query = {
+    operationName,
+    query: `
+      query ${operationName}($lastBlocks: Int!) {
+        version
+        bestChain(maxLength: $lastBlocks) {
+          transactions {
+            zkappCommands {
+              hash
+              failureReason {
+                failures
+                index
+              }
+            }
+          }
+        }
+      }
+    `,
+  };
+  return { query, variables }; // Pass the actual variables instead of an empty object
+}
+
 export {
   GqlData,
   GqlVars,
@@ -149,5 +201,7 @@ export {
   GqlQueryCall,
   queryGraphQL,
   mkPooledNoncesQuery,
-  PooledNoncesQuery,
+  mkTransactionStatusesQuery,
+  PooledNoncesQueryResponse,
+  TransactionStatusesQueryResponse,
 };

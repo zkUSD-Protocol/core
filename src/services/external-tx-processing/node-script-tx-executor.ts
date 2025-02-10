@@ -17,7 +17,7 @@ import {
 import { getNetworkKeys } from '../../config/keys.js';
 import { blockchain } from 'zkcloudworker';
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
-import { ProvingResult } from './shared-types.js';
+import { ProvingResult, SendingResult } from './shared-types.js';
 import {
   FailedBeforeSending,
   RejectedOnReceive,
@@ -180,21 +180,23 @@ if (process.argv[1] === __filename) {
         },
       },
       sending: {
-        resolver: async (res: { hash: string; status: 'Pending' }) => {
+        resolver: async (r: { hash: string; status: 'Pending' }) => {
+          const res: SendingResult = { success: true, ...r };
           await postToManager(`/jobs/${jobId}/sent`, res);
         },
         rejector: async (error: {
           status: RejectedOnReceive | FailedBeforeSending;
         }) => {
-          await postToManager(`/jobs/${jobId}/sent`, error);
+          const res: SendingResult = { success: false, ...error };
+          await postToManager(`/jobs/${jobId}/sent`, res);
         },
       },
     };
     return ret;
   }
 
-  async function postToManager(jobId: string, body: any) {
-    await fetch(`${EPM_BASE_URL}/jobs/${jobId}/sending`, {
+  async function postToManager(url: string, body: any) {
+    await fetch(`${EPM_BASE_URL}${url}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

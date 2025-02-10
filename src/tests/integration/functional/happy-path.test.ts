@@ -25,13 +25,13 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
   });
 
   it('should have created the vaults', async () => {
-    const aliceVault = await th.retrieveVaultState('alice');
+    const aliceVault = await th.retrieveAgentVaultState('alice');
 
     assert.deepStrictEqual(aliceVault.owner, th.agents.alice.keys.publicKey);
   });
 
   it('should have deposited collateral', async () => {
-    const aliceVault = await th.retrieveVaultState('alice');
+    const aliceVault = await th.retrieveAgentVaultState('alice');
 
     assert(aliceVault.collateralAmount.toBigInt() > 0n);
   });
@@ -46,7 +46,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
   });
 
   it('should allow repaying debt ', async () => {
-    const aliceVaultBefore = await th.retrieveVaultState('alice');
+    const aliceVaultBefore = await th.retrieveAgentVaultState('alice');
 
     const aliceZkUsdAccountBefore = await th.mina.fetchMinaAccount(
       th.agents.alice.keys!.publicKey,
@@ -68,7 +68,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
       }
     );
 
-    const aliceVaultAfter = await th.retrieveVaultState('alice');
+    const aliceVaultAfter = await th.retrieveAgentVaultState('alice');
 
     const aliceZkUsdAccountAfter = await th.mina.fetchMinaAccount(
       th.agents.alice.keys!.publicKey,
@@ -124,7 +124,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
 
     // Check post-liquidation states
 
-    const bobVaultAfter = await th.retrieveVaultState('bob');
+    const bobVaultAfter = await th.retrieveAgentVaultState('bob');
 
     const charlieBalanceAfter = await th.mina.fetchMinaAccount(
       th.agents.charlie.keys.publicKey

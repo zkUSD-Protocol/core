@@ -57,7 +57,7 @@ type AwaitedTransaction =
     }
   | {
       isLocal: false;
-      status: 'Included' | RejectedOnInclusion | RejectedOnReceive;
+      status: 'Included' | RejectedOnInclusion | RejectedOnReceive |"StuckInMempool"
     };
 
 type TransactionState =
@@ -76,6 +76,7 @@ interface TransactionExecutionConfig {
   o1jsMutex: Mutex;
   mina: IMinaNetworkInterface;
   startingFee: UInt64;
+  awaitingTimeoutMs: number;
   printTx?: boolean;
 }
 

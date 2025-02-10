@@ -52,7 +52,7 @@ import {
   TransactionArgs,
 } from '../mina/transaction-executor.js';
 import { LocalTransactionExecutor } from '../mina/local-transaction-executor.js';
-import { blockchain, validPriceBlockCount } from '../mina/networks.js';
+import { validPriceBlockCount } from '../mina/networks.js';
 import { VaultTransactionType } from '../types/cloud-worker.js';
 import { Mutex } from '../utils/mutex.js';
 
@@ -171,10 +171,9 @@ export class TestHelper<E extends string> {
       waitForIncluded?: (string | TransactionHandle)[];
       executor?: E | 'local';
     },
-    callDepth = 3
   ) {
     const keys = 'keys' in sender ? sender.keys : sender;
-    return this.txMgr.tx(keys, callback, options, callDepth);
+    return this.txMgr.tx(keys, callback, options);
   }
 
   public async includeTx(
@@ -186,7 +185,6 @@ export class TestHelper<E extends string> {
       startingFee?: UInt64;
       executor?: E | 'local';
     },
-    callDepth = 4
   ): Promise<void> {
     let startingFee: UInt64 | undefined;
 
@@ -201,7 +199,6 @@ export class TestHelper<E extends string> {
         ...options,
         startingFee: options?.startingFee ?? startingFee,
       },
-      callDepth
     );
     await h.awaitIncluded();
   }
@@ -230,7 +227,7 @@ export class TestHelper<E extends string> {
   static async initLightnetChain<E extends string = 'local'>(opts?: {
     txExecutorInitializers?: WithDefault<
       E | 'local',
-      (chain: blockchain) => Promise<ITransactionExecutor>
+    (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     >;
   }): Promise<TestHelper<E>> {
     // Ensure the lightnet environment is running.
@@ -243,7 +240,7 @@ export class TestHelper<E extends string> {
     // If no initializers are provided, default to one keyed by "local".
     const initializers: WithDefault<
       E | 'local',
-      (chain: blockchain) => Promise<ITransactionExecutor>
+    (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > =
       opts?.txExecutorInitializers ??
       (singleDefault(
@@ -251,7 +248,7 @@ export class TestHelper<E extends string> {
         async () => new LocalTransactionExecutor()
       ) as unknown as WithDefault<
         E | 'local',
-        (chain: blockchain) => Promise<ITransactionExecutor>
+       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
       >);
 
     // Transform the record:
@@ -262,7 +259,7 @@ export class TestHelper<E extends string> {
     ).filter((k) => k !== 'default') as E[];
     const executors: Partial<Record<E, ITransactionExecutor>> = {};
     for (const key of executorKeys) {
-      executors[key] = await initializers[key](mina.network.chainId);
+      executors[key] = await initializers[key](mina);
     }
     // Set the default property on the executors record.
     (executors as WithDefault<E | 'local', ITransactionExecutor>).default =
@@ -483,7 +480,6 @@ export class TestHelper<E extends string> {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     },
-    callDepth = 2
   ) {
     let minaPriceInput: MinaPriceInput | undefined;
     if ('minaPriceProof' in args.args) {
@@ -500,7 +496,6 @@ export class TestHelper<E extends string> {
       this.engine.contract,
       minaPriceInput,
       options,
-      callDepth
     );
   }
 
@@ -511,9 +506,8 @@ export class TestHelper<E extends string> {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     },
-    callDepth = 3
   ) {
-    const h = await this.engineTx(sender, args, options, callDepth);
+    const h = await this.engineTx(sender, args, options);
     return await h.awaitIncluded();
   }
 
@@ -526,7 +520,7 @@ export class TestHelper<E extends string> {
         throw new Error(`Agent ${name} not found`);
       }
 
-      const vault = await this.retrieveVaultState(name);
+      const vault = await this.retrieveAgentVaultState(name);
 
       if (vault.collateralAmount.toBigInt() >= amount.toBigInt()) {
         continue;
@@ -557,7 +551,7 @@ export class TestHelper<E extends string> {
         throw new Error(`Agent ${name} not found`);
       }
 
-      const vault = await this.retrieveVaultState(name);
+      const vault = await this.retrieveAgentVaultState(name);
 
       if (vault.debtAmount.toBigInt() >= amount.toBigInt()) {
         continue;
@@ -707,14 +701,10 @@ export class TestHelper<E extends string> {
       opts?.blockHeight
     );
   }
-
-  public async retrieveVaultState(agentName: string): Promise<VaultState> {
-    if (!this.agents[agentName]) {
-      throw new Error(`Agent ${agentName} not found`);
-    }
+  public async retrieveVaultState(vault: PublicKey): Promise<VaultState | undefined > {
 
     const vaultAccount = await this.mina.fetchMinaAccount(
-      this.agents[agentName].vault!.publicKey,
+      vault,
       {
         tokenId: this.engine.contract.deriveTokenId(),
         force: true,
@@ -722,18 +712,33 @@ export class TestHelper<E extends string> {
     );
 
     if (!vaultAccount) {
-      throw new Error(`Vault for ${agentName} does not exist`);
+      return undefined;
     }
 
     return Vault.fromAccount(vaultAccount);
   }
+
+  public async retrieveAgentVaultState(agentName: string): Promise<VaultState> {
+    if (!this.agents[agentName]) {
+      throw new Error(`Agent ${agentName} not found`);
+    }
+    const vault = this.agents[agentName].vault!.publicKey;
+
+    const vaultState = await this.retrieveVaultState(vault);
+
+    if (!vaultState) {
+      throw new Error(`Vault for ${agentName} does not exist`);
+    }
+    return vaultState as VaultState;
+  }
+
 
   async printAgentState() {
     console.log('\n=== Agent States ===\n');
 
     for (const name of Object.keys(this.agents)) {
       const agent = this.agents[name];
-      const vault = await this.retrieveVaultState(name);
+      const vault = await this.retrieveAgentVaultState(name);
 
       const agentAccount = await this.mina.fetchMinaAccount(
         agent.keys.publicKey,
@@ -766,16 +771,14 @@ export class TestHelper<E extends string> {
         `   • MINA: ${agentAccount?.balance.toBigInt() / BigInt(1e9)} MINA`
       );
       console.log(
-        `   • zkUSD: ${
-          agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
+        `   • zkUSD: ${agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
         } zkUSD`
       );
 
       console.log(`\n🏦 Vault Details:`);
       console.log(`   • Address: ${agent.vault!.publicKey.toBase58()}`);
       console.log(
-        `   • Collateral: ${
-          vault.collateralAmount.toBigInt() / BigInt(1e9)
+        `   • Collateral: ${vault.collateralAmount.toBigInt() / BigInt(1e9)
         } MINA`
       );
       console.log(
@@ -907,23 +910,27 @@ class PriceInputManager {
 
     const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
 
-    const programOutput = await AggregateOraclePrices.compute(
-      {
-        currentBlockHeight: blockH,
-        oracleWhitelistHash,
-      },
-      {
-        oracleWhitelist: this.whitelist,
-        oraclePriceSubmissions,
-      }
-    );
-    const proof = programOutput.proof;
+    const { proof, proofHash } = await this.o1jsMutex.runExclusive(async () => {
+      const programOutput = await AggregateOraclePrices.compute(
+        {
+          currentBlockHeight: blockH,
+          oracleWhitelistHash,
+        },
+        {
+          oracleWhitelist: this.whitelist,
+          oraclePriceSubmissions,
+        }
+      );
+      const proof = programOutput.proof;
 
-    const proofHash = Poseidon.hash([
-      this.oracleAggregationVk.hash,
-      OracleWhitelist.hash(this.whitelist),
-      ...price.toFields(),
-    ]);
+      const proofHash = Poseidon.hash([
+        this.oracleAggregationVk.hash,
+        OracleWhitelist.hash(this.whitelist),
+        ...price.toFields(),
+      ]);
+      return { proof, proofHash };
+
+    });
 
     const storedProof: Proof = {
       proof: proof.toJSON(),
@@ -985,7 +992,7 @@ class PriceInputManager {
       for (const proof of proofs) {
         if (
           BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
-            blockH.toBigint() + minimalValidity &&
+          blockH.toBigint() + minimalValidity &&
           // and already valid!
           blockH.toBigint() >= BigInt(proof.blockHeight)
         ) {

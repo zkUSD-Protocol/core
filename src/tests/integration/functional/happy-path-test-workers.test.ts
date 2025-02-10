@@ -1,34 +1,52 @@
-import { TestAmounts, TestHelper } from '../../test-helper.js';
-import { describe, it, before } from 'node:test';
+import { TestHelper } from '../../test-helper.js';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { UInt64 } from 'o1js';
+import { AccountUpdate, PrivateKey, UInt64 } from 'o1js';
 import { ExternalTransactionExecutor } from '../../../services/external-tx-processing/external-transaction-executor.js';
 import { LocalTransactionExecutor } from '../../../mina/local-transaction-executor.js';
-import { WithDefault } from '../../../types/utility.js';
-import { blockchain } from 'zkcloudworker';
+import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { ITransactionExecutor } from '../../../mina/transaction-executor.js';
+import { VaultTransactionType } from '../../../types/cloud-worker.js';
+import { IMinaNetworkInterface } from '../../../mina/mina-network-interface.js';
+
+const printTx = !!process.env.DEBUG;
 
 describe('zkUSD Integration - Functional - Happy Path Test Suite (using external workers)', () => {
   let th: TestHelper<'local' | 'workers'>;
   let startingFee: UInt64 = UInt64.from(1e8);
+  let stop: () => void;
+
+  let newman: KeyPair;
+  let newmanVault: KeyPair;
 
   before(async () => {
+    const stopExecutor = new Promise<void>((resolve) => {
+      stop = resolve;
+    });
+
     const txExecutorInitializers: WithDefault<
       'local' | 'workers',
-      (chain: blockchain) => Promise<ITransactionExecutor>
+      (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > = {
       local: async () => new LocalTransactionExecutor(),
-      workers: ExternalTransactionExecutor.initializer({
-        workers: 2,
-      }),
-      default: 'workers', // use workers by default
+      workers: ExternalTransactionExecutor.initializer(
+        {
+          workers: 0,
+        },
+        stopExecutor
+      ),
+      default: 'local', // use workers by default
     };
 
     th = await TestHelper.initLightnetChain({ txExecutorInitializers });
-    await th.setupLightnet();
+  });
+
+  after(async () => {
+    stop();
   });
 
   it('should have deployed the contracts', async () => {
+    await th.deployTokenContracts();
     const engineTokenAccount = await th.mina.fetchMinaAccount(
       th.networkKeys.engine.publicKey,
       {
@@ -39,14 +57,34 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
   });
 
   it('should have created the vaults', async () => {
+    // create a new actor
+    newman = await th.mina.newAccount();
+    newmanVault = PrivateKey.randomKeypair();
 
-    await th.createVaults('alice');
-    const aliceVault = await th.retrieveVaultState('alice');
-    assert.deepStrictEqual(aliceVault.owner, th.agents.alice.keys.publicKey);
+    // create vault for newman
+    await th.includeEngineTx(
+      newman,
+      {
+        transactionType: VaultTransactionType.CREATE_VAULT,
+        args: {
+          transactionId: `Newman's creates a vault`,
+          newAccounts: 2,
+          vaultAddress: newmanVault.publicKey.toBase58(),
+        },
+      },
+      { printTx, extraSigners: [newmanVault.privateKey] }
+    );
+
+    const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
+    // assert defined
+    assert.notStrictEqual(vaultState, undefined);
+    assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
+    assert.deepStrictEqual(vaultState?.collateralAmount.toBigInt(), 0n);
+    assert.deepStrictEqual(vaultState?.debtAmount.toBigInt(), 0n);
   });
 
   // it('should have deposited collateral', async () => {
-  //   const aliceVault = await th.retrieveVaultState('alice');
+  //   const aliceVault = await th.retrieveAgentVaultState('alice');
 
   //   assert(aliceVault.collateralAmount.toBigInt() > 0n);
   // });
@@ -61,7 +99,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
   // });
 
   // it('should allow repaying debt ', async () => {
-  //   const aliceVaultBefore = await th.retrieveVaultState('alice');
+  //   const aliceVaultBefore = await th.retrieveAgentVaultState('alice');
 
   //   const aliceZkUsdAccountBefore = await th.mina.fetchMinaAccount(
   //     th.agents.alice.keys!.publicKey,
@@ -83,7 +121,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
   //     }
   //   );
 
-  //   const aliceVaultAfter = await th.retrieveVaultState('alice');
+  //   const aliceVaultAfter = await th.retrieveAgentVaultState('alice');
 
   //   const aliceZkUsdAccountAfter = await th.mina.fetchMinaAccount(
   //     th.agents.alice.keys!.publicKey,
@@ -139,7 +177,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
 
   //   // Check post-liquidation states
 
-  //   const bobVaultAfter = await th.retrieveVaultState('bob');
+  //   const bobVaultAfter = await th.retrieveAgentVaultState('bob');
 
   //   const charlieBalanceAfter = await th.mina.fetchMinaAccount(
   //     th.agents.charlie.keys.publicKey

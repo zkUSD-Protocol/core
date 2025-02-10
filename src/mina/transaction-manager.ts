@@ -36,6 +36,7 @@ export interface DefaultTransactionOptions {
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeout: number;
+  awaitingTimeoutMs: number;
   memo: string;
 }
 
@@ -57,6 +58,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
   dependencyStatusPollTimeout: 300000,
+  awaitingTimeoutMs: 65000,
   memo: '',
 };
 
@@ -76,7 +78,6 @@ export type TransactionRequest = {
    * Transactions that must be included before this one can proceed.
    */
   waitForIncluded: (string | TransactionHandle)[];
-  callSite: string;
 
   args?: TransactionArgs;
 };
@@ -109,7 +110,6 @@ export interface TransactionHandle {
 export class TransactionInternal {
   private _request?: TransactionRequest;
   // this is not a tx nonce, it is just an ordinal number of tx creation call site.
-  private _callSiteNonce = 0;
   private _dependentTxIds: string[] = [];
 
   public signedTransaction?: Transaction<any, true>;
@@ -158,11 +158,9 @@ export class TransactionInternal {
    */
   public static fromRequest(
     request: TransactionRequest,
-    callSiteNonce = 0
   ): TransactionInternal {
     const tx = new TransactionInternal();
     tx._request = request;
-    tx._callSiteNonce = callSiteNonce;
     tx._dependentTxIds = request.waitForIncluded.map((dep) =>
       typeof dep === 'string' ? dep : dep.txId
     );
@@ -206,8 +204,10 @@ export class TransactionInternal {
       return this.request.name;
     }
     if (this.request) {
-      const postfix = this._callSiteNonce ? `_${this._callSiteNonce}` : '';
-      return this.request.callSite + postfix;
+      if (this.request.args?.args.transactionId) {
+        return this.request.args.args.transactionId;
+      }
+      return `UnnamedTx@${new Date().getTime().toString()}`;
     }
     throw new Error('TODO - implement getId() for non-request transactions');
   }
@@ -341,13 +341,6 @@ export class TransactionManager<E extends string> {
   }
 
   private transactions: Map<string, TransactionInternal> = new Map();
-  private _callSiteNonces: Map<string, number> = new Map();
-
-  private getCallSiteNonce(callSite: string): number {
-    const r = this._callSiteNonces.get(callSite) ?? 0;
-    this._callSiteNonces.set(callSite, r + 1);
-    return r;
-  }
 
   txHandle(txId: string): TransactionHandle | undefined {
     return this.transactions.get(txId)?.handle;
@@ -362,7 +355,6 @@ export class TransactionManager<E extends string> {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
     },
-    callDepth = 3
   ) {
     const { callback } = await zkUsdTransaction({
       kind: args.transactionType,
@@ -374,9 +366,14 @@ export class TransactionManager<E extends string> {
     });
     if (!options?.name) {
       const name = args.args.transactionId;
-      return await this.tx(sender, callback, { ...options, name }, callDepth, args);
+      return await this.tx(
+        sender,
+        callback,
+        { ...options, name },
+        args
+      );
     }
-    return await this.tx(sender, callback, options, callDepth, args);
+    return await this.tx(sender, callback, options, args);
   }
 
   // this will create a new transaction
@@ -396,10 +393,9 @@ export class TransactionManager<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-      executor?: E
+      executor?: E;
     },
-    callDepth = 2,
-    args?: TransactionArgs,
+    args?: TransactionArgs
   ): Promise<TransactionHandle> {
     const { name, waitForIncluded } = options ?? {};
 
@@ -411,7 +407,6 @@ export class TransactionManager<E extends string> {
       callback,
       options: options ?? {},
       waitForIncluded: waitForIncluded ?? [],
-      callSite: getCallSite(callDepth),
       args,
     };
 
@@ -439,7 +434,6 @@ export class TransactionManager<E extends string> {
     // -- create the tx and add it to the manager
     const tx = TransactionInternal.fromRequest(
       request,
-      this.getCallSiteNonce(request.callSite)
     );
     this.transactions.set(tx.getId(), tx);
     // --
@@ -505,7 +499,9 @@ export class TransactionManager<E extends string> {
     );
 
     //=== prepare promises that will manage the transaction lifecycle
-    const nonceLock = this.mina.nonceManager.getAccountNonce.bind(this.mina.nonceManager);
+    const nonceLock = this.mina.nonceManager.getAccountNonce.bind(
+      this.mina.nonceManager
+    );
     const preparedTx: PreparedTransaction = {
       getId: () => tx.getId(),
       args: tx.request?.args ?? undefined,
@@ -515,7 +511,7 @@ export class TransactionManager<E extends string> {
         tx.status = s;
       },
       keys: { sender, extraSigners: options?.extraSigners ?? [] },
-      nonceLock
+      nonceLock,
     };
 
     //=== delegate the rest of execution
@@ -527,6 +523,7 @@ export class TransactionManager<E extends string> {
       mina: this.mina,
       startingFee: options?.startingFee ?? defaultOptions.startingFee,
       printTx: options?.printTx,
+      awaitingTimeoutMs: options?.dependencyStatusPollTimeout ?? defaultOptions.dependencyStatusPollTimeout,
     });
 
     tx.installLifecycle(lifecycle);
@@ -540,41 +537,6 @@ export class TransactionManager<E extends string> {
     this.transactionExecutors = transactionExecutors;
     this._mina = networkInterface;
   }
-}
-
-function getCallSite(depth: number): string {
-  let ret = 'unknown_call_site';
-  const callerLine = getCallerAtDepth(depth + 1);
-  // Regex to extract function name, file path, line, and column
-  const match =
-    callerLine.match(/at (.+?) \((.+?):(\d+):(\d+)\)/) ||
-    callerLine.match(/at (.+?):(\d+):(\d+)/);
-
-  if (match) {
-    // Extract details, including function name (if available)
-    const functionName = match[1] || 'anonymous';
-    const filePath = match[2];
-    const line = match[3];
-    // const column = match[4];
-
-    // Generate a unique ID string
-    ret = `${functionName}_${filePath}:${line}`;
-  } else {
-    ret = callerLine;
-  }
-
-  return ret;
-}
-
-function getCallerAtDepth(depth: number = 1): string {
-  const error = new Error();
-  const stack = error.stack?.split('\n');
-
-  if (stack && stack.length > depth + 1) {
-    const callerLine = stack[depth + 1].trim(); // Depth + 1 because stack[0] is the current function
-    return callerLine;
-  }
-  throw new Error('Failed to get caller: stack not deep enough');
 }
 
 // DEV: possibly refactor later

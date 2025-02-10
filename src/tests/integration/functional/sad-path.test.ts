@@ -112,7 +112,7 @@ describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
   });
 
   it('should fail to redeem more collateral than available', async () => {
-    const vaultState = await th.retrieveVaultState('alice');
+    const vaultState = await th.retrieveAgentVaultState('alice');
     const tooMuchCollateral = vaultState.collateralAmount.add(UInt64.from(1e9));
 
     await assert.rejects(

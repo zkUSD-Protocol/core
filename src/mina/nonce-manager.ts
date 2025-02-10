@@ -4,7 +4,7 @@ import {
   GqlQuery,
   GqlQueryCall,
   GqlVars,
-  PooledNoncesQuery,
+  PooledNoncesQueryResponse,
   mkPooledNoncesQuery,
 } from './graphql.js';
 import { Mutex } from '../utils/mutex.js';
@@ -220,7 +220,7 @@ export class NonceManager implements INonceManager {
   ): Promise<bigint | undefined> {
     try {
       const q = mkPooledNoncesQuery({ pubkey: publicKey });
-      const ret: PooledNoncesQuery = await this._config.queryGraphQL(q);
+      const ret: PooledNoncesQueryResponse = await this._config.queryGraphQL(q);
 
       const nonces = tokenId
         ? ret.pooledUserCommands

@@ -16,6 +16,7 @@ import {
   FailedBeforeSending,
   RejectedOnInclusion,
   RejectedOnReceive,
+  TransactionStatus,
 } from '../../mina/transaction-status.js';
 import { TrackedPromise } from '../../utils/tracked-promise.js';
 import { testnetMinaSigner } from '../signing/mina-signer.js';
@@ -26,6 +27,8 @@ import { InMemoryJobStore } from './in-memory-job-store.js';
 import { NodeScriptExecutor } from './node-script-tx-executor.js';
 import { serializeTransaction } from './transaction-serialization.js';
 import { blockchain } from 'zkcloudworker';
+import { ITransactionStatusScanner, TransactionStatusScanner } from '../../mina/transaction-status-scanner.js';
+import { IMinaNetworkInterface } from '../../mina/mina-network-interface.js';
 
 /* ------------------------------------------------------------------------*/
 /*                            TxLifecycleTracker                           */
@@ -81,26 +84,31 @@ interface TxExecutorInternal {
  * and sending to an external manager via some scheduling mechanism.
  */
 export class ExternalTransactionExecutor implements ITransactionExecutor {
-  private constructor(private workerManager: TxExecutorInternal) {}
+  private constructor(
+    private workerManager: TxExecutorInternal,
+    private _inclusionScanner: ITransactionStatusScanner
+  ) {}
 
   public static initializer(
     args:
       | { executor: TxExecutorInternal }
-      | { workers: NodeScriptExecutor[] | number }
+      | { workers: NodeScriptExecutor[] | number },
+    stop?: Promise<void>
   ) {
-    return (chain: blockchain) => {
-      return ExternalTransactionExecutor.start(chain, args);
+    return (mina: IMinaNetworkInterface) => {
+      return ExternalTransactionExecutor.start(mina, args,stop);
     }
   }
 
   //start
   public static async start(
-    chain: blockchain,
+    mina: IMinaNetworkInterface,
     args:
       | { executor: TxExecutorInternal }
-      | { workers: NodeScriptExecutor[] | number }
+      | { workers: NodeScriptExecutor[] | number },
+    stop?: Promise<void>
   ): Promise<ExternalTransactionExecutor> {
-    if (chain === 'local') {
+    if (mina.network.chainId === 'local') {
       throw new Error(
         'ExternalTransactionExecutor cannot be used with a local chain.'
       );
@@ -108,11 +116,29 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     let e: TxExecutorInternal;
     // if workers then create new TransactionWorkerManager
     if ('workers' in args) {
-      e = await TransactionWorkerManager.start(chain, args.workers);
+      e = await TransactionWorkerManager.start(mina.network.chainId, args.workers);
     } else {
       e = args.executor;
     }
-    return new ExternalTransactionExecutor(e);
+    const scanner = new TransactionStatusScanner(mina);
+    const ret = new ExternalTransactionExecutor(e, scanner);
+    await ret._inclusionScanner.startScanning();
+    if (stop) {
+      setTimeout(async () => {
+        await stop;
+        await ret.stop();
+      });
+    }
+    return ret;
+  }
+
+  // stop
+  public async stop(): Promise<void> {
+    await this._inclusionScanner.stopScanning();
+    //stop the worker manager
+    if (this.workerManager instanceof TransactionWorkerManager) {
+      await this.workerManager.shutdown();
+    }
   }
 
   /**
@@ -120,6 +146,13 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
    */
   public get signer() {
     return testnetMinaSigner;
+  }
+
+  private async awaitTx(
+    hash: string,
+    timeoutMs: number
+  ): Promise<'Included' | RejectedOnInclusion> {
+    return await this._inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
   }
 
   /**
@@ -161,14 +194,14 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       const lifecycleTracker = makeEmptyTxLifecycleTracker();
 
       // Helper: wrap success results in a consistent shape
-      const wrapSuccess = <T>(value: T & { status?: string }) => ({
+      const wrapNoErrors = <T>(value: T & { status?: TransactionStatus }) => ({
         isLocal: false as const,
         ...value,
       });
 
       // Helper: wrap error results in a consistent shape
       const wrapError = (err: {
-        status: RejectedOnReceive | RejectedOnInclusion | FailedBeforeSending;
+        status: RejectedOnReceive | RejectedOnInclusion | FailedBeforeSending
       }) => ({
         isLocal: false as const,
         errors: err.status.errors,
@@ -184,12 +217,12 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             if (config?.printTx) {
               console.log(`${tx.getId()} - Proved.`);
             }
-            return wrapSuccess({ proofs });
+            return wrapNoErrors({ proofs });
           })
           .catch(({ status }) => {
             tx.setStatus(status);
             if (config?.printTx) {
-              console.log(`${tx.getId()} - Proving failed with status ${JSON.stringify(status,null,2)}.`);
+              console.log(`${tx.getId()} - Proving failed with status ${JSON.stringify(status, null, 2)}.`);
             }
             return wrapError({ status });
           });
@@ -209,13 +242,13 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             if (config?.printTx) {
               console.log(`${tx.getId()} - Sent. Transaction pending inclusion.`);
             }
-            return wrapSuccess({ hash });
+            return wrapNoErrors({ hash });
           })
           .catch(async ({ status }) => {
             await nonceLock.unlock();
             tx.setStatus(status);
             if (config?.printTx) {
-              console.log(`${tx.getId()} - Failed on sent. Status: ${JSON.stringify(status,null,2)}.`);
+              console.log(`${tx.getId()} - Failed on sent. Status: ${JSON.stringify(status, null, 2)}.`);
             }
             return wrapError({ status });
           });
@@ -227,11 +260,31 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           if (config?.printTx) {
             console.log(`${tx.getId()} - Awaiting inclusion ...`);
           }
-          // sleep 60second
-          console.log('waiting not implemented.')
-          await new Promise((resolve) => setTimeout(resolve, 60000));
-
-          return wrapSuccess({ status: 'Included' as const });
+          const sentTx = await sendingPromise;
+          if (sentTx.isLocal) {
+            throw new Error('isLocal should be false in external executor');
+          }
+          if ('hash' in sentTx) {
+            // success -> await
+            try {
+              const inclusionStatus = await this.awaitTx(sentTx.hash, config.awaitingTimeoutMs);
+              if (inclusionStatus === 'Included') {
+                tx.setStatus('Included');
+                return wrapNoErrors({ status: 'Included' });
+              } else {
+                tx.setStatus(inclusionStatus);
+                return wrapNoErrors({ status: inclusionStatus });
+              }
+            } catch (error) {
+              tx.setStatus("StuckInMempool");
+              return wrapNoErrors({ status: "StuckInMempool" });
+            }
+          } else if ('errors' in sentTx) {
+            // status should already be set
+            return wrapNoErrors({ status: { kind: 'RejectedOnReceive', errors: sentTx.errors } });
+          } else {
+            throw new Error('unknown sentTx shape');
+          }
         },
         `Waiting tx: ${tx.getId()}`
       );
@@ -320,9 +373,9 @@ export class TransactionWorkerManager implements TxExecutorInternal {
   ): Promise<TransactionWorkerManager> {
     const manager = new TransactionWorkerManager(jobStore, port);
     await manager.init();
-    if (!workers) {
-      throw new Error('No workers provided');
-    }
+    // if (!workers) {
+    //   throw new Error('No workers provided');
+    // }
     if (typeof workers === 'number') {
       manager.spawnWorkers(
         new Array(workers).fill(0).map((_, i) => new NodeScriptExecutor(chain))
@@ -493,7 +546,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
      */
     this.app.post('/jobs/:id/proved', async (req: Request, res: Response) => {
       const jobId = req.params.id;
-      let provingResult: ProvingResult = req.body.result;
+      let provingResult: ProvingResult = req.body;
 
       try {
         // If proving failed, mark job as completed in a failing state
@@ -540,20 +593,12 @@ export class TransactionWorkerManager implements TxExecutorInternal {
 
       try {
         // NOTE: If you want more robust validation, implement similarly to parseProvingResult.
-        sendingResult = req.body.result as SendingResult;
+        sendingResult = req.body as SendingResult;
       } catch (err) {
         console.error(err);
         res.status(400).json({ error: 'Could not parse sending result.' });
         throw err;
       }
-
-      console.debug(
-        `Transaction ${jobId} sending results: ${JSON.stringify(
-          sendingResult,
-          null,
-          2
-        )}`
-      );
 
       try {
         const tracker = this.jobTrackers.get(jobId);
@@ -565,6 +610,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
 
         if (sendingResult.success) {
           const success = sendingResult as { hash: string; status: 'Pending' };
+          console.log(`Transaction ${jobId} sent successfully. Hash: ${success.hash}`);
           tracker.sending.resolvers.forEach((resolve) =>
             resolve({ hash: success.hash, status: 'Pending' })
           );

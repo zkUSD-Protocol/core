@@ -6,6 +6,7 @@ import {
   Field,
   fetchAccount,
   Account,
+  UInt64,
 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
 import { KeyPair } from './../types/utility.js';
@@ -100,9 +101,11 @@ class LightnetChain {
   get network(): MinaNetwork {
     return LightnetNetwork;
   }
+
 }
 
 interface IMinaNetworkInterface extends ZkusdMinaApi {
+  get slotDuration(): UInt64;
   get nonceManager(): INonceManager;
   get network(): MinaNetwork;
   get local(): LocalOnlyApi | undefined;
@@ -151,6 +154,13 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   public get Mina() {
     Mina.setActiveInstance(this.instance);
     return Mina;
+  }
+
+  public get slotDuration(): UInt64 {
+    if(this.network.chainId === 'lightnet'){
+      return UInt64.from(20*1000);
+    }
+    throw new Error('slotDuration not implemented for this network');
   }
 
   private set nonceManager(nm: INonceManager) {

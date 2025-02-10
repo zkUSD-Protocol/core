@@ -42,7 +42,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       th.agents.alice.keys.publicKey
     );
 
-    const debtAmount = (await th.retrieveVaultState('alice')).debtAmount;
+    const debtAmount = (await th.retrieveAgentVaultState('alice')).debtAmount;
 
     assert.deepStrictEqual(debtAmount, TestAmounts.DEBT_5_ZKUSD);
     assert.deepStrictEqual(aliceBalance, TestAmounts.DEBT_5_ZKUSD);
@@ -76,7 +76,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
 
   it('should track total debt correctly across multiple mint operations', async () => {
-    const initialDebt = (await th.retrieveVaultState('alice')).debtAmount;
+    const initialDebt = (await th.retrieveAgentVaultState('alice')).debtAmount;
 
     // Perform multiple small mints
     for (let i = 0; i < 3; i++) {
@@ -97,7 +97,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       );
     }
 
-    const finalDebt = (await th.retrieveVaultState('alice')).debtAmount;
+    const finalDebt = (await th.retrieveAgentVaultState('alice')).debtAmount;
     assert.deepStrictEqual(
       finalDebt,
       initialDebt?.add(TestAmounts.DEBT_1_ZKUSD.mul(3))
