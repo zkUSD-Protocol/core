@@ -1,10 +1,3 @@
-/**
- * node-script-executor.ts
- *
- * This script is run as an external worker that polls an TransactionWorkerManager for
- * "transaction execution" jobs in two phases: proving and sending.
- */
-
 import { ChildProcess, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
@@ -12,16 +5,15 @@ import {
   TxProvingTracker,
   compileContracts,
   proveTransaction,
-} from './transaction-execution.js';
+} from './../external-tx-processing/transaction-execution.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { blockchain } from 'zkcloudworker';
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
-import { ProvingResult } from './shared-types.js';
 import { FailedBeforeSending } from '../../mina/transaction-status.js';
-import { TransactionExecutionJob } from './external-transaction-executor.js';
-import { ExternalProcess } from './external-process.js';
+import { TransactionExecutionJob } from './httpserver-prover.js';
 import fetch from 'node-fetch';
 import { Agent } from 'http'; // Use 'http' for HTTP requests
+import { TxProvingOutput } from './itransactionprover.js';
 
 const agent = new Agent({ family: 6 }); // Force IPv6
 
@@ -29,10 +21,41 @@ const agent = new Agent({ family: 6 }); // Force IPv6
 const __filename = fileURLToPath(import.meta.url);
 
 /**
+ * Represents an abstract external prover “worker”.
+ * Instead of directly spawning a Node script, any implementation
+ * can define how to start, stop, and monitor the worker lifecycle.
+ */
+export interface ChildProcessWorker {
+  /**
+   * Identifier for this process instance.
+   */
+  get workerId(): string;
+
+  /**
+   * Spawns or starts the worker process/service with the given serverUrl.
+   * Optionally takes a workerIndex for logging or identification.
+   */
+  spawn(serverUrl: string, workerIndex?: number): void;
+
+  /**
+   * Registers a callback to be invoked whenever the worker exits (normally or abnormally).
+   * @param callback - A function called with `(exitCode, signal)` when the process/service exits.
+   */
+  onExit(
+    callback: (exitCode: number | null, signal: string | null) => void
+  ): void;
+
+  /**
+   * Stops the worker, sending a graceful termination signal if supported.
+   */
+  stop(): void;
+}
+
+/**
  * This class is an adapter that spawns a separate Node.js process (this same file)
  * to act as a “transaction executor” worker.
  */
-export class NodeScriptProver implements ExternalProcess {
+export class HttpClientWorker implements ChildProcessWorker {
   private index?: number;
   private process?: ChildProcess;
   private exitCallback?: (code: number | null, signal: string | null) => void;
@@ -43,7 +66,7 @@ export class NodeScriptProver implements ExternalProcess {
     private scriptPath: string = __filename
   ) {}
 
-  get proverId(): string {
+  get workerId(): string {
     // For naming consistency, we can call it "executor" or keep "prover"
     return `node-script-executor${
       this.index !== undefined ? `-${this.index}` : ''
@@ -154,7 +177,7 @@ if (process.argv[1] === __filename) {
         await proveTransaction(
           context,
           JSON.stringify({
-            signedData: job.payload.transaction.signedData.data,
+            signedData: job.payload.transaction.signedZkappCommand.data,
             serializedTx: job.payload.transaction.serializedTx,
           }),
           executionTracker
@@ -173,19 +196,25 @@ if (process.argv[1] === __filename) {
     const ret: TxProvingTracker = {
       proving: {
         resolver: async (serializedTx: string) => {
-          const res: ProvingResult = { success: true, serializedTx };
-          await postToManager(`/jobs/${jobId}/proved`, res);
+          const res: TxProvingOutput = {
+            success: true,
+            serializedProvenTransaction: serializedTx,
+          };
+          await postBackResults(`/jobs/${jobId}/proved`, res);
         },
         rejector: async (error: { status: FailedBeforeSending }) => {
-          const res: ProvingResult = { success: false, status: error.status };
-          await postToManager(`/jobs/${jobId}/proved`, res);
+          const res: TxProvingOutput = {
+            success: false,
+            errors: error.status.errors,
+          };
+          await postBackResults(`/jobs/${jobId}/proved`, res);
         },
       },
     };
     return ret;
   }
 
-  async function postToManager(url: string, body: any) {
+  async function postBackResults(url: string, body: any) {
     await fetch(`${EPM_BASE_URL}${url}`, {
       agent,
       method: 'POST',

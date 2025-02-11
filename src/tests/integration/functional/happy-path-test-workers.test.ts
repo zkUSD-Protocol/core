@@ -1,25 +1,25 @@
 import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { PrivateKey, UInt64 } from 'o1js';
-import { ExternalProvingTransactionExecutor } from '../../../services/external-tx-processing/external-transaction-executor.js';
+import { PrivateKey } from 'o1js';
 import { LocalTransactionExecutor } from '../../../mina/local-transaction-executor.js';
 import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { ITransactionExecutor } from '../../../mina/transaction-executor.js';
 import { VaultTransactionType } from '../../../types/cloud-worker.js';
 import { IMinaNetworkInterface } from '../../../mina/mina-network-interface.js';
 import { TransactionHandle } from '../../../mina/transaction-manager.js';
+import { ExternalTransactionExecutor } from '../../../services/external-tx-processing/external-transaction-executor.js';
+import { HttpClientProver } from '../../../services/proving/httpclient-prover.js';
 
 const printTx = !!process.env.DEBUG;
 
 describe('zkUSD Integration - Functional - Happy Path Test Suite (using external workers)', () => {
-  let th: TestHelper<'local' | 'workers'>;
-  let startingFee: UInt64 = UInt64.from(1e8);
+  let th: TestHelper<'local' | 'external'>;
   let mike: {
     mintedHandle: TransactionHandle;
     keys: KeyPair;
     vault: KeyPair;
-  }
+  };
   let stop: () => void;
 
   let newman: KeyPair;
@@ -31,17 +31,15 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     });
 
     const txExecutorInitializers: WithDefault<
-      'local' | 'workers',
+      'local' | 'external',
       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > = {
       local: async () => new LocalTransactionExecutor(),
-      workers: ExternalProvingTransactionExecutor.initializer(
-        {
-          workers: 0, // workers expected to already be running
-        },
+      external: ExternalTransactionExecutor.initializer(
+        { prover: new HttpClientProver('http://localhost:3969') },
         stopExecutor
       ),
-      default: 'workers', // use workers by default
+      default: 'external', // use workers by default
     };
 
     th = await TestHelper.initLightnetChain({ txExecutorInitializers });
@@ -55,13 +53,12 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     const mike = await th.mina.newAccount();
     const mikeVault = PrivateKey.randomKeypair();
 
-
-    console.log('mike:')
-    console.log(mike)
-    console.log('mikeVault:')
-    console.log(mikeVault)
+    console.log('mike:');
+    console.log(mike);
+    console.log('mikeVault:');
+    console.log(mikeVault);
     // create vault for mike
-    const mcv=await th.engineTx(
+    const mcv = await th.engineTx(
       mike,
       {
         transactionType: VaultTransactionType.CREATE_VAULT,
@@ -85,14 +82,14 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
           collateralAmount: TestAmounts.COLLATERAL_100_MINA.toString(),
         },
       },
-      { printTx, waitForIncluded:[mcv] }
+      { printTx, waitForIncluded: [mcv] }
     );
 
     const minaPriceProof = (
       await th.priceInputMgr.requestProof(TestAmounts.PRICE_1_USD)
     ).proof;
     // mike mints
-    const mmz=await th.engineTx(
+    const mmz = await th.engineTx(
       mike,
       {
         transactionType: VaultTransactionType.MINT_ZKUSD,
@@ -103,20 +100,20 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
           minaPriceProof,
         },
       },
-      { printTx,  waitForIncluded: [mdc]}
+      { printTx, waitForIncluded: [mdc] }
     );
-    console.log('mike:')
-    console.log(mike)
-    console.log('mikeVault:')
-    console.log(mikeVault)
-    console.log('mmz:')
-    console.log(mmz)
+    console.log('mike:');
+    console.log(mike);
+    console.log('mikeVault:');
+    console.log(mikeVault);
+    console.log('mmz:');
+    console.log(mmz);
     return {
       mintedHandle: mmz,
       keys: mike,
-      vault: mikeVault
-    }
-  }
+      vault: mikeVault,
+    };
+  };
   it('should have deployed the contracts', async () => {
     await th.deployTokenContracts();
     const engineTokenAccount = await th.mina.fetchMinaAccount(
@@ -128,12 +125,10 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     assert.notStrictEqual(engineTokenAccount, undefined);
   });
 
-
   it('should schedule making mike transactioncs without waiting', async () => {
     mike = await makeMike();
     assert(mike.mintedHandle, 'Mike minted handle should be defined');
   });
-
 
   it('should have created the vaults', async () => {
     // create a new actor
@@ -267,11 +262,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     assert(burnEvent, 'Burn event should be emitted');
   });
 
-
-
   it('should allow liquidation of an undercollateralised vault', async () => {
-
-
     // get the lower price
     const lowPriceProof = (
       await th.priceInputMgr.requestProof(TestAmounts.PRICE_25_CENT)
@@ -284,10 +275,15 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
       tokenId: th.token.contract.deriveTokenId(),
     });
 
-    const mikeBalanceBefore = await th.mina.fetchMinaAccount(mike.keys.publicKey);
-    const mikeZkUsdBefore = await th.mina.fetchMinaAccount(mike.keys.publicKey, {
-      tokenId: th.token.contract.deriveTokenId(),
-    });
+    const mikeBalanceBefore = await th.mina.fetchMinaAccount(
+      mike.keys.publicKey
+    );
+    const mikeZkUsdBefore = await th.mina.fetchMinaAccount(
+      mike.keys.publicKey,
+      {
+        tokenId: th.token.contract.deriveTokenId(),
+      }
+    );
 
     // mike's be liquidated
     await th.includeEngineTx(
@@ -300,7 +296,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
           minaPriceProof: lowPriceProof,
         },
       },
-      { printTx, waitForIncluded:[mike.mintedHandle] }
+      { printTx, waitForIncluded: [mike.mintedHandle] }
     );
 
     // Get initial states
@@ -310,7 +306,9 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     });
 
     // Get initial states
-    const mikeBalanceAfter = await th.mina.fetchMinaAccount(mike.keys.publicKey);
+    const mikeBalanceAfter = await th.mina.fetchMinaAccount(
+      mike.keys.publicKey
+    );
     const mikeZkUsdAfter = await th.mina.fetchMinaAccount(mike.keys.publicKey, {
       tokenId: th.token.contract.deriveTokenId(),
     });
