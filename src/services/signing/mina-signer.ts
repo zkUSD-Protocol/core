@@ -9,10 +9,10 @@ export { testnetMinaSigner };
 
 type FeePayer = {
   readonly feePayer: string;
-  readonly fee: bigint;
-  readonly nonce: bigint;
+  readonly fee: string;
+  readonly nonce: string;
   readonly memo?: string;
-  readonly validUntil?: bigint | null;
+  readonly validUntil?: string;
 };
 
 const testnetMinaSigner: Signer<'MinaSigner'> = <P extends boolean>(args: {
@@ -38,11 +38,11 @@ const testnetMinaSigner: Signer<'MinaSigner'> = <P extends boolean>(args: {
 
   const feePayer: FeePayer = {
     feePayer: tx.transaction.feePayer.body.publicKey.toBase58(),
-    fee: fee.toBigInt(),
-    nonce: nonce.toBigint(),
+    fee: fee.toString(),
+    nonce: nonce.toString(),
     memo: tx.transaction.memo,
-    validUntil: tx.transaction.feePayer.body.validUntil?.toBigint() || null,
-  };
+    ...(tx.transaction.feePayer.body.validUntil ? { validUntil: tx.transaction.feePayer.body.validUntil.toString() } : {})
+  }
 
   const minaSignerTx: ZkappCommand = {
     zkappCommand,

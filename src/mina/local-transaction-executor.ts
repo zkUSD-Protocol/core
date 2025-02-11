@@ -20,7 +20,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     return o1jsSigner;
   }
 
-  scheduleTx(
+  executeTransaction(
     tx: PreparedTransaction,
     config: TransactionExecutionConfig,
     _options?: unknown

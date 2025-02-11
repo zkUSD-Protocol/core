@@ -1,14 +1,7 @@
-import {
-  FailedBeforeSending,
-  RejectedOnReceive,
-} from '../../mina/transaction-status';
+import { FailedBeforeSending } from '../../mina/transaction-status';
 
-export { ProvingResult, SendingResult };
+export { ProvingResult };
 
 type ProvingResult =
-  | { success: true; proofs: string[] }
+  | { success: true; serializedTx: string }
   | { success: false; status: FailedBeforeSending };
-
-type SendingResult =
-  | { success: true; hash: string; status: 'Pending' }
-  | { success: false; status: RejectedOnReceive | FailedBeforeSending };

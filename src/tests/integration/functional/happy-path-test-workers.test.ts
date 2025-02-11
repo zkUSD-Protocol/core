@@ -2,7 +2,7 @@ import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { PrivateKey, UInt64 } from 'o1js';
-import { ExternalTransactionExecutor } from '../../../services/external-tx-processing/external-transaction-executor.js';
+import { ExternalProvingTransactionExecutor } from '../../../services/external-tx-processing/external-transaction-executor.js';
 import { LocalTransactionExecutor } from '../../../mina/local-transaction-executor.js';
 import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { ITransactionExecutor } from '../../../mina/transaction-executor.js';
@@ -35,7 +35,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > = {
       local: async () => new LocalTransactionExecutor(),
-      workers: ExternalTransactionExecutor.initializer(
+      workers: ExternalProvingTransactionExecutor.initializer(
         {
           workers: 0, // workers expected to already be running
         },

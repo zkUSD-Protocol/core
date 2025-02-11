@@ -38,7 +38,7 @@ export {
 
 type ProvenTransaction =
   | { isLocal: true; transaction: Transaction<true, any> }
-  | { isLocal: false; proofs: string[] }
+  | { isLocal: false; serializedProvenTransaction: string }
   | { isLocal: false; errors: string[] };
 
 type SentTransaction =
@@ -97,7 +97,7 @@ interface PreparedTransaction {
 }
 
 interface ITransactionExecutor {
-  scheduleTx(
+  executeTransaction(
     preparedTx: PreparedTransaction,
     config: TransactionExecutionConfig,
     options?: unknown

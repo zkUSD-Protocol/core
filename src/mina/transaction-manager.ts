@@ -529,7 +529,7 @@ export class TransactionManager<E extends string> {
     const executorKey = options?.executor ?? this.transactionExecutors.default;
     const txExecutor = this.transactionExecutors[executorKey];
 
-    const lifecycle = await txExecutor.scheduleTx(preparedTx, {
+    const lifecycle = await txExecutor.executeTransaction(preparedTx, {
       o1jsMutex: this._o1jsMutex,
       mina: this.mina,
       startingFee: options?.startingFee ?? defaultOptions.startingFee,

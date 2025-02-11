@@ -9,23 +9,19 @@ import { ChildProcess, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
   ExecutorContext,
-  TxLifecycleTracker,
+  TxProvingTracker,
   compileContracts,
-  executeTransaction,
+  proveTransaction,
 } from './transaction-execution.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { blockchain } from 'zkcloudworker';
 import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
-import { ProvingResult, SendingResult } from './shared-types.js';
-import {
-  FailedBeforeSending,
-  RejectedOnReceive,
-} from '../../mina/transaction-status.js';
+import { ProvingResult } from './shared-types.js';
+import { FailedBeforeSending } from '../../mina/transaction-status.js';
 import { TransactionExecutionJob } from './external-transaction-executor.js';
 import { ExternalProcess } from './external-process.js';
 import fetch from 'node-fetch';
 import { Agent } from 'http'; // Use 'http' for HTTP requests
-
 
 const agent = new Agent({ family: 6 }); // Force IPv6
 
@@ -36,7 +32,7 @@ const __filename = fileURLToPath(import.meta.url);
  * This class is an adapter that spawns a separate Node.js process (this same file)
  * to act as a “transaction executor” worker.
  */
-export class NodeScriptExecutor implements ExternalProcess {
+export class NodeScriptProver implements ExternalProcess {
   private index?: number;
   private process?: ChildProcess;
   private exitCallback?: (code: number | null, signal: string | null) => void;
@@ -151,11 +147,11 @@ if (process.argv[1] === __filename) {
           compilationResults,
         };
 
-        let executionTracker: TxLifecycleTracker = mkExecutionTracker(job.id);
+        let executionTracker: TxProvingTracker = mkExecutionTracker(job.id);
 
         console.log(JSON.stringify(job.payload));
 
-        await executeTransaction(
+        await proveTransaction(
           context,
           JSON.stringify({
             signedData: job.payload.transaction.signedData.data,
@@ -173,28 +169,16 @@ if (process.argv[1] === __filename) {
     }
   }
 
-  function mkExecutionTracker(jobId: string): TxLifecycleTracker {
-    const ret: TxLifecycleTracker = {
+  function mkExecutionTracker(jobId: string): TxProvingTracker {
+    const ret: TxProvingTracker = {
       proving: {
-        resolver: async (proofs: string[]) => {
-          const res: ProvingResult = { success: true, proofs };
+        resolver: async (serializedTx: string) => {
+          const res: ProvingResult = { success: true, serializedTx };
           await postToManager(`/jobs/${jobId}/proved`, res);
         },
         rejector: async (error: { status: FailedBeforeSending }) => {
           const res: ProvingResult = { success: false, status: error.status };
           await postToManager(`/jobs/${jobId}/proved`, res);
-        },
-      },
-      sending: {
-        resolver: async (r: { hash: string; status: 'Pending' }) => {
-          const res: SendingResult = { success: true, ...r };
-          await postToManager(`/jobs/${jobId}/sent`, res);
-        },
-        rejector: async (error: {
-          status: RejectedOnReceive | FailedBeforeSending;
-        }) => {
-          const res: SendingResult = { success: false, ...error };
-          await postToManager(`/jobs/${jobId}/sent`, res);
         },
       },
     };
@@ -203,7 +187,7 @@ if (process.argv[1] === __filename) {
 
   async function postToManager(url: string, body: any) {
     await fetch(`${EPM_BASE_URL}${url}`, {
-	    agent,
+      agent,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -211,7 +195,7 @@ if (process.argv[1] === __filename) {
   }
 
   async function fetchNextJob(): Promise<TransactionExecutionJob | null> {
-    const resp = await fetch(`${EPM_BASE_URL}/jobs/next`,{agent});
+    const resp = await fetch(`${EPM_BASE_URL}/jobs/next`, { agent });
     if (resp.status === 204) {
       // no job
       return null;

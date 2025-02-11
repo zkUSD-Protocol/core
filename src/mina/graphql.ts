@@ -1,5 +1,6 @@
 import fetch, { Response } from 'node-fetch';
 import { PublicKey } from 'o1js';
+import { ZkappCommand } from 'o1js/dist/node/mina-signer/src/types.js';
 
 /**
  * Represents errors returned by a GraphQL endpoint.
@@ -59,6 +60,15 @@ async function queryGraphQL<T extends GqlQuery<any, any>>(
   queryCall: GqlQueryCall<GqlData<T>, GqlVars<T>>,
   url: string
 ): Promise<GqlData<T>> {
+  //console.log(
+  //   `DEBUG: Starting GraphQL request for operation: ${queryCall.query.operationName}`
+  // );
+  //console.log("DEBUG: Request payload:", JSON.stringify({
+  //   query: queryCall.query.query,
+  //   operationName: queryCall.query.operationName,
+  //   variables: queryCall.variables,
+  // }, null, 2));
+
   const response: Response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -69,19 +79,32 @@ async function queryGraphQL<T extends GqlQuery<any, any>>(
     }),
   });
 
-  const resp_json = await response.json();
-  console.log(`GraphQL queried for ${queryCall.query.operationName}`);
+  //console.log("DEBUG: HTTP response status:", response.status);
+  // Log response headers (useful for debugging gateway errors)
+  //console.log("DEBUG: HTTP response headers:", JSON.stringify(response.headers.raw(), null, 2));
 
-  const json = resp_json as GraphQLResponse<GqlData<T>>;
+  // Read and log the raw response text so we can see HTML error pages if any.
+  const responseText = await response.text();
+  //console.log("DEBUG: Raw response text:", responseText);
+
+  let json: GraphQLResponse<GqlData<T>>;
+  try {
+    json = JSON.parse(responseText);
+  } catch (err) {
+    console.error("DEBUG: Failed to parse JSON response:", err);
+    throw new Error(`Invalid JSON response: ${responseText}`);
+  }
 
   if (json.errors && json.errors.length > 0) {
+    console.error("DEBUG: GraphQL errors:", JSON.stringify(json.errors, null, 2));
     throw new Error(JSON.stringify(json.errors, null, 2));
   }
 
+  //console.log("DEBUG: GraphQL response data:", JSON.stringify(json.data, null, 2));
   return json.data!;
 }
 
-// -------------------------------------------------------------------------- */
+// --------------------------------------------------------------------------
 
 /**
  * The shape of data we expect back for "PooledNoncesQuery".
@@ -129,7 +152,7 @@ interface TransactionStatusesQueryResponse {
 /**
  * Constructs a typed query definition for fetching pooled nonces.
  *
- * @param publicKey - The public key to use in the query
+ * @param variables - The public key to use in the query
  */
 function mkPooledNoncesQuery(variables: {
   pubkey: PublicKey;
@@ -162,9 +185,9 @@ query ${operationName}($pubkey: PublicKey) {
 }
 
 /**
- * Constructs a typed query definition for fetching pooled nonces.
+ * Constructs a typed query definition for fetching transaction statuses.
  *
- * @param publicKey - The public key to use in the query
+ * @param variables - The number of blocks to query
  */
 function mkTransactionStatusesQuery(variables: {
   lastBlocks: number;
@@ -189,7 +212,60 @@ function mkTransactionStatusesQuery(variables: {
       }
     `,
   };
-  return { query, variables }; // Pass the actual variables instead of an empty object
+  return { query, variables };
+}
+
+/**
+ * The expected shape of the response from the sendZkapp mutation.
+ */
+interface SendZkAppMutationResponse {
+  sendZkapp: {
+    zkapp: {
+      hash: string;
+      id: string;
+      zkappCommand: {
+        memo: string;
+      };
+    };
+  };
+}
+
+// Use an indexed access type to extract the type for the zkappCommand field.
+type ZkappCommandInput = ZkappCommand["zkappCommand"];
+
+/**
+ * Constructs a typed mutation definition for sending a zkApp.
+ *
+ * @param variables - The variables containing the zkapp command input.
+ */
+function mkSendZkappMutation(
+  variables: { zkappCommandInput: ZkappCommandInput }
+): GqlQueryCall<SendZkAppMutationResponse, { zkappCommandInput: ZkappCommandInput }> {
+  const operationName = 'SendZkAppMutation';
+  const query = {
+    operationName,
+    query: `
+      mutation ${operationName}($zkappCommandInput: ZkappCommandInput!) {
+        sendZkapp(input: {
+          zkappCommand: $zkappCommandInput
+        }) {
+          zkapp {
+            hash
+            id
+            zkappCommand {
+              memo
+            }
+          }
+        }
+      }
+    `,
+  };
+
+  //console.log("DEBUG: Constructed SendZkAppMutation");
+  //console.log("DEBUG: Mutation query string:", query.query);
+  //console.log("DEBUG: Mutation variables:", JSON.stringify(variables, null, 2));
+
+  return { query, variables };
 }
 
 export {
@@ -204,4 +280,7 @@ export {
   mkTransactionStatusesQuery,
   PooledNoncesQueryResponse,
   TransactionStatusesQueryResponse,
+  mkSendZkappMutation,
+  ZkappCommandInput,
+  SendZkAppMutationResponse,
 };

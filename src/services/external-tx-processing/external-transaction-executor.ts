@@ -22,57 +22,25 @@ import { TrackedPromise } from '../../utils/tracked-promise.js';
 import { testnetMinaSigner } from '../signing/mina-signer.js';
 import { ZkappCommand } from 'mina-signer/dist/node/mina-signer/src/types.js';
 import { Signed } from 'o1js/dist/node/mina-signer/src/types.js';
-import { ProvingResult, SendingResult } from './shared-types.js';
+import { ProvingResult } from './shared-types.js';
 import { InMemoryJobStore } from './in-memory-job-store.js';
-import { NodeScriptExecutor } from './node-script-tx-executor.js';
-import { serializeTransaction } from './transaction-serialization.js';
+import { NodeScriptProver } from './node-script-tx-executor.js';
+import {
+  deserializeTransaction,
+  serializeTransaction,
+} from './transaction-serialization.js';
 import { blockchain } from 'zkcloudworker';
-import { ITransactionStatusScanner, TransactionStatusScanner } from '../../mina/transaction-status-scanner.js';
+import {
+  ITransactionStatusScanner,
+  TransactionStatusScanner,
+} from '../../mina/transaction-status-scanner.js';
 import { IMinaNetworkInterface } from '../../mina/mina-network-interface.js';
 
-/* ------------------------------------------------------------------------*/
-/*                            TxLifecycleTracker                           */
-/* ------------------------------------------------------------------------*/
-
-/**
- * Collection of resolvers/rejectors to handle the asynchronous lifecycles of a
- * transaction being proved, then sent, etc.
- */
-type TxLifecycleTracker = {
-  proving: {
-    resolvers: ((proofs: string[]) => void)[];
-    rejectors: ((error: { status: FailedBeforeSending }) => void)[];
-  };
-  sending: {
-    resolvers: ((result: { hash: string; status: 'Pending' }) => void)[];
-    rejectors: ((error: {
-      status: RejectedOnReceive | FailedBeforeSending;
-    }) => void)[];
-  };
-};
-
-/**
- * Creates a fresh TxLifecycleTracker with empty resolvers and rejectors.
- */
-function makeEmptyTxLifecycleTracker(): TxLifecycleTracker {
-  return {
-    proving: {
-      resolvers: [],
-      rejectors: [],
-    },
-    sending: {
-      resolvers: [],
-      rejectors: [],
-    },
-  };
-}
-
 // so that we can easily mock things
-interface TxExecutorInternal {
-  scheduleTxExecution(args: {
-    payload: TxExternalExecutionPayload;
-    lifecycleTracker: TxLifecycleTracker;
-  }): Promise<void>;
+interface ITransactionProver {
+  proveTransaction(
+    input: TxProvingInput
+  ): Promise<{ serializedProvenTransaction: string }>;
 }
 
 /* ----------------------------------------------------------------------------*/
@@ -83,103 +51,131 @@ interface TxExecutorInternal {
  * An implementation of ITransactionExecutor that delegates transaction proving
  * and sending to an external manager via some scheduling mechanism.
  */
-export class ExternalTransactionExecutor implements ITransactionExecutor {
+export class ExternalProvingTransactionExecutor
+  implements ITransactionExecutor
+{
   private constructor(
-    private workerManager: TxExecutorInternal,
-    private _inclusionScanner: ITransactionStatusScanner
+    private readonly prover: ITransactionProver,
+    private readonly inclusionScanner: ITransactionStatusScanner
   ) {}
 
+  /**
+   * Provides an initializer function that can be passed
+   * as a setup step to Mina network instances.
+   */
   public static initializer(
     args:
-      | { executor: TxExecutorInternal }
-      | { workers: NodeScriptExecutor[] | number },
+      | { prover: ITransactionProver }
+      | { workers: NodeScriptProver[] | number },
     stop?: Promise<void>
   ) {
-    return (mina: IMinaNetworkInterface) => {
-      return ExternalTransactionExecutor.start(mina, args,stop);
-    }
+    return (mina: IMinaNetworkInterface) =>
+      ExternalProvingTransactionExecutor.start(mina, args, stop);
   }
 
-  //start
+  /**
+   * Create and start an ExternalTransactionExecutor.
+   */
   public static async start(
     mina: IMinaNetworkInterface,
     args:
-      | { executor: TxExecutorInternal }
-      | { workers: NodeScriptExecutor[] | number },
+      | { prover: ITransactionProver }
+      | { workers: NodeScriptProver[] | number },
     stop?: Promise<void>
-  ): Promise<ExternalTransactionExecutor> {
+  ): Promise<ExternalProvingTransactionExecutor> {
     if (mina.network.chainId === 'local') {
       throw new Error(
         'ExternalTransactionExecutor cannot be used with a local chain.'
       );
     }
-    let e: TxExecutorInternal;
-    // if workers then create new TransactionWorkerManager
-    if ('workers' in args) {
-      e = await TransactionWorkerManager.start(mina.network.chainId, args.workers);
-    } else {
-      e = args.executor;
-    }
+
+    // Determine which worker manager/executor to use
+    const prover =
+      'workers' in args
+        ? await TransactionWorkerManager.start(
+            mina.network.chainId,
+            args.workers
+          )
+        : args.prover;
+
     const scanner = new TransactionStatusScanner(mina);
-    const ret = new ExternalTransactionExecutor(e, scanner);
-    await ret._inclusionScanner.startScanning();
+    const executor = new ExternalProvingTransactionExecutor(
+      prover,
+      scanner
+    );
+
+    await executor.inclusionScanner.startScanning();
+
+    // If a stop signal is provided, stop this executor when resolved
     if (stop) {
-      setTimeout(async () => {
-        await stop;
-        await ret.stop();
-      });
+      stop
+        .then(() => executor.stop())
+        .catch((err) => {
+          console.error(
+            'Error while stopping ExternalTransactionExecutor:',
+            err
+          );
+        });
     }
-    return ret;
+
+    return executor;
   }
 
-  // stop
+  /**
+   * Gracefully stop scanning and shut down the worker manager (if any).
+   */
   public async stop(): Promise<void> {
-    await this._inclusionScanner.stopScanning();
-    //stop the worker manager
-    if (this.workerManager instanceof TransactionWorkerManager) {
-      await this.workerManager.shutdown();
+    await this.inclusionScanner.stopScanning();
+    if (this.prover instanceof TransactionWorkerManager) {
+      await this.prover.shutdown();
     }
   }
 
   /**
-   * Returns the global Mina-signer instance.
+   * Returns the global Mina-signer instance (e.g., for offline signing).
    */
   public get signer() {
     return testnetMinaSigner;
   }
 
+  /**
+   * Await the final chain status of a transaction by its hash.
+   */
   private async awaitTx(
     hash: string,
     timeoutMs: number
   ): Promise<'Included' | RejectedOnInclusion> {
-    return await this._inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
+    return this.inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
   }
 
-  /**
-   * Schedules a transaction for external proving and sending. Returns a
-   * TransactionLifecycle containing promises for each stage:
-   *   1) Proving (provingPromise)
-   *   2) Sending (sendingPromise)
-   *   3) Waiting for chain inclusion (waitingPromise)
-   *
-   * @param tx - A prepared transaction including the transaction body and keys.
-   * @param config - Execution config including fees, logging flags, etc.
-   * @returns A TransactionLifecycle with promises for each phase.
-   */
-  async scheduleTx(
+  public async executeTransaction(
     tx: PreparedTransaction,
-    config: TransactionExecutionConfig,
-    _options?: unknown
+    config: TransactionExecutionConfig
   ): Promise<TransactionLifecycle> {
     if (!tx.args) {
-      throw new Error('Transaction args are required when using the external executor');
+      throw new Error(
+        'Transaction args are required when using the external executor'
+      );
     }
 
-    // Acquire a nonce lock to ensure we have a consistent nonce for this tx
+    // Helpers for standardizing success/error shapes
+    const wrapNoErrors = <T>(value: T & { status?: TransactionStatus }) => ({
+      isLocal: false as const,
+      ...value,
+    });
+
+    const wrapError = (err: {
+      status: RejectedOnReceive | RejectedOnInclusion | FailedBeforeSending;
+    }) => ({
+      isLocal: false as const,
+      errors: err.status.errors,
+    });
+
+    // Acquire a nonce lock to ensure a consistent nonce for this tx
     const nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
 
     try {
-      // We sign and wait for any dependencies in parallel
+      // Sign and await dependencies in parallel
       const [{ signedTx }] = await Promise.all([
         this.signer({
           fee: config.startingFee,
@@ -190,84 +186,120 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         tx.depsAwaitingPromise,
       ]);
 
-      // Create a fresh lifecycle tracker
-      const lifecycleTracker = makeEmptyTxLifecycleTracker();
-
-      // Helper: wrap success results in a consistent shape
-      const wrapNoErrors = <T>(value: T & { status?: TransactionStatus }) => ({
-        isLocal: false as const,
-        ...value,
-      });
-
-      // Helper: wrap error results in a consistent shape
-      const wrapError = (err: {
-        status: RejectedOnReceive | RejectedOnInclusion | FailedBeforeSending
-      }) => ({
-        isLocal: false as const,
-        errors: err.status.errors,
-      });
+      const input = {
+        txId: tx.getId(),
+        transaction: {
+          serializedTx: serializeTransaction(tx.tx),
+          signedData: signedTx,
+        },
+        ...tx.args,
+        }
 
       // ---- Proving Promise ----
-      const provingPromise = new TrackedPromise<ProvenTransaction>(() => {
-        return new Promise<string[]>((resolve, reject) => {
-          lifecycleTracker.proving.resolvers.push(resolve);
-          lifecycleTracker.proving.rejectors.push(reject);
-        })
-          .then((proofs) => {
-            if (config?.printTx) {
-              console.log(`${tx.getId()} - Proved.`);
-            }
-            return wrapNoErrors({ proofs });
-          })
-          .catch(({ status }) => {
-            tx.setStatus(status);
-            if (config?.printTx) {
-              console.log(`${tx.getId()} - Proving failed with status ${JSON.stringify(status, null, 2)}.`);
-            }
-            return wrapError({ status });
-          });
-      }, `Proving tx: ${tx.getId()}`);
+      const provingPromise = new TrackedPromise<ProvenTransaction>(
+        async () =>
+          await this.prover.proveTransaction(input)
+            .then(({ serializedProvenTransaction}) => {
+              if (config?.printTx) {
+                console.log(`${tx.getId()} - Proved.`);
+              }
+              return wrapNoErrors({ serializedProvenTransaction });
+            })
+            .catch(async ({ status }) => {
+              tx.setStatus(status);
+              if (config?.printTx) {
+                console.log(
+                  `${tx.getId()} - Proving failed: ${JSON.stringify(status)}`
+                );
+              }
+              await nonceLock.unlock();
+              return wrapError({ status });
+            }),
+        `Proving tx: ${tx.getId()}`
+      );
 
       // ---- Sending Promise ----
-      const sendingPromise = new TrackedPromise<SentTransaction>(() => {
-        return new Promise<{ hash: string; status: 'Pending' }>(
-          (resolve, reject) => {
-            lifecycleTracker.sending.resolvers.push(resolve);
-            lifecycleTracker.sending.rejectors.push(reject);
+      const sendingPromise = new TrackedPromise<SentTransaction>(async () => {
+        try {
+          const proveResult = await provingPromise;
+
+          if (proveResult.isLocal) {
+            throw new Error('isLocal should be false in external executor');
           }
-        )
-          .then(async ({ hash, status }) => {
+
+          if ('serializedProvenTransaction' in proveResult) {
+            const readyToSendTx = deserializeTransaction(
+              proveResult.serializedProvenTransaction,
+              tx.tx,
+              signedTx.data
+            );
+
+            // Send the transaction
+            const sendResult = await readyToSendTx.safeSend();
+            // unlock the nonce before returning
             await nonceLock.unlock();
-            tx.setStatus(status);
-            if (config?.printTx) {
-              console.log(`${tx.getId()} - Sent. Transaction pending inclusion.`);
+
+            if (sendResult.status === 'rejected') {
+              const status: RejectedOnReceive = {
+                kind: 'RejectedOnReceive',
+                errors: sendResult.errors,
+              };
+              if (config?.printTx) {
+                console.log(
+                  `${tx.getId()} - Send failed: ${JSON.stringify(status)}`
+                );
+              }
+              tx.setStatus(status);
+              return wrapError({ status });
+            } else {
+              if (config?.printTx) {
+                console.log(
+                  `${tx.getId()} - Sent successfully. The tx is pending inclusion.`
+                );
+              }
+              tx.setStatus('Pending');
+              return wrapNoErrors({ hash: sendResult.hash });
             }
-            return wrapNoErrors({ hash });
-          })
-          .catch(async ({ status }) => {
-            await nonceLock.unlock();
-            tx.setStatus(status);
-            if (config?.printTx) {
-              console.log(`${tx.getId()} - Failed on sent. Status: ${JSON.stringify(status, null, 2)}.`);
-            }
+          } else {
+            // Proving failed
+            const status: FailedBeforeSending = {
+              kind: 'FailedBeforeSending',
+              errors: ['Proving failed', ...proveResult.errors],
+            };
             return wrapError({ status });
-          });
+          }
+        } catch (error) {
+          await nonceLock.unlock();
+          const stringError = error instanceof Error ? error.message : '';
+          const status: FailedBeforeSending = {
+            kind: 'FailedBeforeSending',
+            errors: ['Exceptional failure', stringError],
+          };
+          tx.setStatus(status);
+          throw error;
+        }
       }, `Sending tx: ${tx.getId()}`);
 
-      // ---- Waiting Promise (for chain inclusion) ----
+      // ---- Waiting Promise (chain inclusion) ----
       const waitingPromise = new TrackedPromise<AwaitedTransaction>(
         async () => {
           if (config?.printTx) {
             console.log(`${tx.getId()} - Awaiting inclusion ...`);
           }
           const sentTx = await sendingPromise;
+
           if (sentTx.isLocal) {
             throw new Error('isLocal should be false in external executor');
           }
+
           if ('hash' in sentTx) {
-            // success -> await
+            // We have a valid transaction hash; await chain inclusion
             try {
-              const inclusionStatus = await this.awaitTx(sentTx.hash, config.awaitingTimeoutMs);
+              const inclusionStatus = await this.awaitTx(
+                sentTx.hash,
+                config.awaitingTimeoutMs
+              );
+
               if (inclusionStatus === 'Included') {
                 tx.setStatus('Included');
                 return wrapNoErrors({ status: 'Included' });
@@ -275,33 +307,22 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
                 tx.setStatus(inclusionStatus);
                 return wrapNoErrors({ status: inclusionStatus });
               }
-            } catch (error) {
-              tx.setStatus("StuckInMempool");
-              return wrapNoErrors({ status: "StuckInMempool" });
+            } catch {
+              // If we fail to get a final status, assume it's stuck
+              tx.setStatus('StuckInMempool');
+              return wrapNoErrors({ status: 'StuckInMempool' });
             }
           } else if ('errors' in sentTx) {
-            // status should already be set
-            return wrapNoErrors({ status: { kind: 'RejectedOnReceive', errors: sentTx.errors } });
+            // Rejected on sending
+            return wrapNoErrors({
+              status: { kind: 'RejectedOnReceive', errors: sentTx.errors },
+            });
           } else {
-            throw new Error('unknown sentTx shape');
+            throw new Error('Unknown transaction shape after sending.');
           }
         },
         `Waiting tx: ${tx.getId()}`
       );
-
-      // Hand off to the external worker manager
-      await this.workerManager.scheduleTxExecution({
-        lifecycleTracker,
-        payload: {
-          txId: tx.getId(),
-          transaction: {
-            serializedTx: serializeTransaction(tx.tx),
-            signedData: signedTx,
-          },
-          ...tx.args,
-        },
-
-      });
 
       // Return a structure that allows the caller to await each stage
       return {
@@ -315,6 +336,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     }
   }
 }
+
 /* ------------------------------------------------------------------------*/
 /*                       TransactionWorkerManager                          */
 /* ------------------------------------------------------------------------*/
@@ -323,16 +345,29 @@ export type TransactionExecutionJob = {
   id: string;
   typ: string;
   assignmentTimeoutMs?: number;
-  payload: TxExternalExecutionPayload;
+  payload: TxProvingInput;
 };
 
-export type TxExternalExecutionPayload = {
+export type TxProvingInput = {
   txId: string;
   transaction: {
     serializedTx: string;
     signedData: Signed<ZkappCommand>;
-  }
-} & TransactionArgs
+  };
+} & TransactionArgs;
+
+
+/**
+ * Collection of resolvers/rejectors to handle the asynchronous lifecycles of a
+ * transaction being proved, then sent, etc.
+ */
+type TxProvingTracker = {
+  proving: {
+    resolver: (arg:{ serializedProvenTransaction: string }) => void;
+    rejector: (error: { status: FailedBeforeSending }) => void;
+  };
+};
+
 
 /**
  * Manages external worker processes (provers/senders). Responsible for:
@@ -340,13 +375,14 @@ export type TxExternalExecutionPayload = {
  *   2. Tracking job states via `jobStore`.
  *   3. Exposing endpoints for prove/sent callbacks.
  */
-export class TransactionWorkerManager implements TxExecutorInternal {
+export class TransactionWorkerManager implements ITransactionProver {
   private mutex = new Mutex(); // no concurrent job-store access
   private isShuttingDown = false; // when shutting down we dont restart workers
   private app = express();
+
   private server: any; // store the HTTP server instance
   private workers: ExternalProcess[] = [];
-  private jobTrackers: Map<string, TxLifecycleTracker> = new Map();
+  private jobTrackers: Map<string, TxProvingTracker> = new Map();
 
   // after 8 minutes after scheduling.
   private static readonly _jobTimeout: number = 8 * 60 * 1000; // 8 minutes
@@ -361,7 +397,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
     ),
     private port: number = 4646
   ) {
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: '50mb' })); // Adjust the limit as needed
     this.setupRoutes();
   }
 
@@ -378,7 +414,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
     // }
     if (typeof workers === 'number') {
       manager.spawnWorkers(
-        new Array(workers).fill(0).map((_, i) => new NodeScriptExecutor(chain))
+        new Array(workers).fill(0).map((_, i) => new NodeScriptProver(chain))
       );
     } else {
       manager.spawnWorkers(workers);
@@ -396,13 +432,18 @@ export class TransactionWorkerManager implements TxExecutorInternal {
    *
    * @throws If job scheduling fails due to a database error or mutex contention.
    */
-  public async scheduleTxExecution(args: {
-    payload: TxExternalExecutionPayload;
-    signedTx: Signed<ZkappCommand>;
-    lifecycleTracker: TxLifecycleTracker;
-  }): Promise<void> {
-    const { payload, lifecycleTracker } = args;
-    const txId = payload.txId;
+  public async proveTransaction(
+    input: TxProvingInput
+  ): Promise<{ serializedProvenTransaction: string }> {
+    const txId = input.txId;
+
+    let resolver: (arg:{ serializedProvenTransaction: string }) => void;
+    let rejector: (error: { status: FailedBeforeSending }) => void;
+
+    const ret = new Promise<{ serializedProvenTransaction: string }>((res,rej) => {
+      resolver=res;
+      rejector=rej;
+    })
 
     try {
       // Lock access to prevent concurrent job queue modifications
@@ -411,14 +452,15 @@ export class TransactionWorkerManager implements TxExecutorInternal {
         await this.jobStore.addJob({
           id: txId,
           typ: 'transaction',
-          payload,
+          payload: input,
         });
 
         // Register lifecycle tracking for this job
-        this.jobTrackers.set(txId, lifecycleTracker);
+        this.jobTrackers.set(txId, {proving:{resolver,rejector}});
       });
 
       console.debug(`Scheduled transaction job ${txId} successfully.`);
+      return ret;
     } catch (err) {
       console.error(`Failed to schedule tx execution for job ${txId}:`, err);
       throw err; // Propagate the error to ensure proper handling upstream
@@ -497,8 +539,7 @@ export class TransactionWorkerManager implements TxExecutorInternal {
         worker.spawn(epmUrl, index);
       }
     });
-  }
-
+  };
   /* ----------------------------------------------------------------------------*/
   /*                            HTTP ROUTE HANDLERS                              */
   /* ----------------------------------------------------------------------------*/
@@ -551,25 +592,25 @@ export class TransactionWorkerManager implements TxExecutorInternal {
       try {
         const tracker = this.jobTrackers.get(jobId);
         if (!tracker) {
-          throw new Error(
-            `Invalid transaction job state: no lifecycle tracker found for jobId=${jobId}`
+          console.warn(
+            'Job missing or already completed: No lifecycle tracker found for jobId=',
+            jobId
           );
-        }
-
-        // If success, resolve all 'proving' promises. Otherwise, reject them.
-        if (provingResult.success) {
-          const proofs = provingResult.proofs;
-          tracker.proving.resolvers.forEach((resolve) => resolve(proofs));
-        } else {
-          await this.mutex.runExclusive(async () => {
-            await this.jobStore.markJobAsCompleted(jobId, provingResult);
+          return res.status(200).json({
+            status: 'ok',
+            message: 'Job already completed or missing.',
           });
+        }
+        this.jobTrackers.delete(jobId);
 
+        await this.mutex.runExclusive(async () => {
+          await this.jobStore.markJobAsCompleted(jobId, provingResult);
+        });
+        if (provingResult.success) {
+            tracker.proving.resolver({ serializedProvenTransaction: provingResult.serializedTx});
+        } else {
           const failure = provingResult as { status: FailedBeforeSending };
-          tracker.proving.rejectors.forEach((reject) =>
-            reject({ status: failure.status })
-          );
-          this.jobTrackers.delete(jobId);
+          tracker.proving.rejector({status: failure.status})
         }
         return res.json({ status: 'ok' });
       } catch (err) {
@@ -579,57 +620,5 @@ export class TransactionWorkerManager implements TxExecutorInternal {
       }
     });
 
-    /**
-     * 3) POST /jobs/:id/sent
-     *    - External worker notifies that a job has been sent (or has failed).
-     */
-    this.app.post('/jobs/:id/sent', async (req: Request, res: Response) => {
-      const jobId = req.params.id;
-      let sendingResult: SendingResult;
-
-      try {
-        // NOTE: If you want more robust validation, implement similarly to parseProvingResult.
-        sendingResult = req.body as SendingResult;
-      } catch (err) {
-        console.error(err);
-        res.status(400).json({ error: 'Could not parse sending result.' });
-        throw err;
-      }
-
-      try {
-        const tracker = this.jobTrackers.get(jobId);
-        if (!tracker) {
-          throw new Error(
-            `Invalid transaction job state: no lifecycle tracker found for jobId=${jobId}`
-          );
-        }
-
-        if (sendingResult.success) {
-          const success = sendingResult as { hash: string; status: 'Pending' };
-          console.log(`Transaction ${jobId} sent successfully. Hash: ${success.hash}`);
-          tracker.sending.resolvers.forEach((resolve) =>
-            resolve({ hash: success.hash, status: 'Pending' })
-          );
-        } else {
-          const failure = sendingResult as {
-            status: RejectedOnReceive | FailedBeforeSending;
-          };
-          tracker.sending.rejectors.forEach((reject) =>
-            reject({ status: failure.status })
-          );
-        }
-
-        await this.mutex.runExclusive(async () => {
-          await this.jobStore.markJobAsCompleted(jobId, sendingResult);
-          this.jobTrackers.delete(jobId);
-        });
-
-        return res.json({ status: 'ok' });
-      } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: `Server error handling send result.` });
-        throw err;
-      }
-    });
   }
 }

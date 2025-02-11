@@ -32,6 +32,7 @@ import { ZkUsdEngineContract } from '../../contracts/zkusd-engine.js';
 import {
   deserializeTransaction,
   getTransactionParams,
+  serializeTransaction,
 } from './transaction-serialization.js';
 import { FungibleTokenContract, fetchMinaAccount } from '@minatokens/token';
 import {
@@ -45,21 +46,28 @@ export {
   CompilationConfig,
   CompilationResults,
   ExecutorContext,
-  TxLifecycleTracker,
+  TxProvingTracker,
   compileContracts,
   compilationConfigIsEqual,
   executeTransaction,
   proveAndSendTx,
   recreateTransaction,
   zkUsdTransaction,
+  proveTransaction,
 };
 
 type ZkUsdEngineType = ReturnType<typeof ZkUsdEngineContract>;
 type FungibleTokenType = ReturnType<typeof FungibleTokenContract>;
 
+type TxProvingTracker = {
+  proving: {
+    resolver: (serializedTx: string) => void;
+    rejector: (error: { status: FailedBeforeSending }) => void;
+  };
+};
 type TxLifecycleTracker = {
   proving: {
-    resolver: (proofs: string[]) => void;
+    resolver: (proofs: (string | null)[]) => void;
     rejector: (error: { status: FailedBeforeSending }) => void;
   };
   sending: {
@@ -259,13 +267,10 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
     { sender, fee, nonce, memo },
     async () => {
       if (config.requiresNewAccounts) {
-        if(!("newAccounts" in txArgs)) {
+        if (!('newAccounts' in txArgs)) {
           throw new Error('New accounts are required');
         }
-        AccountUpdate.fundNewAccount(
-          sender,
-          txArgs.newAccounts
-        );
+        AccountUpdate.fundNewAccount(sender, txArgs.newAccounts);
       }
       // Build the user-defined transaction instructions
       await config.buildTx(txArgs, minaPriceInput);
@@ -277,21 +282,21 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
 
 type ExecutedTx_ =
   | {
-    unprovenTx: Transaction<false, false>;
-    txStatus: FailedBeforeSending;
-  }
+      unprovenTx: Transaction<false, false>;
+      txStatus: FailedBeforeSending;
+    }
   | {
-    provenTx: Transaction<true, false>;
-    txStatus: FailedBeforeSending;
-  }
+      provenTx: Transaction<true, false>;
+      txStatus: FailedBeforeSending;
+    }
   | {
-    rejectedTx: RejectedTransaction;
-    txStatus: RejectedOnReceive;
-  }
+      rejectedTx: RejectedTransaction;
+      txStatus: RejectedOnReceive;
+    }
   | {
-    pendingTx: PendingTransaction;
-    txStatus: 'Pending';
-  };
+      pendingTx: PendingTransaction;
+      txStatus: 'Pending';
+    };
 
 export type ExecutedTx = ExecutedTx_ & { txId: string };
 
@@ -327,7 +332,7 @@ async function proveAndSendTx(
   }
   // proving was successful
   executionTracker?.proving?.resolver(
-    provenTx.proofs.map((p) => JSON.stringify(p?.toJSON()))
+    provenTx.proofs.map((p) => (p ? JSON.stringify(p.toJSON()) : null))
   );
 
   let sentTx;
@@ -449,8 +454,81 @@ async function executeTransaction(
   );
 }
 
+async function proveTransaction(
+  context: ExecutorContext,
+  transaction: string,
+  executionTracker: TxProvingTracker
+): Promise<void> {
+  console.log('Executing transaction');
 
-export function buildArgs(task: VaultTransactionType, argsJson: string): TransactionArgs {
+  // Identify the transaction config
+  const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
+  if (!context.compilationResults.transactionConfigs) {
+    // if proving rejector is defined then reject
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        'unknown',
+        'proving',
+        `Worker ${context.workerId} - transactionConfigs not initialized`
+      ),
+    });
+    throw new Error('transactionConfigs not initialized');
+  }
+
+  const config = context.compilationResults.transactionConfigs[
+    task
+  ] as TransactionConfig<typeof task>;
+  if (!config) {
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        'unknown',
+        'proving',
+        `Worker ${context.workerId} - invalid  task parameter`
+      ),
+    });
+    throw new Error(`Unknown task: ${task}`);
+  }
+
+  // Parse arguments from context.args
+  const vaultArgs = context.args.args;
+
+  // Recreate the transaction
+  let tx;
+  try {
+    tx = await recreateTransaction({
+      tx: transaction,
+      txArgs: vaultArgs,
+      chain: context.chain,
+      config: config,
+      oracleAggregationVk: context.compilationResults.oracleAggregationVk,
+      engineInstance: context.compilationResults.engineInstance,
+      engineKey: context.keys.engine.publicKey,
+    });
+  } catch (err) {
+    // if proving rejector is defined then reject
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        'unknown',
+        'proving',
+        `Worker ${context.workerId} - error recreating transaction: ${err}`
+      ),
+    });
+    throw new Error(`Error recreating transaction: ${err}`);
+  }
+
+  // prove and send
+  return proveTx(
+    vaultArgs.transactionId,
+    context.workerId,
+    tx,
+    executionTracker
+  );
+}
+
+export function buildArgs(
+  task: VaultTransactionType,
+  argsJson: string
+): TransactionArgs {
   // Parse the JSON into a plain object.
   const parsed = JSON.parse(argsJson);
 
@@ -496,37 +574,65 @@ export function buildArgs(task: VaultTransactionType, argsJson: string): Transac
   }
 }
 
-export type MinaPriceInputArgs<T> = T extends VaultTransactionType ? MinaPriceInput : undefined;
+export type MinaPriceInputArgs<T> = T extends VaultTransactionType
+  ? MinaPriceInput
+  : undefined;
 
-const zkUsdTransaction = async <T extends VaultTransactionType>(
-  args: {
-    kind: T,
-    sender:  PublicKey,
-    txArgs: VaultTransactionArgs[T],
-    engine: InstanceType<ZkUsdEngineType>,
-    accountsUpToDate: boolean, // just to inform the function user
-    minaPriceInput: MinaPriceInput | undefined,
-  }
-) => {
-  const { kind, txArgs, engine, accountsUpToDate, sender, minaPriceInput} = args;
-  if(!accountsUpToDate) {
+const zkUsdTransaction = async <T extends VaultTransactionType>(args: {
+  kind: T;
+  sender: PublicKey;
+  txArgs: VaultTransactionArgs[T];
+  engine: InstanceType<ZkUsdEngineType>;
+  accountsUpToDate: boolean; // just to inform the function user
+  minaPriceInput: MinaPriceInput | undefined;
+}) => {
+  const { kind, txArgs, engine, accountsUpToDate, sender, minaPriceInput } =
+    args;
+  if (!accountsUpToDate) {
     throw new Error('Accounts are not up to date');
   }
 
   const callback = async () => {
-      const config=mkVaultTransactionConfigs(engine)[kind];
-      if (config.requiresNewAccounts) {
-        if(!("newAccounts" in txArgs)) {
-          throw new Error('New accounts are required');
-        }
-        AccountUpdate.fundNewAccount(
-          sender,
-          (txArgs as CreateVaultArgs).newAccounts
-        );
+    const config = mkVaultTransactionConfigs(engine)[kind];
+    if (config.requiresNewAccounts) {
+      if (!('newAccounts' in txArgs)) {
+        throw new Error('New accounts are required');
       }
-      // Build the user-defined transaction instructions
-      await config.buildTx(txArgs, minaPriceInput);
+      AccountUpdate.fundNewAccount(
+        sender,
+        (txArgs as CreateVaultArgs).newAccounts
+      );
     }
+    // Build the user-defined transaction instructions
+    await config.buildTx(txArgs, minaPriceInput);
+  };
 
-  return {callback};
+  return { callback };
+};
+
+async function proveTx(
+  txId: string,
+  workerId: string,
+  tx: Transaction<false, false>,
+  executionTracker: TxProvingTracker
+): Promise<void> {
+  let provenTx;
+  try {
+    console.log(`${txId} - Proving ...`);
+    console.time(`${txId} - Proved.`);
+    provenTx = await tx.prove();
+    console.timeEnd(`${txId} - Proved.`);
+  } catch (err: unknown) {
+    executionTracker?.proving?.rejector({
+      status: mkStatusFailedBeforeSending(
+        txId,
+        `{proving the tx by worker: ${workerId}}`,
+        err
+      ),
+    });
+    return;
+  }
+  // proving was successful
+  executionTracker?.proving?.resolver(serializeTransaction(provenTx));
+  return;
 }
