@@ -13,6 +13,7 @@ import { MinaNetworkInterface } from '../../mina/mina-network-interface.js';
 import { VaultTransactionType } from '../../types/cloud-worker.js';
 import { TransactionStatus } from '../../mina/transaction-status.js';
 import { Mutex } from '../../utils/mutex.js';
+import { connect } from '@nats-io/transport-node';
 
 /**
  * transaction proving and sending with zkCloudWorker
@@ -84,6 +85,11 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
   }
 
   public async execute(transactions: string[]): Promise<string | undefined> {
+    const task = this.cloud.task as VaultTransactionType;
+    if (!this.cloud.args) {
+      throw new Error('No args provided');
+    }
+
     if (transactions.length === 0) {
       throw new Error('No transactions provided');
     }
@@ -94,10 +100,6 @@ export class ZkUsdCloudWorker extends zkCloudWorker {
     const compilationResults = await this.compileContracts();
     const chain = await this.getNetworkInterface();
 
-    const task = this.cloud.task as VaultTransactionType;
-    if (!this.cloud.args) {
-      throw new Error('No args provided');
-    }
     // Build the context
     const context: ExecutorContext = {
       workerId: `ZkUsdCloudWorker(cloud_id: ${this.cloud.id}, job_id: ${this.cloud.jobId})`,

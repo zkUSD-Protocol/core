@@ -3,6 +3,8 @@ import { TransactionManager } from '../../mina/transaction-manager.js';
 import { DeploymentService } from '../../services/deployment.js';
 import { AccountUpdate, PublicKey } from 'o1js';
 import { LocalTransactionExecutor } from '../../mina/transaction-executor.js';
+import { OracleWhitelist } from '../../types/oracle.js';
+import { getNetworkKeys } from '../../config/keys.js';
 
 const RECEIVER_PUBLIC_KEY =
   'B62qmbTQ56amhVUBTH3umviEEnnQhTbKf5EkpyXb62Rzho3T3A1dPYx';
@@ -13,7 +15,45 @@ async function main() {
   const executor = new LocalTransactionExecutor();
   const txMgr = TransactionManager.new(MinaChain, executor);
   const deploymentService = await DeploymentService.create(txMgr);
-  await deploymentService.deploy();
+
+  const keys = getNetworkKeys('lightnet');
+
+  const contracts = await deploymentService.deploy();
+
+  const whitelist = new OracleWhitelist({
+    addresses: [],
+  });
+
+  //Update the oracle whitelist
+  for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
+    whitelist.addresses[i] = keys.oracles![i].publicKey;
+  }
+
+  const oracleWhitelistHash = OracleWhitelist.hash(whitelist);
+
+  const engineOracleWhitelistHash =
+    await contracts.engine.contract.oracleWhitelistHash.fetch();
+
+  if (
+    !!engineOracleWhitelistHash &&
+    engineOracleWhitelistHash.toBigInt() == oracleWhitelistHash.toBigInt()
+  ) {
+    console.log('Oracle whitelist already set');
+  } else {
+    console.log('Updating oracle whitelist');
+
+    const txHandle = await txMgr.tx(
+      deploymentService.deployer,
+      async () => {
+        await contracts.engine.contract.updateOracleWhitelist(whitelist);
+      },
+      {
+        name: 'Updating oracle whitelist',
+        extraSigners: [keys.protocolAdmin.privateKey],
+      }
+    );
+    await txHandle.awaitIncluded();
+  }
 
   const receiverAccount = await txMgr.mina.fetchMinaAccount(
     RECEIVER_PUBLIC_KEY

@@ -161,3 +161,25 @@ export function mkStatusFailedBeforeSending(
   const err = `${txId} - error during ${phase}: ${errorMessage}`;
   return { kind: 'FailedBeforeSending', errors: [err] };
 }
+
+/**
+ * Represents the user-facing status of a transaction throughout its lifecycle,
+ * including preparation, proving, and network stages.
+ */
+export enum TxLifecycleStatus {
+  // Preparation phases
+  SIGNING = 'SIGNING', // User is signing the transaction
+  PREPARING = 'PREPARING', // Initial transaction preparation
+  COMPILING = 'COMPILING', // Smart contract compilation
+  PROVING = 'PROVING', // Zero-knowledge proof generation
+
+  // Network phases
+  SCHEDULED = 'SCHEDULED', // Transaction is scheduled to be sent
+  PENDING = 'PENDING', // Transaction is in mempool
+  AWAITING_INCLUSION = 'AWAITING_INCLUSION', // Waiting for block inclusion
+
+  // Final states
+  SUCCESS = 'SUCCESS', // Transaction included in a block
+  FAILED = 'FAILED', // Transaction failed (various reasons)
+  CANCELLED = 'CANCELLED', // Transaction was cancelled
+}

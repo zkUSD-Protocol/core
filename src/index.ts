@@ -13,7 +13,7 @@ import {
   AggregateOraclePricesProof,
 } from './proofs/oracle-price-aggregation/index.js';
 import { Vault } from './types/vault.js';
-import { getNetworkKeys } from './config/keys.js';
+import { getNetworkKeys, NetworkKeyPairs } from './config/keys.js';
 import {
   VaultTransactionArgs,
   VaultTransactionType,
@@ -32,6 +32,22 @@ import {
   RedeemCollateralEvent,
   VaultOwnerUpdatedEvent,
 } from './events.js';
+import {
+  CompilationConfig,
+  CompilationResults,
+  ExecutedTx,
+  ExecutorContext,
+  compilationConfigIsEqual,
+  compileContracts,
+  executeTransaction,
+} from './services/external-tx-processing/transaction-execution.js';
+import { MinaNetworkInterface } from './mina/mina-network-interface.js';
+import { blockchain } from 'zkcloudworker';
+import { Mutex } from './utils/mutex.js';
+import {
+  TransactionStatus,
+  TxLifecycleStatus,
+} from './mina/transaction-status.js';
 
 export async function zkcloudworker(cloud: Cloud): Promise<zkCloudWorker> {
   console.log(`starting worker example version on chain ${cloud.chain}`);
@@ -57,9 +73,12 @@ export {
   OracleWhitelist,
   MinaPriceInput,
   getNetworkKeys,
+  NetworkKeyPairs,
   VaultTransactionType,
   VaultTransactionArgs,
   Vault,
+  MinaNetworkInterface,
+  blockchain,
 };
 
 //export events
@@ -75,4 +94,18 @@ export {
   ValidPriceBlockCountUpdatedEvent,
   AdminUpdatedEvent,
   OracleWhitelistUpdatedEvent,
+};
+
+//export transaction services
+export {
+  TransactionStatus,
+  TxLifecycleStatus,
+  CompilationConfig,
+  CompilationResults,
+  ExecutedTx,
+  ExecutorContext,
+  compilationConfigIsEqual,
+  compileContracts,
+  executeTransaction,
+  Mutex,
 };

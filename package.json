@@ -1,6 +1,7 @@
 {
   "name": "zkusd",
   "version": "0.3.0",
+  "packageManager": "npm@10.4.0",
   "description": "",
   "author": "zkusd",
   "license": "Apache-2.0",
@@ -46,6 +47,7 @@
   },
   "dependencies": {
     "@minatokens/token": "^0.5.5",
+    "@nats-io/transport-node": "^3.0.0-35",
     "mina-signer": "^3.0.7",
     "node-fetch": "2.6.1",
     "o1js": "2.2.0",
