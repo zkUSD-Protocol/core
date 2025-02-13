@@ -1,17 +1,17 @@
-import { MinaPriceInput, verifyMinaPriceInput } from './verify.js';
+import { MinaPriceInput, verifyMinaPriceInput } from './verify';
 import {
   ValidSubmission,
   ValidSubmissions,
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput,
-} from './common.js';
+} from './common';
 import {
   AggregateOraclePrices,
   AggregateOraclePricesProof,
   PriceAggregationProofPrivateInput,
   PriceSubmission,
   OraclePriceSubmissions,
-} from './prove.js';
+} from './prove';
 
 export {
   AggregateOraclePricesProof,

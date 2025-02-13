@@ -6,8 +6,8 @@ import {
   GqlVars,
   PooledNoncesQueryResponse,
   mkPooledNoncesQuery,
-} from './graphql.js';
-import { Mutex } from '../utils/mutex.js';
+} from './graphql';
+import { Mutex } from '../utils/mutex';
 
 /**
  * Represents a lock acquired for a nonce, containing the nonce value and
@@ -154,7 +154,7 @@ export class NonceManager implements INonceManager {
   private _mutex = new Mutex();
   private _cleanupIntervalMs: number;
   private _lockSetTimeoutMs: number;
-  private _cleanupInterval: NodeJS.Timeout | null = null;
+  private _cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Creates a new instance of the NonceManager.

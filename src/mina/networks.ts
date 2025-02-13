@@ -1,5 +1,8 @@
-import { blockchain } from 'zkcloudworker';
+import { blockchain } from '../types/utility';
 
+export type { MinaNetwork, blockchain };
+
+export { networks, Local, Lightnet, validPriceBlockCount };
 interface MinaNetwork {
   mina: string[];
   archive: string[];
@@ -10,7 +13,7 @@ interface MinaNetwork {
   explorerTransactionUrl?: string;
 }
 
-export const validPriceBlockCount: Record<blockchain, number> = {
+const validPriceBlockCount: Record<blockchain, number> = {
   local: 1,
   lightnet: 10,
   devnet: 30, // TODO isn't it too high?
@@ -33,5 +36,3 @@ const Lightnet: MinaNetwork = {
 };
 
 const networks: MinaNetwork[] = [Local, Lightnet];
-
-export { networks, MinaNetwork, blockchain, Local, Lightnet };

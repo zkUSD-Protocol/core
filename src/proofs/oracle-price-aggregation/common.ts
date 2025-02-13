@@ -1,5 +1,5 @@
-import { Field, Provable, Struct, UInt32, PublicKey, Bool, UInt64 } from 'o1js';
-import { MinaPrice, OracleWhitelist } from '../../types/oracle.js';
+import { Field, Provable, Struct, UInt32, PublicKey, Bool } from 'o1js';
+import { MinaPrice, OracleWhitelist } from '../../system/oracle';
 
 /**
  * @notice Input data structure for price aggregation proof

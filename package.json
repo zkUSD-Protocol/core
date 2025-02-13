@@ -1,59 +1,50 @@
 {
-  "name": "zkusd",
-  "version": "0.3.0",
-  "description": "",
-  "author": "zkusd",
-  "license": "Apache-2.0",
-  "keywords": [
-    "mina-zkapp",
-    "mina-zk-app",
-    "mina-dapp",
-    "zkapp"
-  ],
+  "name": "test-core",
+  "version": "0.1.0",
+  "description": "A TypeScript library for Node and Web (with a CLI).",
   "type": "module",
-  "main": "build/src/index.js",
-  "types": "build/src/index.d.ts",
+  "license": "MIT",
   "scripts": {
-    "build": "tsc",
-    "buildw": "tsc --watch",
-    "coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
-    "format": "prettier --write --ignore-unknown **/*",
-    "test": "npm run build && NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test",
-    "test:unit": "npm run build && NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test build/src/tests/unit/**/*.test.js",
-    "test:integration:lightnet:functional:happy": "npm run build &&  NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test build/src/tests/integration/functional/happy-path.test.js",
-    "test:integration:lightnet:functional:sad": "npm run build &&  NODE_NO_WARNINGS=1 node --loader=ts-node/esm --enable-source-maps --test build/src/tests/integration/functional/sad-path.test.j",
-    "testw": "npm run build && node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "lint": "npx eslint src/* --fix"
+    "build": "rm -rf dist && tsup && node scripts/build-package-json.js",
+    "test": "jest",
+    "lint": "prettier --check .",
+    "format": "prettier --write .",
+    "release": "changeset version && changeset publish"
+  },
+  "bin": {
+    "zkusd-cli": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "node": "./dist/node/index.node.js",
+      "browser": "./dist/web/index.web.js",
+      "default": "./dist/node/index.node.js"
+    }
   },
   "devDependencies": {
-    "@babel/preset-env": "^7.16.4",
-    "@babel/preset-typescript": "^7.16.0",
-    "@types/jest": "^29.5.12",
-    "@types/node-fetch": "^2.6.12",
-    "@typescript-eslint/eslint-plugin": "^5.5.0",
-    "@typescript-eslint/parser": "^5.5.0",
-    "dotenv": "^16.4.5",
-    "eslint": "^8.7.0",
-    "eslint-plugin-o1js": "^0.4.0",
+    "@changesets/cli": "^2.27.12",
+    "@types/express": "4.17.21",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.1",
+    "commander": "^13.1.0",
     "jest": "^29.7.0",
-    "prettier": "^2.3.2",
-    "ts-jest": "^29.2.4",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "prettier": "^3.5.0",
+    "ts-jest": "^29.2.5",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "@types/bun": "latest"
   },
-  "engines": {
-    "node": ">=18.14.0"
+  "peerDependencies": {
+    "express": "^4.21.2",
+    "@minatokens/storage": "^0.16.16",
+    "o1js": "^2.2.0"
   },
   "dependencies": {
-    "@minatokens/token": "^0.5.5",
-    "@types/express": "4.17.21",
-    "@types/uuid": "^10.0.0",
-    "express": "^4.21.2",
+    "@minatokens/storage": "^0.16.16",
+    "@minatokens/token": "^0.16.16",
     "mina-signer": "^3.0.7",
-    "node-fetch": "2.6.1",
-    "o1js": "2.2.0",
-    "redis": "^4.7.0",
-    "uuid": "^11.0.5",
-    "zkcloudworker": "^0.23.11"
-  }
+    "ts-node": "^10.9.2",
+    "zkcloudworker": "^0.24.3"
+  },
+  "module": "index.ts"
 }
