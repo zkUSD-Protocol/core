@@ -76,7 +76,7 @@ export const defaultOptions: DefaultTransactionOptions = {
  * and any additional configuration options or dependencies.
  */
 export type TransactionRequest = {
-  name?: string;
+  name: string;
   /**
    * TODO: future: avoid passing the private key
    */
@@ -209,12 +209,6 @@ export class TransactionInternal {
   public getId(): string {
     if (this.request?.name) {
       return this.request.name;
-    }
-    if (this.request) {
-      if (this.request.args?.args.transactionId) {
-        return this.request.args.args.transactionId;
-      }
-      return `UnnamedTx@${new Date().getTime().toString()}`;
     }
     throw new Error('TODO - implement getId() for non-request transactions');
   }
@@ -399,9 +393,21 @@ export class TransactionManager<E extends string> {
     },
     args?: TransactionArgs
   ): Promise<TransactionHandle> {
-    const { name, waitForIncluded } = options ?? {};
+    const { waitForIncluded } = options ?? {};
+    let name = options?.name;
 
-    //===
+    if(!name){
+      let i = 1;
+      while (true) {
+        if (this.transactions.has(`tx${i}`)) {
+          i = i + 1;
+        } else {
+          name = `tx${i}`;
+          break;
+        }
+      }
+    }
+
     // prepare and verify transaction request as scheduled by function user
     const request: TransactionRequest = {
       name,
@@ -414,10 +420,9 @@ export class TransactionManager<E extends string> {
 
     // dependencies must be met
     const deps: TransactionInternal[] = [];
-    for (const depId of request.waitForIncluded) {
-      const dep = this.transactions.get(
-        typeof depId === 'string' ? depId : depId.txId
-      );
+    for (const mDepId of request.waitForIncluded) {
+      const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId
+      const dep = this.transactions.get(depId);
       if (!dep) {
         throw new Error(`Transaction ${depId} does not exist`);
       }

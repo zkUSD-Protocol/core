@@ -43,6 +43,8 @@ describe('Local tests of TransactionManager', async () => {
       },
       { name: 'alice_to_bob' }
     );
+    // wait 100ms
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const tx2Handle = await txMgr.tx(
       alice.keys,
@@ -64,6 +66,9 @@ describe('Local tests of TransactionManager', async () => {
 
     assert(tx2Handle.txStatus === 'Included');
     assert(txHandle.txStatus === 'Included');
+
+    await txHandle.awaitIncluded();
+    console.log('im fine')
   });
 
   it('tx with dependencies will fail if a dep failed', async () => {
@@ -99,11 +104,13 @@ describe('Local tests of TransactionManager', async () => {
       until: (status) => statusIsFinal(status),
     });
 
+
     assert(statusIsRejected(txHandle.txStatus));
     assert(statusIsFailed(tx2Handle.txStatus));
     assert(
       statusIsOfKind(tx2Handle.txStatus, 'DependencyRejectedFailedOrDropped')
     );
+
   });
 
   it('execute multiple txs from different accounts simultanously', async () => {
