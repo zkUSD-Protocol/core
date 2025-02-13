@@ -74,7 +74,9 @@ function mkHandleRequest(
   async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (req.method !== 'POST') {
       res.writeHead(405, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST instead.' }));
+      res.end(
+        JSON.stringify({ error: 'Method Not Allowed. Use POST instead.' })
+      );
       return;
     }
 
@@ -118,7 +120,9 @@ function mkHandleRequest(
         console.error('Error in /proveTransaction:', error);
         const message = error instanceof Error ? error.message : String(error);
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: `Transaction proving failed: ${message}` }));
+        res.end(
+          JSON.stringify({ error: `Transaction proving failed: ${message}` })
+        );
       }
     });
   }
@@ -145,7 +149,9 @@ if (process.argv[1] === __filename) {
       `Starting zkusd transaction proving server on port ${PORT} for chain ${CHAIN}...`
     );
 
-    const chainInterface = await MinaNetworkInterface.initChain(CHAIN as blockchain);
+    const chainInterface = await MinaNetworkInterface.initChain(
+      CHAIN as blockchain
+    );
     console.log('Compiling contracts');
 
     const keys = getNetworkKeys(CHAIN as blockchain);

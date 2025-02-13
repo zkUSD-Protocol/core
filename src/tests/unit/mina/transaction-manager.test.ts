@@ -2,7 +2,12 @@ import { TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { AccountUpdate, PrivateKey } from 'o1js';
-import { statusIsFailed, statusIsFinal, statusIsOfKind, statusIsRejected } from '../../../transaction/status.js';
+import {
+  statusIsFailed,
+  statusIsFinal,
+  statusIsOfKind,
+  statusIsRejected,
+} from '../../../transaction/status.js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 
 describe('Local tests of TransactionManager', async () => {
@@ -68,7 +73,7 @@ describe('Local tests of TransactionManager', async () => {
     assert(txHandle.txStatus === 'Included');
 
     await txHandle.awaitIncluded();
-    console.log('im fine')
+    console.log('im fine');
   });
 
   it('tx with dependencies will fail if a dep failed', async () => {
@@ -104,13 +109,11 @@ describe('Local tests of TransactionManager', async () => {
       until: (status) => statusIsFinal(status),
     });
 
-
     assert(statusIsRejected(txHandle.txStatus));
     assert(statusIsFailed(tx2Handle.txStatus));
     assert(
       statusIsOfKind(tx2Handle.txStatus, 'DependencyRejectedFailedOrDropped')
     );
-
   });
 
   it('execute multiple txs from different accounts simultanously', async () => {

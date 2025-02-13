@@ -1,9 +1,7 @@
 import { getNetworkKeys } from '../../config/keys.js';
 import { compileContracts } from '../../transaction/execution.js';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
-import {
-  startProvingLoop,
-} from '../httpserverprover-worker-shared.js';
+import { startProvingLoop } from '../httpserverprover-worker-shared.js';
 import { blockchain } from '../../types/utility.js';
 
 /**
@@ -40,9 +38,7 @@ async function main(epmBaseUrl: string, chain: blockchain) {
   console.log(`Starting Node worker ${workerId}`);
   console.log(`Initializing chain interface: ${chain}`);
 
-  const chainInterface = await MinaNetworkInterface.initChain(
-    chain
-  );
+  const chainInterface = await MinaNetworkInterface.initChain(chain);
 
   console.log('Compiling contracts for the transaction execution worker');
   const keys = getNetworkKeys(chain);

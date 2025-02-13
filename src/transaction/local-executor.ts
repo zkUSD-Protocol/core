@@ -8,6 +8,7 @@ import {
 } from './executor.js';
 import {
   TransactionStatus,
+  TxLifecycleStatus,
   mkStatusFailedBeforeSending,
   statusIsRejectedTransaction,
 } from './status.js';
@@ -40,14 +41,14 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       let builtTx;
       try {
         builtTx = await tx.buildTx;
-      }
-      catch (error) {
+      } catch (error) {
         throw failed_before_sending('Awaiting deps and building tx', error);
       }
       try {
         if (config?.printTx) {
           console.log(`${tx.getId()} - Proving transaction ...`);
         }
+        tx.setStatuses('unchanged' as const, TxLifecycleStatus.PROVING);
         return mkState(
           await transactionProve(builtTx, config.mina, config.o1jsMutex)
         );
@@ -65,12 +66,14 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
         let nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
         // send the transaction
         try {
+          tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
           const { signedTx } = await self.signer({
             keys: tx.keys,
             nonce: nonceLock.nonce,
             fee,
             tx: transaction,
           });
+          tx.setStatuses('unchanged' as const, TxLifecycleStatus.SCHEDULED);
 
           if (config?.printTx) {
             console.log(`${tx.getId()} - Sending transaction ...`);
@@ -82,14 +85,17 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           await nonceLock.unlock();
           switch (sentTx.status) {
             case 'pending': {
-              tx.setStatus('Pending');
+              tx.setStatuses('Pending', TxLifecycleStatus.PENDING);
               break;
             }
             case 'rejected': {
-              tx.setStatus({
-                kind: 'RejectedOnReceive',
-                errors: ['error when the tx has been sent', ...sentTx.errors],
-              });
+              tx.setStatuses(
+                {
+                  kind: 'RejectedOnReceive',
+                  errors: ['error when the tx has been sent', ...sentTx.errors],
+                },
+                TxLifecycleStatus.FAILED
+              );
               break;
             }
           }
@@ -111,9 +117,13 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
         if (config?.printTx) {
           console.log(`${tx.getId()} - Awaiting inclusion ...`);
         }
+        tx.setStatuses(
+          'unchanged' as const,
+          TxLifecycleStatus.AWAITING_INCLUSION
+        );
         const awaitedTx = await sentTx.safeWait();
         if (awaitedTx.status === 'included') {
-          tx.setStatus('Included');
+          tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
           // make sure that the local state matches the state after tx
           await config.mina.forceFetchAllTxParties(awaitedTx);
         } else {
@@ -123,20 +133,23 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           const actualStatus = 'rejected';
 
           if (actualStatus === 'rejected') {
-            tx.setStatus({
-              kind: 'RejectedOnInclusion',
-              errors: [
-                'error during awaiting for inclusion',
-                ...awaitedTx.errors,
-              ],
-            });
+            tx.setStatuses(
+              {
+                kind: 'RejectedOnInclusion',
+                errors: [
+                  'error during awaiting for inclusion',
+                  ...awaitedTx.errors,
+                ],
+              },
+              TxLifecycleStatus.FAILED
+            );
           }
         }
         return mkState(awaitedTx);
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           const status = error as TransactionStatus;
-          tx.setStatus(status);
+          tx.setStatuses(status, TxLifecycleStatus.FAILED);
         }
         return mkState(undefined);
       }

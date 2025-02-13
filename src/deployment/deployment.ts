@@ -42,9 +42,7 @@ export class DeploymentService {
    * Creates a new instance of the DeploymentService.
    * Initializes the deployer account and compiles necessary contracts.
    */
-  public static async create(
-    txMgr: TransactionManager<any>
-  ) {
+  public static async create(txMgr: TransactionManager<any>) {
     const service = new DeploymentService(txMgr);
 
     if (service._networkKeys.deployer) {
@@ -59,7 +57,7 @@ export class DeploymentService {
   /**
    * Updates the verification keys for the vault and oracle aggregation contracts.
    * This ensures the protocol uses the latest verification keys for proof validation.
- */
+   */
   private updateVerificationKeys() {
     updateVerificationKeys({
       oracleAggregationVk: this._oracleAggregationVk,
@@ -139,7 +137,7 @@ export class DeploymentService {
         {
           name: 'Creating Protocol Admin account',
           extraSigners: [this._networkKeys.protocolAdmin.privateKey],
-          executor: 'local'
+          executor: 'local',
         }
       );
       await txHandle.awaitIncluded();
@@ -181,7 +179,7 @@ export class DeploymentService {
             this._networkKeys.protocolAdmin.privateKey,
           ],
           name: 'Deploying Token and Engine contracts',
-          executor: 'local'
+          executor: 'local',
         }
       );
       await txHandle.awaitIncluded();
@@ -213,7 +211,7 @@ export class DeploymentService {
             this._networkKeys.engine.privateKey,
           ],
           name: 'Initializing Engine contract',
-          executor: 'local'
+          executor: 'local',
         }
       );
       await txHandle.awaitIncluded();

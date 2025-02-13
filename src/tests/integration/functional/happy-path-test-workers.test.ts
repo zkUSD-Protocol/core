@@ -286,7 +286,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
       }
     );
 
-    if(!mike){
+    if (!mike) {
       throw new Error('There was an error initializing Mike');
     }
 

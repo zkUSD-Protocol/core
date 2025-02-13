@@ -13,9 +13,13 @@ import {
   RejectedOnInclusion,
   RejectedOnReceive,
   TransactionStatus,
+  TxLifecycleStatus,
 } from './status.js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
-import { ITransactionProver, TxProvingInput } from '../provers/itransactionprover.js';
+import {
+  ITransactionProver,
+  TxProvingInput,
+} from '../provers/itransactionprover.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import {
   deserializeTransaction,
@@ -148,12 +152,15 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       builtTxGlobal = builtTx;
 
       try {
-        const signedTx = (await this.signer({
-          fee: config.startingFee,
-          nonce: nonceLock.nonce,
-          tx: builtTx,
-          keys: tx.keys,
-        })).signedTx;
+        tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
+        const signedTx = (
+          await this.signer({
+            fee: config.startingFee,
+            nonce: nonceLock.nonce,
+            tx: builtTx,
+            keys: tx.keys,
+          })
+        ).signedTx;
         signedTxGlobal = signedTx;
         const ret: TxProvingInput = {
           txId: tx.getId(),
@@ -164,14 +171,16 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           ...txArgs,
         };
         return ret;
-      }
-      catch (error) {
+      } catch (error) {
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
-          errors: ['Error when building or signing the tx', error instanceof Error ? error.message : String(error)],
+          errors: [
+            'Error when building or signing the tx',
+            error instanceof Error ? error.message : String(error),
+          ],
         };
         await nonceLock.unlock();
-        tx.setStatus(status);
+        tx.setStatuses(status, TxLifecycleStatus.FAILED);
         throw error;
       }
     });
@@ -180,13 +189,14 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     const provingPromise = new TrackedPromise<ProvenTransaction>(async () => {
       const input = await signingPromise;
       try {
-        const output = await this.prover.proveTransaction(input)
+        tx.setStatuses('unchanged' as const, TxLifecycleStatus.PROVING);
+        const output = await this.prover.proveTransaction(input);
         if (output.success === false) {
           const status: FailedBeforeSending = {
             kind: 'FailedBeforeSending',
             errors: output.errors,
           };
-          tx.setStatus(status);
+          tx.setStatuses(status, TxLifecycleStatus.FAILED);
           if (config?.printTx) {
             console.log(
               `${tx.getId()} - Proving failed: ${JSON.stringify(status)}`
@@ -195,26 +205,26 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           await nonceLock.unlock();
           return wrapError({ status });
         } else {
+          tx.setStatuses('unchanged' as const, TxLifecycleStatus.SCHEDULED);
           if (config?.printTx) {
             console.log(`${tx.getId()} - Proved.`);
           }
           return wrapNoErrors({
-            serializedProvenTransaction:
-              output.serializedProvenTransaction,
+            serializedProvenTransaction: output.serializedProvenTransaction,
           });
         }
       } catch (error) {
         const errors = Array.isArray(error)
           ? error.map((e) => (e instanceof Error ? e.message : String(e)))
           : error instanceof Error
-            ? [error.message]
-            : [String(error)];
+          ? [error.message]
+          : [String(error)];
 
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
           errors,
         };
-        tx.setStatus(status);
+        tx.setStatuses(status, TxLifecycleStatus.FAILED);
         if (config?.printTx) {
           console.log(
             `${tx.getId()} - Proving failed: ${JSON.stringify(status)}`
@@ -223,8 +233,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         await nonceLock.unlock();
         return wrapError({ status });
       }
-    }, `Proving tx: ${tx.getId()}`
-    );
+    }, `Proving tx: ${tx.getId()}`);
 
     // ---- Sending Promise ----
     const sendingPromise = new TrackedPromise<SentTransaction>(async () => {
@@ -257,7 +266,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
                 `${tx.getId()} - Send failed: ${JSON.stringify(status)}`
               );
             }
-            tx.setStatus(status);
+            tx.setStatuses(status, TxLifecycleStatus.FAILED);
             return wrapError({ status });
           } else {
             if (config?.printTx) {
@@ -265,7 +274,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
                 `${tx.getId()} - Sent successfully. The tx is pending inclusion.`
               );
             }
-            tx.setStatus('Pending');
+            tx.setStatuses('Pending', TxLifecycleStatus.PENDING);
             return wrapNoErrors({ hash: sendResult.hash });
           }
         } else {
@@ -283,54 +292,55 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           kind: 'FailedBeforeSending',
           errors: ['Exceptional failure', stringError],
         };
-        tx.setStatus(status);
+        tx.setStatuses(status, TxLifecycleStatus.FAILED);
         throw error;
       }
     }, `Sending tx: ${tx.getId()}`);
 
     // ---- Waiting Promise (chain inclusion) ----
-    const waitingPromise = new TrackedPromise<AwaitedTransaction>(
-      async () => {
-        const sentTx = await sendingPromise;
+    const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
+      const sentTx = await sendingPromise;
 
-        if (sentTx.isLocal) {
-          throw new Error('isLocal should be false in external executor');
-        }
+      if (sentTx.isLocal) {
+        throw new Error('isLocal should be false in external executor');
+      }
 
-        if ('hash' in sentTx) {
-          // We have a valid transaction hash; await chain inclusion
-          try {
-            if (config?.printTx) {
-              console.log(`${tx.getId()} - Awaiting inclusion ...`);
-            }
-            const inclusionStatus = await this.awaitTx(
-              sentTx.hash,
-              config.awaitingTimeoutMs
-            );
-
-            if (inclusionStatus === 'Included') {
-              tx.setStatus('Included');
-              return wrapNoErrors({ status: 'Included' });
-            } else {
-              tx.setStatus(inclusionStatus);
-              return wrapNoErrors({ status: inclusionStatus });
-            }
-          } catch {
-            // If we fail to get a final status, assume it's stuck
-            tx.setStatus('StuckInMempool');
-            return wrapNoErrors({ status: 'StuckInMempool' });
+      if ('hash' in sentTx) {
+        // We have a valid transaction hash; await chain inclusion
+        try {
+          if (config?.printTx) {
+            console.log(`${tx.getId()} - Awaiting inclusion ...`);
           }
-        } else if ('errors' in sentTx) {
-          // Rejected on sending
-          return wrapNoErrors({
-            status: { kind: 'RejectedOnReceive', errors: sentTx.errors },
-          });
-        } else {
-          throw new Error('Unknown transaction shape after sending.');
+          tx.setStatuses(
+            'unchanged' as const,
+            TxLifecycleStatus.AWAITING_INCLUSION
+          );
+          const inclusionStatus = await this.awaitTx(
+            sentTx.hash,
+            config.awaitingTimeoutMs
+          );
+
+          if (inclusionStatus === 'Included') {
+            tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
+            return wrapNoErrors({ status: 'Included' });
+          } else {
+            tx.setStatuses(inclusionStatus, TxLifecycleStatus.FAILED);
+            return wrapNoErrors({ status: inclusionStatus });
+          }
+        } catch {
+          // If we fail to get a final status, assume it's stuck
+          tx.setStatuses('StuckInMempool', TxLifecycleStatus.FAILED);
+          return wrapNoErrors({ status: 'StuckInMempool' });
         }
-      },
-      `Waiting tx: ${tx.getId()}`
-    );
+      } else if ('errors' in sentTx) {
+        // Rejected on sending
+        return wrapNoErrors({
+          status: { kind: 'RejectedOnReceive', errors: sentTx.errors },
+        });
+      } else {
+        throw new Error('Unknown transaction shape after sending.');
+      }
+    }, `Waiting tx: ${tx.getId()}`);
 
     // Return a structure that allows the caller to await each stage
     return {

@@ -18,10 +18,9 @@ import {
 import { validPriceBlockCount } from '../../../mina/networks.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 import assert from 'node:assert';
-import { ContractInstance, } from '../../../types/utility.js';
+import { ContractInstance } from '../../../types/utility.js';
 import { ProtocolData, ProtocolDataPacked } from '../../../system/engine.js';
 import { OracleWhitelist } from '../../../system/oracle.js';
-
 
 describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
   let th: TestHelper<'local'>;

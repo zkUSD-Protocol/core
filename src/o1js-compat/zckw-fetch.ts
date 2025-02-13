@@ -1,4 +1,4 @@
-import { Field, PublicKey, fetchAccount } from "o1js";
+import { Field, PublicKey, fetchAccount } from 'o1js';
 
 /**
  * Taken from zkcloudworker-lib @ 0.22.3,
@@ -9,57 +9,66 @@ import { Field, PublicKey, fetchAccount } from "o1js";
  * @param params.force whether to force the fetch - use it only if you are sure the account exists
  * @returns the account object
  */
-export async function fetchMinaAccount(params:
-    {
-        publicKey: PublicKey;
-        tokenId?: Field;
-        force?: boolean;
+export async function fetchMinaAccount(params: {
+  publicKey: PublicKey;
+  tokenId?: Field;
+  force?: boolean;
+}) {
+  const { publicKey, tokenId, force = false } = params;
+  const timeout = 1000 * 60 * 3; // 3 minutes
+  let attempt = 0;
+  const startTime = Date.now();
+  let result = { account: undefined };
+  while (Date.now() - startTime < timeout) {
+    try {
+      const result = await fetchAccount(
+        {
+          publicKey,
+          tokenId,
+        },
+        undefined,
+        { timeout: 5 * 1000 }
+      );
+      return result;
+    } catch (error) {
+      if (force === true)
+        console.log('Error in fetchMinaAccount:', {
+          error,
+          publicKey:
+            typeof publicKey === 'string' ? publicKey : publicKey.toBase58(),
+          tokenId: tokenId?.toString(),
+          force,
+        });
+      else {
+        console.log('fetchMinaAccount error', {
+          error,
+          publicKey:
+            typeof publicKey === 'string' ? publicKey : publicKey.toBase58(),
+          tokenId: tokenId?.toString(),
+          force,
+        });
+        return result;
+      }
     }
-                                      ) {
-    const { publicKey, tokenId, force = false } = params;
-    const timeout = 1000 * 60 * 3; // 3 minutes
-    let attempt = 0;
-    const startTime = Date.now();
-    let result = { account: undefined };
-    while (Date.now() - startTime < timeout) {
-        try {
-            const result = await fetchAccount({
-                publicKey,
-                tokenId,
-            }, undefined, { timeout: 5 * 1000 });
-            return result;
-        }
-        catch (error) {
-            if (force === true)
-                console.log("Error in fetchMinaAccount:", {
-                    error,
-                    publicKey: typeof publicKey === "string" ? publicKey : publicKey.toBase58(),
-                    tokenId: tokenId?.toString(),
-                    force,
-                });
-            else {
-                console.log("fetchMinaAccount error", {
-                    error,
-                    publicKey: typeof publicKey === "string" ? publicKey : publicKey.toBase58(),
-                    tokenId: tokenId?.toString(),
-                    force,
-                });
-                return result;
-            }
-        }
-        attempt++;
-        await sleep(1000 * 6 * attempt); // to handle rate limit we increase the interval
-    }
-    if (force === true)
-        throw new Error(`fetchMinaAccount timeout
+    attempt++;
+    await sleep(1000 * 6 * attempt); // to handle rate limit we increase the interval
+  }
+  if (force === true)
+    throw new Error(`fetchMinaAccount timeout
       ${{
-            publicKey: typeof publicKey === "string" ? publicKey : publicKey.toBase58(),
-            tokenId: tokenId?.toString(),
-            force,
-        }}`);
-    else
-        console.log("fetchMinaAccount timeout", typeof publicKey === "string" ? publicKey : publicKey.toBase58(), tokenId?.toString(), force);
-    return result;
+        publicKey:
+          typeof publicKey === 'string' ? publicKey : publicKey.toBase58(),
+        tokenId: tokenId?.toString(),
+        force,
+      }}`);
+  else
+    console.log(
+      'fetchMinaAccount timeout',
+      typeof publicKey === 'string' ? publicKey : publicKey.toBase58(),
+      tokenId?.toString(),
+      force
+    );
+  return result;
 }
 
 function sleep(ms: number) {

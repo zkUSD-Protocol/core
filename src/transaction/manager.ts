@@ -12,6 +12,7 @@ import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { Mutex } from '../utils/mutex.js';
 import {
   TransactionStatus,
+  TxLifecycleStatus,
   mkStatusFailedBeforeSending,
   statusIsFailed,
   statusShouldBeWaitedFor,
@@ -97,6 +98,7 @@ export type TransactionRequest = {
 export interface TransactionHandle {
   readonly txId: string;
   readonly txStatus: TransactionStatus;
+  readonly lifecycleStatus: TxLifecycleStatus;
   readonly signedTransaction: Transaction<any, true> | undefined;
   readonly sender: PublicKey;
   readonly hash: string | undefined;
@@ -117,12 +119,27 @@ export interface TransactionHandle {
  * Internal representation of a transaction, holding its request, status, and associated promises.
  */
 export class TransactionInternal {
+  private _status: TransactionStatus = 'Scheduled';
+  private _lifecycleStatus: TxLifecycleStatus = TxLifecycleStatus.SCHEDULED;
   private _request?: TransactionRequest;
   // this is not a tx nonce, it is just an ordinal number of tx creation call site.
   private _dependentTxIds: string[] = [];
 
   public signedTransaction?: Transaction<any, true>;
-  public status: TransactionStatus = 'Scheduled';
+  public get status(): TransactionStatus {
+    return this._status;
+  }
+  public get lifecycleStatus(): TxLifecycleStatus {
+    return this._lifecycleStatus;
+  }
+
+  public setStatuses(
+    status: TransactionStatus | 'unchanged',
+    lifecyleStatus: TxLifecycleStatus | 'unchanged'
+  ) {
+    if (status !== 'unchanged') this._status = status;
+    if (lifecyleStatus !== 'unchanged') this._lifecycleStatus = lifecyleStatus;
+  }
 
   private _lifecycle: Partial<TransactionLifecycle> = {};
 
@@ -301,6 +318,9 @@ export class TransactionInternal {
       get sender(): PublicKey {
         return self.sender;
       },
+      get lifecycleStatus(): TxLifecycleStatus {
+        return self.lifecycleStatus;
+      },
 
       awaitStatusChange: self.awaitStatusChange.bind(self),
 
@@ -421,7 +441,7 @@ export class TransactionManager<E extends string> {
     // dependencies must be met
     const deps: TransactionInternal[] = [];
     for (const mDepId of request.waitForIncluded) {
-      const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId
+      const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId;
       const dep = this.transactions.get(depId);
       if (!dep) {
         throw new Error(`Transaction ${depId} does not exist`);
@@ -453,10 +473,13 @@ export class TransactionManager<E extends string> {
     const depsAwaitingPromise = new TrackedPromise(async () => {
       try {
         if (tx.dependencies.length !== 0) {
-          tx.status = {
-            kind: 'AwaitingForOtherTx',
-            txs: tx.dependencies.map((dep) => dep.txId),
-          };
+          tx.setStatuses(
+            {
+              kind: 'AwaitingForOtherTx',
+              txs: tx.dependencies.map((dep) => dep.txId),
+            },
+            TxLifecycleStatus.AWAITING_DEPENDENCIES
+          );
         }
         await Promise.all(
           deps.map(async (dep) => {
@@ -476,7 +499,7 @@ export class TransactionManager<E extends string> {
             return;
           })
         );
-        tx.status = 'Scheduled';
+        tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           throw error;
@@ -496,24 +519,22 @@ export class TransactionManager<E extends string> {
     };
 
     const builtTxPromise = depsAwaitingPromise.then(async () => {
+      try {
+        for (const acc of options?.refreshAccounts ?? []) {
+          await this.mina.fetchMinaAccount(acc.publicKey, {
+            tokenId: acc.tokenId,
+            force: true,
+          });
+        }
 
-      try{
-
-      for (const acc of options?.refreshAccounts ?? []) {
-        await this.mina.fetchMinaAccount(acc.publicKey, {
-          tokenId: acc.tokenId,
-          force: true,
-        });
-      }
-
-      const builtTx = await transactionBuild(
-        this._o1jsMutex,
-        this.mina,
-        sender,
-        callback,
-        buildOptions
-      );
-      return builtTx;
+        const builtTx = await transactionBuild(
+          this._o1jsMutex,
+          this.mina,
+          sender,
+          callback,
+          buildOptions
+        );
+        return builtTx;
       } catch (error) {
         throw failed_before_sending('building the tx', error);
       }
@@ -528,8 +549,11 @@ export class TransactionManager<E extends string> {
       getId: () => tx.getId(),
       args: tx.request?.args ?? undefined,
       buildTx: builtTxPromise,
-      setStatus: (s: TransactionStatus) => {
-        tx.status = s;
+      setStatuses: (
+        s: TransactionStatus | 'unchanged',
+        lcs: TxLifecycleStatus | 'unchanged'
+      ) => {
+        tx.setStatuses(s, lcs);
       },
       keys: { sender, extraSigners: options?.extraSigners ?? [] },
       nonceLock,
@@ -643,7 +667,8 @@ export async function transactionBuild(
     for (const au of auCount) {
       if (au.count > 1) {
         console.log(
-          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${au.count
+          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
+            au.count
           }`
         );
       }

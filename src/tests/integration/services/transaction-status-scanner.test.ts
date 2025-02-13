@@ -3,9 +3,15 @@ import { strict as assert } from 'node:assert';
 import { TestHelper } from '../../test-helper.js';
 import { KeyPair, singleDefault } from '../../../types/utility.js';
 import { AccountUpdate, UInt64 } from 'o1js';
-import { ITransactionStatusScanner, TransactionStatusScanner } from '../../../transaction/status-scanner.js';
+import {
+  ITransactionStatusScanner,
+  TransactionStatusScanner,
+} from '../../../transaction/status-scanner.js';
 import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
-import { TransactionStatus, statusIsOfKind } from '../../../transaction/status.js';
+import {
+  TransactionStatus,
+  statusIsOfKind,
+} from '../../../transaction/status.js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 
 describe('zkUSD Integration - Services - Transaction Status Scanner tests', () => {
@@ -45,7 +51,8 @@ describe('zkUSD Integration - Services - Transaction Status Scanner tests', () =
     const txh = await sendSuccessfulTx(th);
 
     const status1 = await txh.awaitStatusChange({
-      until: (status: TransactionStatus) => statusIsOfKind(status, 'Pending' as const),
+      until: (status: TransactionStatus) =>
+        statusIsOfKind(status, 'Pending' as const),
     });
     assert.equal(true, statusIsOfKind(status1, 'Pending'));
 
@@ -92,8 +99,7 @@ describe('zkUSD Integration - Services - Transaction Status Scanner tests', () =
       async () => {
         await statusScanner.awaitTransactionStatus(fakeTxId, 2_000);
       },
-      (err: Error) =>
-        err.message.includes(`timeout`)
+      (err: Error) => err.message.includes(`timeout`)
     );
   });
 

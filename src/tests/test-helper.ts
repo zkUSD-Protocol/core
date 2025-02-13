@@ -36,10 +36,20 @@ import crypto from 'crypto';
 import { validPriceBlockCount } from '../mina/networks.js';
 import { Mutex } from '../utils/mutex.js';
 import { Account } from '../mina/utils.js';
-import { IMinaNetworkInterface, MinaNetworkInterface } from '../mina/network-interface.js';
-import { TransactionHandle, TransactionManager, TransactionOptions } from '../transaction/manager.js';
+import {
+  IMinaNetworkInterface,
+  MinaNetworkInterface,
+} from '../mina/network-interface.js';
+import {
+  TransactionHandle,
+  TransactionManager,
+  TransactionOptions,
+} from '../transaction/manager.js';
 import { OracleWhitelist } from '../system/oracle.js';
-import { ITransactionExecutor, TransactionArgs } from '../transaction/executor.js';
+import {
+  ITransactionExecutor,
+  TransactionArgs,
+} from '../transaction/executor.js';
 import { VaultTransactionType } from '../system/transaction.js';
 import { ProtocolData } from '../system/engine.js';
 import { Vault, VaultState } from '../system/vault.js';
@@ -210,20 +220,18 @@ export class TestHelper<E extends string> {
     return new TestHelper(mina, executor, deployer);
   }
 
-  static async initLightnetChain<E extends string = 'local'>(
-    opts?: {
-      txExecutorInitializers?: WithDefault<
-        E | 'local',
-        (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
-      >;
-      ensureLightnet?: boolean
-    },
-  ): Promise<TestHelper<E>> {
+  static async initLightnetChain<E extends string = 'local'>(opts?: {
+    txExecutorInitializers?: WithDefault<
+      E | 'local',
+      (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+    >;
+    ensureLightnet?: boolean;
+  }): Promise<TestHelper<E>> {
     // Ensure the lightnet environment is running.
 
     // if undefined we DO
-    if (opts?.ensureLightnet){
-      throw new Error("Lightnet ensuring not available. Start it manully.");
+    if (opts?.ensureLightnet) {
+      throw new Error('Lightnet ensuring not available. Start it manully.');
       // await ensureLightnetRunning();
     }
 
@@ -424,7 +432,9 @@ export class TestHelper<E extends string> {
         }
       );
     } else {
-      throw new Error(`Only use it on lightnet and local  found: ${this.mina.network.chainId}`);
+      throw new Error(
+        `Only use it on lightnet and local  found: ${this.mina.network.chainId}`
+      );
     }
   }
 
@@ -491,20 +501,23 @@ export class TestHelper<E extends string> {
       // sender
       { publicKey: sender.publicKey },
       // vault
-      { publicKey: PublicKey.fromBase58(args.args.vaultAddress)
-        , tokenId: this.engine.contract.deriveTokenId()
+      {
+        publicKey: PublicKey.fromBase58(args.args.vaultAddress),
+        tokenId: this.engine.contract.deriveTokenId(),
       },
       // sender zkusd
-      { publicKey: sender.publicKey
-      , tokenId: this.engine.contract.deriveTokenId() },
-    ]
+      {
+        publicKey: sender.publicKey,
+        tokenId: this.engine.contract.deriveTokenId(),
+      },
+    ];
 
     return this.txMgr.engineTx(
       sender,
       args,
       this.engine.contract,
       minaPriceInput,
-      {...options, refreshAccounts} 
+      { ...options, refreshAccounts }
     );
   }
 

@@ -18,6 +18,7 @@ import {
   TransactionStatus,
   RejectedOnInclusion,
   RejectedOnReceive,
+  TxLifecycleStatus,
 } from './status.js';
 import {
   VaultTransactionArgs,
@@ -103,7 +104,10 @@ interface PreparedTransaction {
     publicKey: string | PublicKey,
     tokenId?: Field
   ) => Promise<NonceLock>;
-  setStatus: (status: TransactionStatus) => void;
+  setStatuses: (
+    status: TransactionStatus | 'unchanged',
+    lifecycleStatus: TxLifecycleStatus | 'unchanged'
+  ) => void;
 }
 
 /** Defines the structure of a transaction executor. */

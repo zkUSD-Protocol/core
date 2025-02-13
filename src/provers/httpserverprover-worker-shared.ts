@@ -6,7 +6,10 @@ import {
   TxProvingTracker,
 } from '../transaction/execution.js';
 import { FailedBeforeSending } from '../transaction/status.js';
-import { TransactionProvingJob, TxProvingOutput } from './itransactionprover.js';
+import {
+  TransactionProvingJob,
+  TxProvingOutput,
+} from './itransactionprover.js';
 
 // Common config needed by both Node & Web
 export interface HttpServerProverWorkerConfig {

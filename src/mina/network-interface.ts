@@ -248,7 +248,10 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     options?: { tokenId?: Field; force?: boolean }
   ): Promise<MinaAccount | undefined> {
     const ret = await zkcwfetchMinaAccount({
-      publicKey: typeof publicKey === 'string' ? PublicKey.fromBase58(publicKey) : publicKey,
+      publicKey:
+        typeof publicKey === 'string'
+          ? PublicKey.fromBase58(publicKey)
+          : publicKey,
       tokenId: options?.tokenId,
       force: options?.force,
     });
@@ -272,7 +275,9 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
    * Create and initialize an instance of MinaNetworkInterface with a LightnetChain backend.
    * @returns A newly initialized MinaNetworkInterface instance (lightnet backend).
    */
-  public static async initLightnet(urls?: MinaNetwork): Promise<MinaNetworkInterface> {
+  public static async initLightnet(
+    urls?: MinaNetwork
+  ): Promise<MinaNetworkInterface> {
     // Create and initialize the LightnetChain
     const ln = new LightnetChain();
     await ln.init(urls);
