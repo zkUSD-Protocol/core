@@ -137,6 +137,7 @@ export class TransactionInternal {
     status: TransactionStatus | 'unchanged',
     lifecyleStatus: TxLifecycleStatus | 'unchanged'
   ) {
+    this._statusUpdateCallback?.();
     if (status !== 'unchanged') this._status = status;
     if (lifecyleStatus !== 'unchanged') this._lifecycleStatus = lifecyleStatus;
   }
@@ -182,8 +183,8 @@ export class TransactionInternal {
   /**
    * Constructs an internal transaction from a TransactionRequest.
    */
-  public static fromRequest(request: TransactionRequest): TransactionInternal {
-    const tx = new TransactionInternal();
+  public static fromRequest(request: TransactionRequest, statusUpdateCallback:()=>void): TransactionInternal {
+    const tx = new TransactionInternal(statusUpdateCallback);
     tx._request = request;
     tx._dependentTxIds = request.waitForIncluded.map((dep) =>
       typeof dep === 'string' ? dep : dep.txId
@@ -329,13 +330,35 @@ export class TransactionInternal {
   }
 
   // Private constructor to force usage of static methods
-  private constructor() {}
+  private constructor(private readonly _statusUpdateCallback?: () => void) {}
 }
 
 //  Do not call from concurrent threads
 export class TransactionManager<E extends string> {
   private _o1jsMutex: Mutex = new Mutex();
   private _mina: IMinaNetworkInterface;
+
+  private readonly statusSubscribers: Map<string, ((txs: TransactionHandle[]) => void)> = new Map();
+
+  public get transactionHandles(): TransactionHandle[] {
+    return Array.from(this.transactions.values()).map((tx) => tx.handle);
+  }
+
+  private transactionStatusChanged() {
+    this.statusSubscribers.forEach((cb) => cb(this.transactionHandles));
+  }
+
+  public subscribeToTransactionStatusChanges(
+    cb: (txs: TransactionHandle[]) => void
+  ) {
+    // new random hash
+    const key = Date.now().toString(36) + Math.random().toString(36).substring(2);
+    this.statusSubscribers.set(key, cb);
+  }
+
+  public unsubscribeFromTransactionStatusChanges(key: string) {
+    this.statusSubscribers.delete(key);
+  }
 
   // in case you need to build or prove tx outside of tx mgr
   public get o1jsMutex(): Mutex {
@@ -459,7 +482,7 @@ export class TransactionManager<E extends string> {
 
     //=== include the transaction in the manager
     // -- create the tx and add it to the manager
-    const tx = TransactionInternal.fromRequest(request);
+    const tx = TransactionInternal.fromRequest(request, this.transactionStatusChanged.bind(this));
     this.transactions.set(tx.getId(), tx);
     // --
 
