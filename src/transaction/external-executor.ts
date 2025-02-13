@@ -16,7 +16,6 @@ import {
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { ITransactionProver } from '../provers/itransactionprover.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
-import { testnetMinaSigner } from '../signers/signing/mina-signer.js';
 import {
   deserializeTransaction,
   serializeTransaction,
@@ -25,6 +24,7 @@ import {
   ITransactionStatusScanner,
   TransactionStatusScanner,
 } from './status-scanner.js';
+import { testnetMinaSigner } from '../signers/mina-signer.js';
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving

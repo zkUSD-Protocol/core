@@ -1,4 +1,4 @@
-import { TrackedPromise } from '../../utils/tracked-promise.js';
+import { TrackedPromise } from '../utils/tracked-promise.js';
 import { Signer } from './types.js';
 
 export { o1jsSigner };

@@ -1,9 +1,9 @@
 import { PrivateKey, Transaction, UInt32, UInt64 } from 'o1js';
-import { TrackedPromise } from '../../utils/tracked-promise.js';
 import { Signer } from './types.js';
-import { KeyPair } from '../../types/utility.js';
 import { Client as MinaSigner } from 'mina-signer';
 import { ZkappCommand } from 'o1js/dist/node/mina-signer/src/types';
+import { KeyPair } from '../types/utility.js';
+import { TrackedPromise } from '../utils/tracked-promise.js';
 
 export { testnetMinaSigner };
 
