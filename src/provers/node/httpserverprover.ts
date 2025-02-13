@@ -1,12 +1,12 @@
 import express, { Request, Response } from 'express';
-import { Mutex } from '../../utils/mutex';
+import { Mutex } from '../../utils/mutex.js';
 import {
   ITransactionProver,
   TxProvingInput,
   TxProvingOutput,
-} from '../itransactionprover';
-import { JobStore } from '../job-store';
-import { InMemoryJobStore } from '../in-memory-job-store';
+} from '../itransactionprover.js';
+import { JobStore } from '../job-store.js';
+import { InMemoryJobStore } from '../in-memory-job-store.js';
 
 export type TransactionExecutionJob = {
   id: string;

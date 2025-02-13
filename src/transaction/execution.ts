@@ -15,32 +15,32 @@ import {
   CreateVaultArgs,
   PriceProofArgs,
   VaultTransactionArgs,
-} from '../system/transaction';
+} from '../system/transaction.js';
 
-import { MinaNetworkInterface } from '../mina/network-interface';
-import { NetworkKeyPairs } from '../config/keys';
-import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify';
+import { MinaNetworkInterface } from '../mina/network-interface.js';
+import { NetworkKeyPairs } from '../config/keys.js';
+import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
 import {
   TransactionConfig,
   mkVaultTransactionConfigs,
-} from '../system/transaction-config';
+} from '../system/transaction-config.js';
 import {
   AggregateOraclePrices,
   AggregateOraclePricesProof,
-} from '../proofs/oracle-price-aggregation/prove';
-import { ZkUsdEngineContract } from '../contracts/zkusd-engine';
+} from '../proofs/oracle-price-aggregation/prove.js';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import {
   deserializeTransaction,
   getTransactionParams,
   serializeTransaction,
-} from '../utils/transaction-serialization';
+} from '../utils/transaction-serialization.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import {
   FailedBeforeSending,
   RejectedOnReceive,
   mkStatusFailedBeforeSending,
-} from './status';
-import { TransactionArgs } from '../system/transaction';
+} from './status.js';
+import { TransactionArgs } from '../system/transaction.js';
 
 export {
   CompilationConfig,

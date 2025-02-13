@@ -1,4 +1,4 @@
-import { TxProvingInput } from './itransactionprover';
+import { TxProvingInput } from './itransactionprover.js';
 
 export type TransactionExecutionJob = {
   id: string;

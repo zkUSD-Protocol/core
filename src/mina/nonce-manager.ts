@@ -6,8 +6,8 @@ import {
   GqlVars,
   PooledNoncesQueryResponse,
   mkPooledNoncesQuery,
-} from './graphql';
-import { Mutex } from '../utils/mutex';
+} from './graphql.js';
+import { Mutex } from '../utils/mutex.js';
 
 /**
  * Represents a lock acquired for a nonce, containing the nonce value and

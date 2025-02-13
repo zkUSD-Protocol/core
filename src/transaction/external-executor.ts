@@ -6,25 +6,25 @@ import {
   SentTransaction,
   TransactionExecutionConfig,
   TransactionLifecycle,
-} from './executor';
+} from './executor.js';
 import {
   FailedBeforeSending,
   RejectedOnInclusion,
   RejectedOnReceive,
   TransactionStatus,
-} from './status';
-import { TrackedPromise } from '../utils/tracked-promise';
-import { ITransactionProver } from '../provers/itransactionprover';
-import { IMinaNetworkInterface } from '../mina/network-interface';
-import { testnetMinaSigner } from '../signers/signing/mina-signer';
+} from './status.js';
+import { TrackedPromise } from '../utils/tracked-promise.js';
+import { ITransactionProver } from '../provers/itransactionprover.js';
+import { IMinaNetworkInterface } from '../mina/network-interface.js';
+import { testnetMinaSigner } from '../signers/signing/mina-signer.js';
 import {
   deserializeTransaction,
   serializeTransaction,
-} from '../utils/transaction-serialization';
+} from '../utils/transaction-serialization.js';
 import {
   ITransactionStatusScanner,
   TransactionStatusScanner,
-} from './status-scanner';
+} from './status-scanner.js';
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving

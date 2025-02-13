@@ -14,7 +14,7 @@ import {
   Provable,
   Mina,
 } from 'o1js';
-import { MinaPrice } from './oracle';
+import { MinaPrice } from './oracle.js';
 
 // Errors
 export const VaultErrors = {

@@ -1,11 +1,11 @@
-import { getNetworkKeys } from '../../config/keys';
-import { compileContracts } from '../../transaction/execution';
-import { blockchain } from '../../mina/networks';
-import { MinaNetworkInterface } from '../../mina/network-interface';
+import { getNetworkKeys } from '../../config/keys.js';
+import { compileContracts } from '../../transaction/execution.js';
+import { blockchain } from '../../mina/networks.js';
+import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import {
   HttpServerProverWorkerConfig,
   startProvingLoop,
-} from '../httpserverprover-worker-shared';
+} from '../httpserverprover-worker-shared.js';
 
 /**
  * This script is invoked via Node (e.g., `node node-executor.js <managerUrl> <blockchain>`).

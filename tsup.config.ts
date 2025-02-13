@@ -18,7 +18,6 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     splitting: false,
-    clean: true,
   },
 
   // Web Build
@@ -38,6 +37,5 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     splitting: false,
-    clean: true,
   },
 ]);

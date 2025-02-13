@@ -1,5 +1,5 @@
 import { Field, PublicKey } from 'o1js';
-import { MinaZkappCommand } from '../o1js-compat/zkappcommand';
+import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
 export { Account, extractAllTxParties };
 

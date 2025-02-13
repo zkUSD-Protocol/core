@@ -1,11 +1,11 @@
-import { getNetworkKeys } from '../../config/keys';
-import { MinaNetworkInterface } from '../../mina/network-interface';
-import { blockchain } from '../../mina/networks';
-import { compileContracts } from '../../transaction/execution';
+import { getNetworkKeys } from '../../config/keys.js';
+import { MinaNetworkInterface } from '../../mina/network-interface.js';
+import { blockchain } from '../../mina/networks.js';
+import { compileContracts } from '../../transaction/execution.js';
 import {
   HttpServerProverWorkerConfig,
   startProvingLoop,
-} from '../httpserverprover-worker-shared';
+} from '../httpserverprover-worker-shared.js';
 
 // We'll listen for an initial message from the main thread, providing the manager URL & chain.
 self.addEventListener('message', async (event) => {

@@ -1,5 +1,5 @@
 import { FungibleTokenContract } from '@minatokens/token';
-import { ZkUsdEngineContract } from '../contracts/zkusd-engine';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation';
 import {
   CollateralAmountAndPriceProofArgs,
@@ -10,7 +10,7 @@ import {
   VaultTransactionType,
   ZkUSDAmountAndPriceProofArgs,
   ZkUSDAmountArgs,
-} from './transaction';
+} from './transaction.js';
 import { PublicKey, UInt64 } from 'o1js';
 
 export {

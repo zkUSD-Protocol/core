@@ -1,5 +1,5 @@
 import { Signed, ZkappCommand } from 'o1js/dist/node/mina-signer/src/types';
-import { TransactionArgs } from './../system/transaction';
+import { TransactionArgs } from './../system/transaction.js';
 
 export type TxProvingInput = {
   txId: string;

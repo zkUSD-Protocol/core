@@ -8,26 +8,26 @@ import {
   Account as MinaAccount,
   UInt64,
 } from 'o1js';
-import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks';
-import { KeyPair } from './../types/utility';
+import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
+import { KeyPair } from './../types/utility.js';
 import {
   INonceManager,
   LocalNonceManager,
   NonceManager,
-} from './nonce-manager';
+} from './nonce-manager.js';
 import {
   GqlData,
   GqlQuery,
   GqlQueryCall,
   GqlVars,
   queryGraphQL,
-} from './graphql';
+} from './graphql.js';
 import {
   blockchain,
   fetchMinaAccount as zkCWfetchMinaAccount,
 } from 'zkcloudworker';
-import { extractAllTxParties } from './utils';
-import { MinaZkappCommand } from '../o1js-compat/zkappcommand';
+import { extractAllTxParties } from './utils.js';
+import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
 type LocalOnlyApi = {
   // add more as needed

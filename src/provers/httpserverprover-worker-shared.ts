@@ -1,12 +1,12 @@
-import { MinaNetworkInterface } from '../mina/network-interface';
+import { MinaNetworkInterface } from '../mina/network-interface.js';
 import {
   compileContracts,
   ExecutorContext,
   proveTransaction,
   TxProvingTracker,
-} from '../transaction/execution';
-import { FailedBeforeSending } from '../transaction/status';
-import { TransactionProvingJob, TxProvingOutput } from './itransactionprover';
+} from '../transaction/execution.js';
+import { FailedBeforeSending } from '../transaction/status.js';
+import { TransactionProvingJob, TxProvingOutput } from './itransactionprover.js';
 
 // Common config needed by both Node & Web
 export interface HttpServerProverWorkerConfig {

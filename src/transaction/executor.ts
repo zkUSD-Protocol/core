@@ -9,20 +9,20 @@ import {
   UInt64,
 } from 'o1js';
 
-import { TrackedPromise } from '../utils/tracked-promise';
-import { Mutex } from '../utils/mutex';
-import { IMinaNetworkInterface } from '../mina/network-interface';
-import { NonceLock } from '../mina/nonce-manager';
-import { KeyPair } from '../types/utility';
+import { TrackedPromise } from '../utils/tracked-promise.js';
+import { Mutex } from '../utils/mutex.js';
+import { IMinaNetworkInterface } from '../mina/network-interface.js';
+import { NonceLock } from '../mina/nonce-manager.js';
+import { KeyPair } from '../types/utility.js';
 import {
   TransactionStatus,
   RejectedOnInclusion,
   RejectedOnReceive,
-} from './status';
+} from './status.js';
 import {
   VaultTransactionArgs,
   VaultTransactionType,
-} from '../system/transaction';
+} from '../system/transaction.js';
 
 export type {
   AwaitedTransaction,

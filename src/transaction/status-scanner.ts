@@ -2,9 +2,9 @@ import { fetchLastBlock } from 'o1js';
 import {
   TransactionStatusesQueryResponse,
   mkTransactionStatusesQuery,
-} from '../mina/graphql';
-import { IMinaNetworkInterface } from '../mina/network-interface';
-import { RejectedOnInclusion } from './status';
+} from '../mina/graphql.js';
+import { IMinaNetworkInterface } from '../mina/network-interface.js';
+import { RejectedOnInclusion } from './status.js';
 
 export {
   ITransactionStatusScanner,

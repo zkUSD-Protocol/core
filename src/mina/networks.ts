@@ -1,4 +1,4 @@
-import { blockchain } from '../types/utility';
+import { blockchain } from '../types/utility.js';
 
 export type { MinaNetwork, blockchain };
 

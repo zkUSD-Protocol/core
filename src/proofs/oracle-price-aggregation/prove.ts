@@ -9,12 +9,12 @@ import {
   ZkProgram,
 } from 'o1js';
 
-import { MinaPrice, OracleWhitelist } from '../../system/oracle';
+import { MinaPrice, OracleWhitelist } from '../../system/oracle.js';
 import {
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput,
   ValidSubmissions,
-} from './common';
+} from './common.js';
 
 /**
  * @notice Represents a single price submission from an oracle

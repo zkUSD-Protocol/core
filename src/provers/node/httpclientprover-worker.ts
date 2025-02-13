@@ -1,17 +1,17 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { fileURLToPath } from 'url';
-import { MinaNetworkInterface } from '../../mina/network-interface';
-import { blockchain } from '../../mina/networks';
-import { getNetworkKeys } from '../../config/keys';
-import { Mutex } from '../../utils/mutex';
-import { TxProvingInput, TxProvingOutput } from '../itransactionprover';
+import { MinaNetworkInterface } from '../../mina/network-interface.js';
+import { blockchain } from '../../mina/networks.js';
+import { getNetworkKeys } from '../../config/keys.js';
+import { Mutex } from '../../utils/mutex.js';
+import { TxProvingInput, TxProvingOutput } from '../itransactionprover.js';
 import {
   CompilationResults,
   compileContracts,
   proveTransaction,
   TxProvingTracker,
-} from '../../transaction/execution';
-import { FailedBeforeSending } from '../../transaction/status';
+} from '../../transaction/execution.js';
+import { FailedBeforeSending } from '../../transaction/status.js';
 
 type TxProvingRequest = {
   payload: TxProvingInput;

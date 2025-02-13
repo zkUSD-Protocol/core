@@ -1,6 +1,6 @@
 import { Field, Struct, UInt32, VerificationKey } from 'o1js';
 
-import { AggregateOraclePricesProof } from './prove';
+import { AggregateOraclePricesProof } from './prove.js';
 
 /**
  * @notice Input structure for Mina price verification

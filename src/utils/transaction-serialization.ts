@@ -1,5 +1,5 @@
 import { Field, PublicKey, Transaction, UInt64 } from 'o1js';
-import { SignerZkappCommand } from '../o1js-compat/zkappcommand';
+import { SignerZkappCommand } from '../o1js-compat/zkappcommand.js';
 export { serializeTransaction, deserializeTransaction, getTransactionParams };
 
 /**

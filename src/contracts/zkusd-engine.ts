@@ -21,7 +21,7 @@ import {
   VerificationKey,
 } from 'o1js';
 
-import { Vault } from '../system/vault';
+import { Vault } from '../system/vault.js';
 import {
   EmergencyStopToggledEvent,
   AdminUpdatedEvent,
@@ -34,18 +34,18 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
   ValidPriceBlockCountUpdatedEvent,
-} from '../system/events';
+} from '../system/events.js';
 import {
   MinaPriceInput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
-} from '../proofs/oracle-price-aggregation/verify';
-import { PriceAggregationProofPublicOutput } from '../proofs/oracle-price-aggregation/common';
+} from '../proofs/oracle-price-aggregation/verify.js';
+import { PriceAggregationProofPublicOutput } from '../proofs/oracle-price-aggregation/common.js';
 import {
   ProtocolData,
   ProtocolDataPacked,
   ZkUsdEngineErrors,
-} from '../system/engine';
-import { MinaPrice, OracleWhitelist } from '../system/oracle';
+} from '../system/engine.js';
+import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 
 /**
  * @title   zkUSD Engine contract

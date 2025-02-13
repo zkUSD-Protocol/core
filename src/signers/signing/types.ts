@@ -1,8 +1,8 @@
 import { PrivateKey, Transaction, UInt32, UInt64 } from 'o1js';
-import { TrackedPromise } from '../../utils/tracked-promise';
-import { KeyPair } from '../../types/utility';
-import { SignerZkappCommand } from '../../o1js-compat/zkappcommand';
-import { Signed } from '../../o1js-compat/signed';
+import { TrackedPromise } from '../../utils/tracked-promise.js';
+import { KeyPair } from '../../types/utility.js';
+import { SignerZkappCommand } from '../../o1js-compat/zkappcommand.js';
+import { Signed } from '../../o1js-compat/signed.js';
 
 export { Signer, SignedTxType, TxSignerType };
 
