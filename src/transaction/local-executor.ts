@@ -37,12 +37,19 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
 
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
+      let builtTx;
+      try {
+        builtTx = await tx.buildTx;
+      }
+      catch (error) {
+        throw failed_before_sending('Awaiting deps and building tx', error);
+      }
       try {
         if (config?.printTx) {
           console.log(`${tx.getId()} - Proving transaction ...`);
         }
         return mkState(
-          await transactionProve(tx.tx, config.mina, config.o1jsMutex)
+          await transactionProve(builtTx, config.mina, config.o1jsMutex)
         );
       } catch (error) {
         throw failed_before_sending('proving the tx', error);
@@ -52,11 +59,8 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     // create sending promise maker
     const mkSendingPromise = function (fee: UInt64) {
       return new TrackedPromise(async () => {
-        const results = await Promise.all([
-          provingPromise,
-          tx.depsAwaitingPromise,
-        ]);
-        const transaction = results[0].transaction;
+        const results = await provingPromise;
+        const transaction = results.transaction;
         // TODO don't we need token as well?
         let nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
         // send the transaction

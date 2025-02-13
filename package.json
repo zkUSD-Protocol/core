@@ -1,9 +1,16 @@
 {
-  "name": "zkusd-core",
-  "version": "0.4.0",
-  "description": "A TypeScript library for Node and Web (with a CLI).",
+  "name": "zkusd",
+  "version": "0.3.0",
+  "description": "",
+  "author": "zkusd",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mina-zkapp",
+    "mina-zk-app",
+    "mina-dapp",
+    "zkapp"
+  ],
   "type": "module",
-  "license": "MIT",
   "scripts": {
     "build": "rm -rf dist && tsup && node scripts/build-package-json.js",
     "format": "prettier --write --ignore-unknown **/*",
@@ -46,9 +53,7 @@
   },
   "dependencies": {
     "@minatokens/token": "^0.5.5",
-    "mina-signer": "^3.0.7",
-    "ts-node": "^10.9.2",
-    "zkcloudworker": "^0.24.3"
+    "mina-signer": "^3.0.7"
   },
   "module": "index.ts"
 }

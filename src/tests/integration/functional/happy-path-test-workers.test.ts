@@ -10,6 +10,7 @@ import { LocalTransactionExecutor } from '../../../transaction/local-executor.js
 import { ExternalTransactionExecutor } from '../../../transaction/external-executor.js';
 import { HttpClientProver } from '../../../provers/httpclientprover.js';
 import { VaultTransactionType } from '../../../system/transaction.js';
+import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 
 const printTx = !!process.env.DEBUG;
 
@@ -36,7 +37,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     > = {
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpClientProver('http://localhost:3969') },
+        { prover: new HttpServerProver() },
         stopExecutor
       ),
       default: 'external', // use workers by default
@@ -284,6 +285,10 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
         tokenId: th.token.contract.deriveTokenId(),
       }
     );
+
+    if(!mike){
+      throw new Error('There was an error initializing Mike');
+    }
 
     // mike's be liquidated
     await th.includeEngineTx(

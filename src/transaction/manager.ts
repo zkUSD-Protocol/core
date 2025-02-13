@@ -396,7 +396,7 @@ export class TransactionManager<E extends string> {
     const { waitForIncluded } = options ?? {};
     let name = options?.name;
 
-    if(!name){
+    if (!name) {
       let i = 1;
       while (true) {
         if (this.transactions.has(`tx${i}`)) {
@@ -495,30 +495,39 @@ export class TransactionManager<E extends string> {
       forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(this.mina),
     };
 
-    for (const acc of options?.refreshAccounts ?? []) {
-      await this.mina.fetchMinaAccount(acc.publicKey, {
-        tokenId: acc.tokenId,
-        force: true,
-      });
-    }
+    const builtTxPromise = depsAwaitingPromise.then(async () => {
 
-    const builtTx = await transactionBuild(
-      this._o1jsMutex,
-      this.mina,
-      sender,
-      callback,
-      buildOptions
-    );
+      try{
+
+      for (const acc of options?.refreshAccounts ?? []) {
+        await this.mina.fetchMinaAccount(acc.publicKey, {
+          tokenId: acc.tokenId,
+          force: true,
+        });
+      }
+
+      const builtTx = await transactionBuild(
+        this._o1jsMutex,
+        this.mina,
+        sender,
+        callback,
+        buildOptions
+      );
+      return builtTx;
+      } catch (error) {
+        throw failed_before_sending('building the tx', error);
+      }
+    });
 
     //=== prepare promises that will manage the transaction lifecycle
     const nonceLock = this.mina.nonceManager.getAccountNonce.bind(
       this.mina.nonceManager
     );
+
     const preparedTx: PreparedTransaction = {
       getId: () => tx.getId(),
       args: tx.request?.args ?? undefined,
-      tx: builtTx,
-      depsAwaitingPromise,
+      buildTx: builtTxPromise,
       setStatus: (s: TransactionStatus) => {
         tx.status = s;
       },
@@ -634,8 +643,7 @@ export async function transactionBuild(
     for (const au of auCount) {
       if (au.count > 1) {
         console.log(
-          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
-            au.count
+          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${au.count
           }`
         );
       }

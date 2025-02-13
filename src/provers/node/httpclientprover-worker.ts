@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { fileURLToPath } from 'url';
+import { fileURLToPath } from 'node:url';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import { blockchain } from '../../mina/networks.js';
 import { getNetworkKeys } from '../../config/keys.js';
@@ -28,6 +28,7 @@ function mkExecutionTracker() {
     resolve = res;
     reject = rej;
   });
+
   const tracker: TxProvingTracker = {
     proving: {
       resolver: async (serializedTx: string) => {
@@ -46,20 +47,13 @@ function mkExecutionTracker() {
       },
     },
   };
+
   return { tracker, result };
 }
 
 const mkWorkerId = () => {
   const now = new Date();
-  const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    '0'
-  )}-${String(now.getDate()).padStart(2, '0')} ${String(
-    now.getHours()
-  ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(
-    now.getSeconds()
-  ).padStart(2, '0')}`;
-  return 'httpserver-worker-' + formatted;
+  return `httpserver-worker-${now.toISOString()}`;
 };
 
 /**
@@ -77,13 +71,10 @@ function mkHandleRequest(
   const workerId = mkWorkerId();
   const mutex = new Mutex();
 
-  function handleRequest(req: IncomingMessage, res: ServerResponse) {
+  async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     if (req.method !== 'POST') {
-      // Only POST is supported
       res.writeHead(405, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({ error: 'Method Not Allowed. Use POST instead.' })
-      );
+      res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST instead.' }));
       return;
     }
 
@@ -94,7 +85,6 @@ function mkHandleRequest(
 
     req.on('end', async () => {
       try {
-        // Parse the incoming JSON
         const parsedBody = JSON.parse(body) as TxProvingRequest;
         const { payload } = parsedBody;
 
@@ -120,63 +110,53 @@ function mkHandleRequest(
           return await result;
         });
 
-        // Construct the response
-        const response: TxProvingResponse = {
-          result: provingResult,
-        };
+        const response: TxProvingResponse = { result: provingResult };
 
-        // Send the response as JSON
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response));
       } catch (error: unknown) {
-        // Log the error and return a readable response
         console.error('Error in /proveTransaction:', error);
-
         const message = error instanceof Error ? error.message : String(error);
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            error: `Transaction proving failed: ${message}`,
-          })
-        );
+        res.end(JSON.stringify({ error: `Transaction proving failed: ${message}` }));
       }
     });
   }
+
   return handleRequest;
 }
 
-// Create and export the HTTP server instance
+const __filename = fileURLToPath(import.meta.url);
+
+// Create server instance
 export const server = (
   chainInterface: MinaNetworkInterface,
   compiledContracts: CompilationResults,
   keys: ReturnType<typeof getNetworkKeys>
 ) => createServer(mkHandleRequest(chainInterface, compiledContracts, keys));
 
-const __filename = fileURLToPath(import.meta.url);
-
+// Ensure top-level await is wrapped in an async function to ensure ES2021 module compat
 if (process.argv[1] === __filename) {
-  const PORT = process.argv[2] || process.env.PORT || 3969;
-  const CHAIN = process.argv[3] || process.env.CHAIN || 'lightnet';
+  (async () => {
+    const PORT = process.argv[2] || process.env.PORT || 3969;
+    const CHAIN = process.argv[3] || process.env.CHAIN || 'lightnet';
 
-  console.log(
-    `Starting zkusd transaction proving server on port ${PORT} for chain ${CHAIN}...`
-  );
+    console.log(
+      `Starting zkusd transaction proving server on port ${PORT} for chain ${CHAIN}...`
+    );
 
-  const chainInterface = await MinaNetworkInterface.initChain(
-    CHAIN as blockchain
-  );
+    const chainInterface = await MinaNetworkInterface.initChain(CHAIN as blockchain);
+    console.log('Compiling contracts');
 
-  console.log('Compiling contracts');
+    const keys = getNetworkKeys(CHAIN as blockchain);
 
-  const keys = getNetworkKeys(CHAIN as blockchain);
+    const compilationResults = await compileContracts({
+      tokenPublicKey: keys.token.publicKey,
+      enginePublicKey: keys.engine.publicKey,
+    });
 
-  // compile contracts
-  const compilationResults = await compileContracts({
-    tokenPublicKey: keys.token.publicKey,
-    enginePublicKey: keys.engine.publicKey,
-  });
-
-  server(chainInterface, compilationResults, keys).listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-  });
+    server(chainInterface, compilationResults, keys).listen(PORT, () => {
+      console.log(`Server listening on port ${PORT}`);
+    });
+  })();
 }

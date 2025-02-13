@@ -216,13 +216,13 @@ export class TestHelper<E extends string> {
         E | 'local',
         (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
       >;
-      doNotEnsureLightnet?: boolean
+      ensureLightnet?: boolean
     },
   ): Promise<TestHelper<E>> {
     // Ensure the lightnet environment is running.
 
     // if undefined we DO
-    if (!opts?.doNotEnsureLightnet){
+    if (opts?.ensureLightnet){
       throw new Error("Lightnet ensuring not available. Start it manully.");
       // await ensureLightnetRunning();
     }
@@ -423,6 +423,8 @@ export class TestHelper<E extends string> {
           executor: 'local', // use local executor when tx is not supported by workers
         }
       );
+    } else {
+      throw new Error(`Only use it on lightnet and local  found: ${this.mina.network.chainId}`);
     }
   }
 
@@ -490,6 +492,10 @@ export class TestHelper<E extends string> {
       { publicKey: sender.publicKey },
       // vault
       { publicKey: PublicKey.fromBase58(args.args.vaultAddress)
+        , tokenId: this.engine.contract.deriveTokenId()
+      },
+      // sender zkusd
+      { publicKey: sender.publicKey
       , tokenId: this.engine.contract.deriveTokenId() },
     ]
 

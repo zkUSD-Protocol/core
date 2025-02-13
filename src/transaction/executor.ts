@@ -93,13 +93,12 @@ interface TransactionExecutionConfig {
 /** Represents a transaction that has been prepared for execution. */
 interface PreparedTransaction {
   getId: () => string;
-  tx: Transaction<false, false>;
+  buildTx: Promise<Transaction<false, false>>;
   args?: TransactionArgs;
   keys: {
     sender: KeyPair;
     extraSigners: PrivateKey[];
   };
-  depsAwaitingPromise: TrackedPromise<void>;
   nonceLock: (
     publicKey: string | PublicKey,
     tokenId?: Field
