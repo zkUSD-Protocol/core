@@ -93,7 +93,8 @@ class LocalBlockchain {
  */
 class LightnetChain {
   kind: 'lightnet' = 'lightnet';
-  _instance: MinaApi | undefined;
+  private _instance: MinaApi | undefined;
+  private _network: MinaNetwork = LightnetNetwork;
 
   public get instance() {
     if (this._instance) {
@@ -104,8 +105,9 @@ class LightnetChain {
     );
   }
 
-  async init(): Promise<void> {
-    this._instance = Mina.Network(this.network);
+  async init(urls?: MinaNetwork): Promise<void> {
+    this._network = urls ?? LightnetNetwork;
+    this._instance = Mina.Network(this._network);
   }
 
   async newAccount(): Promise<KeyPair> {
@@ -117,7 +119,7 @@ class LightnetChain {
   }
 
   get network(): MinaNetwork {
-    return LightnetNetwork;
+    return this._network;
   }
 }
 
@@ -273,10 +275,10 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
    * Create and initialize an instance of MinaNetworkInterface with a LightnetChain backend.
    * @returns A newly initialized MinaNetworkInterface instance (lightnet backend).
    */
-  public static async initLightnet(): Promise<MinaNetworkInterface> {
+  public static async initLightnet(urls?: MinaNetwork): Promise<MinaNetworkInterface> {
     // Create and initialize the LightnetChain
     const ln = new LightnetChain();
-    await ln.init();
+    await ln.init(urls);
 
     const nonceManager = new NonceManager({
       fetchMinaAccount: async (publicKey, tokenId) => {

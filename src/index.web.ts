@@ -4,4 +4,4 @@ export type { WithDefault } from './types/utility';
 export { HttpClientProver } from './provers/httpclientprover';
 export { ExternalTransactionExecutor } from './transaction/external-executor';
 export { TransactionManager } from './transaction/manager';
-export { sharedFunction, initLightnet } from './shared';
+export { MinaNetworkInterface } from './mina/network-interface';
