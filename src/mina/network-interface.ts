@@ -9,7 +9,7 @@ import {
   UInt64,
 } from 'o1js';
 import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
-import { KeyPair } from './../types/utility.js';
+import { KeyPair, blockchain } from './../types/utility.js';
 import {
   INonceManager,
   LocalNonceManager,
@@ -22,12 +22,10 @@ import {
   GqlVars,
   queryGraphQL,
 } from './graphql.js';
-import {
-  blockchain,
-  fetchMinaAccount as zkCWfetchMinaAccount,
-} from 'zkcloudworker';
 import { extractAllTxParties } from './utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
+import { MinaApi } from './types.js';
+import { fetchMinaAccount as zkcwfetchMinaAccount } from '../o1js-compat/zckw-fetch.js';
 
 type LocalOnlyApi = {
   // add more as needed
@@ -38,7 +36,6 @@ type LocalOnlyApi = {
  * This type captures whatever methods come back from `Mina.Network()`.
  * For example, transaction(...), currentSlot(), etc.
  */
-type MinaApi = Awaited<ReturnType<typeof Mina.Network>>;
 type ZkusdMinaApi = Omit<
   Awaited<ReturnType<typeof Mina.Network>>,
   'getAccount'
@@ -250,8 +247,8 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     publicKey: string | PublicKey,
     options?: { tokenId?: Field; force?: boolean }
   ): Promise<MinaAccount | undefined> {
-    const ret = await zkCWfetchMinaAccount({
-      publicKey,
+    const ret = await zkcwfetchMinaAccount({
+      publicKey: typeof publicKey === 'string' ? PublicKey.fromBase58(publicKey) : publicKey,
       tokenId: options?.tokenId,
       force: options?.force,
     });
