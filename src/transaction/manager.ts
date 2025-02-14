@@ -27,7 +27,7 @@ import {
 import { zkUsdTransaction } from './execution.js';
 import { ZkUsdEngine } from '../system/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
-import { Account } from '../mina/utils.js';
+import { Account, isKeyPair } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
 const DEBUG = !!process.env.DEBUG;
@@ -84,7 +84,7 @@ export type TransactionRequest = {
   /**
    * TODO: future: avoid passing the private key
    */
-  sender: KeyPair;
+  sender: KeyPair | PublicKey;
   callback: () => Promise<void>;
   options: TransactionOptions;
   /**
@@ -221,7 +221,11 @@ export class TransactionInternal {
     if (!this.request) {
       throw new Error('TODO - implement sender for non-request transactions');
     }
-    return this.request.sender.publicKey;
+    if ('publicKey' in this.request.sender) {
+      return (this.request.sender as KeyPair).publicKey;
+    } else {
+      return this.request.sender;
+    }
   }
 
   /**
@@ -449,7 +453,7 @@ export class TransactionManager<E extends string> {
   }
 
   async engineTx(
-    sender: KeyPair,
+    sender: KeyPair | PublicKey,
     args: TransactionArgs,
     engine: InstanceType<ZkUsdEngine>,
     minaPriceInput?: MinaPriceInput | undefined,
@@ -458,9 +462,10 @@ export class TransactionManager<E extends string> {
       waitForIncluded?: (string | TransactionHandle)[];
     }
   ) {
+    const senderKey = isKeyPair(sender) ? sender.publicKey : sender
     const { callback } = await zkUsdTransaction({
       kind: args.transactionType,
-      sender: sender.publicKey,
+      sender: senderKey,
       txArgs: args.args,
       engine,
       accountsUpToDate: true,
@@ -485,7 +490,7 @@ export class TransactionManager<E extends string> {
   // the transaction should be retried until it is included or failed
   // or timed out
   async tx(
-    sender: KeyPair, // TODO: future: avoid passing the private key
+    sender: KeyPair | PublicKey, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
@@ -614,7 +619,7 @@ export class TransactionManager<E extends string> {
         const builtTx = await transactionBuild(
           this._o1jsMutex,
           this.mina,
-          sender,
+          extractPublicKey(sender),
           callback,
           buildOptions
         );
@@ -675,7 +680,7 @@ export class TransactionManager<E extends string> {
 export async function transactionBuild(
   mutex: Mutex,
   chain: IMinaNetworkInterface,
-  sender: KeyPair,
+  sender: PublicKey,
   callback: () => Promise<void>,
   options: TransactionOptions & {
     nonce?: UInt32;
@@ -696,7 +701,7 @@ export async function transactionBuild(
     async () =>
       await chain.transaction(
         {
-          sender: sender.publicKey,
+          sender: sender,
           ...(startingFee && { fee: startingFee }),
           ...(nonce && { nonce: Number(nonce) }),
           ...(memo && { memo }),
@@ -712,7 +717,7 @@ export async function transactionBuild(
     async () =>
       await chain.transaction(
         {
-          sender: sender.publicKey,
+          sender: sender,
           ...(startingFee && { fee: startingFee }),
           ...(nonce && { nonce: Number(nonce) }),
           ...(memo && { memo }),
@@ -760,4 +765,12 @@ export async function transactionBuild(
     console.log(tx.transaction.accountUpdates);
   }
   return tx;
+}
+
+function extractPublicKey(x: KeyPair | PublicKey) {
+  if ('publicKey' in x) {
+    return (x as KeyPair).publicKey;
+  } else {
+    return x;
+  }
 }

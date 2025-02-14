@@ -35,7 +35,7 @@ import {
 import crypto from 'crypto';
 import { validPriceBlockCount } from '../mina/networks.js';
 import { Mutex } from '../utils/mutex.js';
-import { Account } from '../mina/utils.js';
+import { Account, isKeyPair } from '../mina/utils.js';
 import {
   IMinaNetworkInterface,
   MinaNetworkInterface,
@@ -491,7 +491,7 @@ export class TestHelper<E extends string> {
   }
 
   async engineTx(
-    sender: KeyPair,
+    sender: KeyPair | PublicKey,
     args: TransactionArgs,
     options?: TransactionOptions & {
       name?: string;
@@ -506,11 +506,12 @@ export class TestHelper<E extends string> {
     } else {
       minaPriceInput = undefined;
     }
+    const senderKey = isKeyPair(sender) ? sender.publicKey : sender;
 
     let refreshAccounts: Account[] = [
       { publicKey: this.engine.contract.address }, // engine
       // sender
-      { publicKey: sender.publicKey },
+      { publicKey: senderKey },
       // vault
       {
         publicKey: PublicKey.fromBase58(args.args.vaultAddress),
@@ -518,7 +519,7 @@ export class TestHelper<E extends string> {
       },
       // sender zkusd
       {
-        publicKey: sender.publicKey,
+        publicKey: senderKey,
         tokenId: this.engine.contract.deriveTokenId(),
       },
     ];
@@ -533,7 +534,7 @@ export class TestHelper<E extends string> {
   }
 
   async includeEngineTx(
-    sender: KeyPair,
+    sender: KeyPair | PublicKey,
     args: TransactionArgs,
     options?: TransactionOptions & {
       name?: string;
@@ -801,16 +802,14 @@ export class TestHelper<E extends string> {
         `   • MINA: ${agentAccount?.balance.toBigInt() / BigInt(1e9)} MINA`
       );
       console.log(
-        `   • zkUSD: ${
-          agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
+        `   • zkUSD: ${agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
         } zkUSD`
       );
 
       console.log(`\n🏦 Vault Details:`);
       console.log(`   • Address: ${agent.vault!.publicKey.toBase58()}`);
       console.log(
-        `   • Collateral: ${
-          vault.collateralAmount.toBigInt() / BigInt(1e9)
+        `   • Collateral: ${vault.collateralAmount.toBigInt() / BigInt(1e9)
         } MINA`
       );
       console.log(
@@ -1022,7 +1021,7 @@ class PriceInputManager {
       for (const proof of proofs) {
         if (
           BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
-            blockH.toBigint() + minimalValidity &&
+          blockH.toBigint() + minimalValidity &&
           // and already valid!
           blockH.toBigint() >= BigInt(proof.blockHeight)
         ) {

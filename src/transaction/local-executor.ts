@@ -15,6 +15,8 @@ import {
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { Mutex } from '../utils/mutex.js';
 import { o1jsSigner } from '../signers/o1js-signer.js';
+import { KeyPair } from '../types/utility.js';
+import { isKeyPair } from '../mina/utils.js';
 
 export class LocalTransactionExecutor implements ITransactionExecutor {
   public get signer() {
@@ -26,6 +28,12 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     config: TransactionExecutionConfig,
     _options?: unknown
   ): Promise<TransactionLifecycle> {
+    if (!isKeyPair(tx.keys.sender)) {
+      throw new Error(
+        'LocalTransactionExecutor requires the sender to be a KeyPair'
+      );
+    }
+    const sender = tx.keys.sender as KeyPair;
     const self = this;
     // const failed_before_sending = (phase: string, error: unknown) =>
     const failed_before_sending = (phase: string, error: unknown) => {
@@ -63,13 +71,14 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       return new TrackedPromise(async () => {
         const results = await provingPromise;
         const transaction = results.transaction;
+
         // TODO don't we need token as well?
-        let nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
+        let nonceLock = await tx.nonceLock(sender.publicKey);
         // send the transaction
         try {
           tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
           const { signedTx } = await self.signer({
-            keys: tx.keys,
+            keys: { sender, extraSigners: tx.keys.extraSigners },
             nonce: nonceLock.nonce,
             fee,
             tx: transaction,
