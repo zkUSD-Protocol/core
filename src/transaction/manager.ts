@@ -6,7 +6,7 @@ import {
   UInt32,
   UInt64,
 } from 'o1js';
-import { KeyPair, WithDefault } from '../types/utility.js';
+import { KeyPair, WithDefault, singleDefault } from '../types/utility.js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { Mutex } from '../utils/mutex.js';
@@ -379,10 +379,24 @@ export class TransactionManager<E extends string> {
    */
   public static new<E extends string>(
     minaInterface: IMinaNetworkInterface,
-    transactionExecutors: WithDefault<E, ITransactionExecutor>
+    transactionExecutors: WithDefault<E, ITransactionExecutor> | { [K in E]: ITransactionExecutor }
   ): TransactionManager<E> {
-    return new TransactionManager(minaInterface, transactionExecutors);
+
+    let executor: WithDefault<E, ITransactionExecutor>;
+
+    // if transactionExecutors satisfies the interface
+    if ('default' in transactionExecutors) {
+      executor = transactionExecutors as WithDefault<E, ITransactionExecutor>;
+    } else {
+      const firstKey = Object.keys(transactionExecutors)[0] as E;
+      const firstValue = Object.values(transactionExecutors)[0];
+
+      executor = singleDefault(firstKey, firstValue as ITransactionExecutor);
+    }
+
+    return new TransactionManager(minaInterface, executor);
   }
+
 
   private transactions: Map<string, TransactionInternal> = new Map();
 
