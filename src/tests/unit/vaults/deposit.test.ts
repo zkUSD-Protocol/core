@@ -1,11 +1,11 @@
 import { TestHelper, TestAmounts } from '../../test-helper.js';
-import { Mina, UInt64 } from 'o1js';
+import { UInt64 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { VaultErrors } from '../../../types/vault.js';
+import { VaultErrors } from '../../../system/vault.js';
 
 describe('zkUSD Vault Deposit Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
 
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
@@ -32,7 +32,7 @@ describe('zkUSD Vault Deposit Test Suite', () => {
       { name: `Deposit Test Suite: Alice deposits 100 Mina` }
     );
 
-    const vault = await th.retrieveVaultState('alice');
+    const vault = await th.retrieveAgentVaultState('alice');
 
     const aliceBalanceAfterDeposit = th.mina.Mina.getBalance(
       th.agents.alice.keys.publicKey
@@ -177,7 +177,7 @@ describe('zkUSD Vault Deposit Test Suite', () => {
   });
 
   it('should track total deposits correctly across multiple transactions', async () => {
-    const initialVault = await th.retrieveVaultState('alice');
+    const initialVault = await th.retrieveAgentVaultState('alice');
 
     // Make multiple deposits
     for (let i = 0; i < 3; i++) {
@@ -196,7 +196,7 @@ describe('zkUSD Vault Deposit Test Suite', () => {
         }
       );
     }
-    const finalVault = await th.retrieveVaultState('alice');
+    const finalVault = await th.retrieveAgentVaultState('alice');
     assert.deepStrictEqual(
       finalVault.collateralAmount,
       initialVault.collateralAmount?.add(TestAmounts.COLLATERAL_1_MINA.mul(3))

@@ -9,7 +9,7 @@ import {
   ZkProgram,
 } from 'o1js';
 
-import { MinaPrice, OracleWhitelist } from '../../types/oracle.js';
+import { MinaPrice, OracleWhitelist } from '../../system/oracle.js';
 import {
   PriceAggregationProofPublicInput,
   PriceAggregationProofPublicOutput,

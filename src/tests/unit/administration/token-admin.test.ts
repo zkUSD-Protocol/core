@@ -83,7 +83,7 @@ export class NewFungibleTokenAdmin
 }
 
 describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   const newAdminContract = PrivateKey.randomKeypair();
   const newAdmin = PrivateKey.randomKeypair();
   const adminContract = new NewFungibleTokenAdmin(newAdminContract.publicKey);

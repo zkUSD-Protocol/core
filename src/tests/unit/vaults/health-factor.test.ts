@@ -2,11 +2,11 @@ import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { AccountUpdate, UInt64 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { MinaPrice } from '../../../types/oracle.js';
-import { Vault } from '../../../types/vault.js';
+import { Vault } from '../../../system/vault.js';
+import { MinaPrice } from '../../../system/oracle.js';
 
 describe('zkUSD Vault Health Factor Calculations Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let price: MinaPrice;
   let vault: Vault;
 

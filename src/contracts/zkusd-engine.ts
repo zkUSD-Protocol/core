@@ -1,8 +1,6 @@
 import {
   FungibleTokenAdminBase,
   FungibleTokenContract,
-  FungibleTokenAdmin,
-  FungibleToken,
 } from '@minatokens/token';
 import {
   AccountUpdate,
@@ -15,15 +13,15 @@ import {
   state,
   UInt64,
   Permissions,
-  VerificationKey,
   Poseidon,
   TokenContract,
   AccountUpdateForest,
   Int64,
   UInt32,
+  VerificationKey,
 } from 'o1js';
 
-import { Vault, VaultState } from '../types/vault.js';
+import { Vault } from '../system/vault.js';
 import {
   EmergencyStopToggledEvent,
   AdminUpdatedEvent,
@@ -36,7 +34,7 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
   ValidPriceBlockCountUpdatedEvent,
-} from '../events.js';
+} from '../system/events.js';
 import {
   MinaPriceInput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
@@ -46,8 +44,8 @@ import {
   ProtocolData,
   ProtocolDataPacked,
   ZkUsdEngineErrors,
-} from '../types/engine.js';
-import { MinaPrice, OracleWhitelist } from '../types/oracle.js';
+} from '../system/engine.js';
+import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -133,7 +131,7 @@ export function ZkUsdEngineContract(args: {
     }
 
     //Blocks the updating of state of the token accounts
-    approveBase(forest: AccountUpdateForest): Promise<void> {
+    approveBase(_forest: AccountUpdateForest): Promise<void> {
       throw Error(ZkUsdEngineErrors.UPDATES_BLOCKED);
     }
 
@@ -270,7 +268,7 @@ export function ZkUsdEngineContract(args: {
       const vault = Vault.getAndRequireEquals(vaultUpdate);
 
       //Update the owner
-      const newVaultState = vault.updateOwner(newOwner, owner);
+      vault.updateOwner(newOwner, owner);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -788,6 +786,15 @@ export function ZkUsdEngineContract(args: {
       //We need the admin signature to resume the token
       await this.ensureAdminSignature();
       return Bool(true);
+    }
+
+    /**
+     * @notice  Returns true if the admin can change the verification key
+     * @returns True if the admin can change the verification key
+     */
+    @method.returns(Bool)
+    public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
+      return Bool(true); // TODO change it to read the permission instead
     }
   }
 

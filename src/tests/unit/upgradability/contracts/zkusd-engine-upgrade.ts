@@ -1,21 +1,16 @@
 import {
   FungibleTokenAdminBase,
   FungibleTokenContract,
-  FungibleTokenAdmin,
-  FungibleToken,
 } from '@minatokens/token';
 import {
   AccountUpdate,
   Bool,
-  DeployArgs,
   Field,
   method,
   PublicKey,
   State,
   state,
   UInt64,
-  Permissions,
-  VerificationKey,
   Poseidon,
   TokenContract,
   AccountUpdateForest,
@@ -23,7 +18,6 @@ import {
   UInt32,
 } from 'o1js';
 
-import { Vault } from '../../../../types/vault.js';
 import {
   EmergencyStopToggledEvent,
   AdminUpdatedEvent,
@@ -36,18 +30,15 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
   ValidPriceBlockCountUpdatedEvent,
-} from '../../../../events.js';
+} from '../../../../system/events.js';
 import {
   MinaPriceInput,
   verifyMinaPriceInput as verifyMinaPriceInputProof,
 } from '../../../../proofs/oracle-price-aggregation/verify.js';
 import { PriceAggregationProofPublicOutput } from '../../../../proofs/oracle-price-aggregation/common.js';
-import {
-  ProtocolData,
-  ProtocolDataPacked,
-  ZkUsdEngineErrors,
-} from '../../../../types/engine.js';
-import { MinaPrice, OracleWhitelist } from '../../../../types/oracle.js';
+import { ZkUsdEngineErrors } from '../../../../system/engine.js';
+import { MinaPrice, OracleWhitelist } from '../../../../system/oracle.js';
+import { Vault } from '../../../../system/vault.js';
 
 /**
  * @title   zkUSD Engine contract

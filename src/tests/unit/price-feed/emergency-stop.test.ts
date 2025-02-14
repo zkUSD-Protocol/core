@@ -1,12 +1,12 @@
 import { AccountUpdate, Bool } from 'o1js';
 import { TestAmounts, TestHelper } from '../../test-helper.js';
-import { ProtocolData, ZkUsdEngineErrors } from '../../../types/engine.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
+import { ProtocolData, ZkUsdEngineErrors } from '../../../system/engine.js';
 
 describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let priceOneUsd: MinaPriceInput;
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });

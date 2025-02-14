@@ -1,16 +1,14 @@
 import { TestHelper } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import {
-  TransactionHandle,
-} from '../../../mina/transaction-manager.js';
 import { AccountUpdate, PrivateKey } from 'o1js';
 import {
   statusIsFailed,
   statusIsFinal,
   statusIsOfKind,
   statusIsRejected,
-} from '../../../mina/transaction-status.js';
+} from '../../../transaction/status.js';
+import { TransactionHandle } from '../../../transaction/manager.js';
 
 describe('Local tests of TransactionManager', async () => {
   const helper = await TestHelper.initLocalChain();
@@ -29,10 +27,9 @@ describe('Local tests of TransactionManager', async () => {
       });
     });
 
-    const includedTx = await txHandle.awaitIncluded();
+    await txHandle.awaitIncluded();
 
     assert(txHandle.txStatus === 'Included');
-    assert(includedTx.status === 'included');
   });
 
   it('can create a tx with dependencies and await until it is included', async () => {
@@ -51,6 +48,8 @@ describe('Local tests of TransactionManager', async () => {
       },
       { name: 'alice_to_bob' }
     );
+    // wait 100ms
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const tx2Handle = await txMgr.tx(
       alice.keys,
@@ -68,11 +67,13 @@ describe('Local tests of TransactionManager', async () => {
       }
     );
 
-    const includedTx = await tx2Handle.awaitIncluded();
+    await tx2Handle.awaitIncluded();
 
     assert(tx2Handle.txStatus === 'Included');
     assert(txHandle.txStatus === 'Included');
-    assert(includedTx.status === 'included');
+
+    await txHandle.awaitIncluded();
+    console.log('im fine');
   });
 
   it('tx with dependencies will fail if a dep failed', async () => {

@@ -1,11 +1,11 @@
 import { TestHelper, TestAmounts } from '../../test-helper.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { Vault, VaultErrors } from '../../../types/vault.js';
 import { AccountUpdate } from 'o1js';
+import { Vault, VaultErrors } from '../../../system/vault.js';
 
 describe('zkUSD Deployment Test Suite', () => {
-  let testHelper: TestHelper;
+  let testHelper: TestHelper<'local'>;
 
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: false });
@@ -84,7 +84,7 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('Deployed vault should have clean state and valid owner', async () => {
-    const vault = await testHelper.retrieveVaultState('alice');
+    const vault = await testHelper.retrieveAgentVaultState('alice');
 
     assert(vault?.collateralAmount.equals(TestAmounts.ZERO));
     assert(vault?.debtAmount.equals(TestAmounts.ZERO));

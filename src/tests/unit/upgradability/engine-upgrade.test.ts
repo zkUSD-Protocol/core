@@ -10,36 +10,20 @@ import {
   AccountUpdate,
   Bool,
   Field,
-  Mina,
   Poseidon,
-  PrivateKey,
-  PublicKey,
-  Signature,
   UInt32,
-  UInt64,
-  UInt8,
   VerificationKey,
 } from 'o1js';
-import { getNetworkKeys, NetworkKeyPairs } from '../../../config/keys.js';
-import { FungibleTokenContract } from '@minatokens/token';
 
-import { Vault } from '../../../types/vault.js';
-import { MinaNetworkInterface } from '../../../mina/mina-network-interface.js';
-import { TransactionManager } from '../../../mina/transaction-manager.js';
 import { validPriceBlockCount } from '../../../mina/networks.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
-import Client from 'mina-signer';
 import assert from 'node:assert';
-import { OracleWhitelist } from '../../../types/oracle.js';
-import { ContractInstance, KeyPair } from '../../../types/utility.js';
-import { ProtocolData, ProtocolDataPacked } from '../../../types/engine.js';
-
-const client = new Client({
-  network: 'testnet',
-});
+import { ContractInstance } from '../../../types/utility.js';
+import { ProtocolData, ProtocolDataPacked } from '../../../system/engine.js';
+import { OracleWhitelist } from '../../../system/oracle.js';
 
 describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let oneUsdPrice: MinaPriceInput;
   let originalEngineVerificationKey: VerificationKey;
   let upgradedEngineVerificationKey: VerificationKey;

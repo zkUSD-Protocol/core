@@ -3,7 +3,8 @@ import {
   Bool,
   fetchLastBlock,
   Field,
-  IncludedTransaction,
+  JsonProof,
+  Poseidon,
   PrivateKey,
   PublicKey,
   Signature,
@@ -11,38 +12,60 @@ import {
   UInt64,
   VerificationKey,
 } from 'o1js';
+import fs from 'fs';
 
-import { Vault, VaultState } from '../types/vault.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 
 import { FungibleTokenContract } from '@minatokens/token';
-import {
-  IMinaNetworkInterface,
-  MinaNetworkInterface,
-} from '../mina/mina-network-interface.js';
 import { AgentKeys, NetworkKeyPairs, getNetworkKeys } from '../config/keys.js';
-import { DeploymentService } from '../services/deployment.js';
 import Client from 'mina-signer';
 import {
   AggregateOraclePrices,
   OraclePriceSubmissions,
   PriceSubmission,
   MinaPriceInput,
+  AggregateOraclePricesProof,
 } from '../proofs/oracle-price-aggregation/index.js';
+import {
+  ContractInstance,
+  KeyPair,
+  singleDefault,
+  WithDefault,
+} from '../types/utility.js';
+import crypto from 'crypto';
+import { validPriceBlockCount } from '../mina/networks.js';
+import { Mutex } from '../utils/mutex.js';
+import { Account } from '../mina/utils.js';
+import {
+  IMinaNetworkInterface,
+  MinaNetworkInterface,
+} from '../mina/network-interface.js';
 import {
   TransactionHandle,
   TransactionManager,
   TransactionOptions,
-} from '../mina/transaction-manager.js';
-import { ensureLightnetRunning } from '../utils/lightnet-boot-script.js';
-import { ContractInstance, KeyPair } from '../types/utility.js';
-import { OracleWhitelist } from '../types/oracle.js';
-import crypto from 'crypto';
-import { ProtocolData } from '../types/engine.js';
+} from '../transaction/manager.js';
+import { OracleWhitelist } from '../system/oracle.js';
 import {
   ITransactionExecutor,
-  LocalTransactionExecutor,
-} from '../mina/transaction-executor.js';
+  TransactionArgs,
+} from '../transaction/executor.js';
+import { VaultTransactionType } from '../system/transaction.js';
+import { ProtocolData } from '../system/engine.js';
+import { Vault, VaultState } from '../system/vault.js';
+import { DeploymentService } from '../deployment/deployment.js';
+import { LocalTransactionExecutor } from '../transaction/local-executor.js';
+
+const DEBUG = !!process.env.DEBUG;
+
+/**
+ * Logs debug messages if `DEBUG` is enabled.
+ * Otherwise, it does nothing.
+ * @param {...any} args - The arguments to log
+ */
+const logDebug = (...args: any[]) => {
+  if (DEBUG) console.debug(...args);
+};
 
 const client = new Client({
   network: 'testnet',
@@ -91,12 +114,22 @@ export class TestAmounts {
   static PRICE_10_USD = UInt64.from(1e10); // 10 USD
 }
 
-export class TestHelper {
+export class TestHelper<E extends string> {
   protocolResumeCounter = 0;
   protocolStopCounter = 0;
   mina: IMinaNetworkInterface;
-  _txMgr: TransactionManager;
+  _txMgr: TransactionManager<E | 'local'>; // must have a local executor
   _deploymentService: DeploymentService;
+
+  private _priceInputMgr: PriceInputManager;
+  public get priceInputMgr(): PriceInputManager {
+    if (!this._priceInputMgr) {
+      throw new Error(
+        'PriceInputManager not initialized. Deploy contracts first.'
+      );
+    }
+    return this._priceInputMgr;
+  }
 
   deployer: KeyPair;
   agents: Record<string, AgentKeys> = {};
@@ -147,11 +180,11 @@ export class TestHelper {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
-    },
-    callDepth = 3
+      executor?: E | 'local';
+    }
   ) {
     const keys = 'keys' in sender ? sender.keys : sender;
-    return this.txMgr.tx(keys, callback, options, callDepth);
+    return this.txMgr.tx(keys, callback, options);
   }
 
   public async includeTx(
@@ -161,51 +194,97 @@ export class TestHelper {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
       startingFee?: UInt64;
-    },
-    callDepth = 4
-  ): Promise<IncludedTransaction> {
+      executor?: E | 'local';
+    }
+  ): Promise<void> {
     let startingFee: UInt64 | undefined;
 
     if (this._txMgr.mina.network.chainId === 'local') {
       startingFee = new UInt64(0);
     }
 
-    const h = await this.tx(
-      sender,
-      callback,
-      {
-        ...options,
-        startingFee: options?.startingFee ?? startingFee,
-      },
-      callDepth
-    );
-    return await h.awaitIncluded();
+    const h = await this.tx(sender, callback, {
+      ...options,
+      startingFee: options?.startingFee ?? startingFee,
+    });
+    await h.awaitIncluded();
   }
 
-  static async initLocalChain(opts?: {
-    txExecutor?: ITransactionExecutor;
-    proofsEnabled?: boolean | undefined;
-    enforceTransactionLimits?: boolean | undefined;
-  }) {
+  // Single implementation
+  static async initLocalChain<E extends string = 'local'>(opts?: {
+    txExecutors?: WithDefault<E | 'local', ITransactionExecutor>;
+    proofsEnabled?: boolean;
+    enforceTransactionLimits?: boolean;
+  }): Promise<TestHelper<E>> {
     const mina = await MinaNetworkInterface.initLocal(opts);
     const deployer = await mina.newAccount();
-    return new TestHelper(
-      mina,
-      opts?.txExecutor ?? new LocalTransactionExecutor(),
-      deployer
-    );
+
+    // If opts.txExecutors is provided, use it; otherwise, use the default.
+    // When not provided, we know that E should be "local".
+    const executor: WithDefault<E | 'local', ITransactionExecutor> =
+      opts?.txExecutors ??
+      (singleDefault(
+        'local',
+        new LocalTransactionExecutor()
+      ) as unknown as WithDefault<E | 'local', ITransactionExecutor>);
+
+    return new TestHelper(mina, executor, deployer);
   }
 
-  static async initLightnetChain(opts?: { txExecutor?: ITransactionExecutor }) {
-    await ensureLightnetRunning();
+  static async initLightnetChain<E extends string = 'local'>(opts?: {
+    txExecutorInitializers?: WithDefault<
+      E | 'local',
+      (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+    >;
+    ensureLightnet?: boolean;
+  }): Promise<TestHelper<E>> {
+    // Ensure the lightnet environment is running.
+
+    // if undefined we DO
+    if (opts?.ensureLightnet) {
+      throw new Error('Lightnet ensuring not available. Start it manully.');
+      // await ensureLightnetRunning();
+    }
+
+    // Initialize the network interface.
     const mina = await MinaNetworkInterface.initLightnet();
     const deployer = await mina.newAccount();
 
-    return new TestHelper(
-      mina,
-      opts?.txExecutor ?? new LocalTransactionExecutor(),
-      deployer
-    );
+    // If no initializers are provided, default to one keyed by "local".
+    const initializers: WithDefault<
+      E | 'local',
+      (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+    > =
+      opts?.txExecutorInitializers ??
+      (singleDefault(
+        'local',
+        async () => new LocalTransactionExecutor()
+      ) as unknown as WithDefault<
+        E | 'local',
+        (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+      >);
+
+    // Transform the record:
+    // 1. For each key (except the "default" property) call the initializer with the chain id.
+    // 2. Reassemble a WithDefault record of executors.
+    const executorKeys = (
+      Object.keys(initializers) as Array<keyof typeof initializers>
+    ).filter((k) => k !== 'default') as E[];
+    const executors: Partial<Record<E, ITransactionExecutor>> = {};
+    for (const key of executorKeys) {
+      executors[key] = await initializers[key](mina);
+    }
+    // Set the default property on the executors record.
+    (executors as WithDefault<E | 'local', ITransactionExecutor>).default =
+      initializers.default;
+
+    const txExecutors = executors as WithDefault<
+      E | 'local',
+      ITransactionExecutor
+    >;
+
+    // Pass the transformed WithDefault record of executors to the TestHelper constructor.
+    return new TestHelper(mina, txExecutors, deployer);
   }
 
   async setupLightnet() {
@@ -277,6 +356,7 @@ export class TestHelper {
           }
         },
         {
+          executor: 'local', // use local executor for tx not supported by workers
           name: 'Fund Lightnet Agents',
         }
       );
@@ -330,6 +410,17 @@ export class TestHelper {
       const engineOracleWhitelistHash =
         await this.engine.contract.oracleWhitelistHash.fetch();
 
+      // initialize the price input manager
+      this._priceInputMgr = new PriceInputManager(
+        this._txMgr.o1jsMutex,
+        this.mina,
+        this.oracleAggregationVk,
+        this.whitelist,
+        this.oracles,
+        'price-inputs.json'
+      );
+      await this._priceInputMgr.init();
+
       if (
         !!engineOracleWhitelistHash &&
         engineOracleWhitelistHash.toBigInt() == oracleWhitelistHash.toBigInt()
@@ -348,7 +439,12 @@ export class TestHelper {
         {
           name: `Update Oracle Whitelist`,
           extraSigners: [this.networkKeys.protocolAdmin.privateKey],
+          executor: 'local', // use local executor when tx is not supported by workers
         }
+      );
+    } else {
+      throw new Error(
+        `Only use it on lightnet and local  found: ${this.mina.network.chainId}`
       );
     }
   }
@@ -394,6 +490,60 @@ export class TestHelper {
     await this.mina.fetchMinaAccount(agent.keys.publicKey, { force: true });
   }
 
+  async engineTx(
+    sender: KeyPair,
+    args: TransactionArgs,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    }
+  ) {
+    let minaPriceInput: MinaPriceInput | undefined;
+    if ('minaPriceProof' in args.args) {
+      minaPriceInput = await this.priceInputMgr.getMinaPriceInputForProof(
+        args.args.minaPriceProof
+      );
+    } else {
+      minaPriceInput = undefined;
+    }
+
+    let refreshAccounts: Account[] = [
+      { publicKey: this.engine.contract.address }, // engine
+      // sender
+      { publicKey: sender.publicKey },
+      // vault
+      {
+        publicKey: PublicKey.fromBase58(args.args.vaultAddress),
+        tokenId: this.engine.contract.deriveTokenId(),
+      },
+      // sender zkusd
+      {
+        publicKey: sender.publicKey,
+        tokenId: this.engine.contract.deriveTokenId(),
+      },
+    ];
+
+    return this.txMgr.engineTx(
+      sender,
+      args,
+      this.engine.contract,
+      minaPriceInput,
+      { ...options, refreshAccounts }
+    );
+  }
+
+  async includeEngineTx(
+    sender: KeyPair,
+    args: TransactionArgs,
+    options?: TransactionOptions & {
+      name?: string;
+      waitForIncluded?: (string | TransactionHandle)[];
+    }
+  ) {
+    const h = await this.engineTx(sender, args, options);
+    return await h.awaitIncluded();
+  }
+
   async depositAgentCollateral(amount: UInt64, ...names: string[]) {
     const agentDepositTxs: TransactionHandle[] = [];
 
@@ -403,22 +553,20 @@ export class TestHelper {
         throw new Error(`Agent ${name} not found`);
       }
 
-      const vault = await this.retrieveVaultState(name);
+      const vault = await this.retrieveAgentVaultState(name);
 
       if (vault.collateralAmount.toBigInt() >= amount.toBigInt()) {
         continue;
       }
 
-      const tx = await this.tx(
-        agent.keys,
-        async () => {
-          await this.engine.contract.depositCollateral(
-            agent.vault!.publicKey,
-            amount
-          );
+      const tx = await this.engineTx(agent.keys, {
+        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
+        args: {
+          transactionId: `Depositing ${amount} collateral for ${name}`,
+          vaultAddress: agent.vault!.publicKey.toBase58(),
+          collateralAmount: amount.toString(),
         },
-        { name: `Depositing ${amount} collateral for ${name}` }
-      );
+      });
       agentDepositTxs.push(tx);
     }
 
@@ -428,7 +576,7 @@ export class TestHelper {
   async mintAgentZkUsd(amount: UInt64, ...names: string[]) {
     const agentMintTxs: TransactionHandle[] = [];
 
-    let oneUsd: MinaPriceInput | undefined;
+    let oneUsd = UInt64.from(1e9);
 
     for (const name of names) {
       const agent: AgentKeys | undefined = this.agents[name];
@@ -436,26 +584,31 @@ export class TestHelper {
         throw new Error(`Agent ${name} not found`);
       }
 
-      const vault = await this.retrieveVaultState(name);
+      const vault = await this.retrieveAgentVaultState(name);
 
       if (vault.debtAmount.toBigInt() >= amount.toBigInt()) {
         continue;
       }
 
-      if (!oneUsd) {
-        oneUsd = await this.getMinaPriceInput(TestAmounts.PRICE_10_USD);
-      }
-
-      const tx = await this.tx(
+      const tx = await this.engineTx(
         agent.keys,
-        async () => {
-          await this.engine.contract.mintZkUsd(
-            agent.vault!.publicKey,
-            amount,
-            oneUsd!
-          );
+        {
+          transactionType: VaultTransactionType.MINT_ZKUSD,
+          args: {
+            transactionId: `Minting ${amount} zkUSD for ${name}`,
+            vaultAddress: agent.vault!.publicKey.toBase58(),
+            zkusdAmount: amount.toString(),
+            minaPriceProof: (
+              await this.priceInputMgr.requestProof(
+                oneUsd,
+                this.minimalPriceValidity
+              )
+            ).proof,
+          },
         },
-        { name: `Minting ${amount} zkUSD for ${name}` }
+        {
+          printTx: true,
+        }
       );
 
       agentMintTxs.push(tx);
@@ -489,14 +642,18 @@ export class TestHelper {
 
       console.log(`Creating vault for ${name}`);
 
-      const tx = await this.tx(
+      // change to using engine tx
+      const tx = await this.engineTx(
         agent.keys,
-        async () => {
-          AccountUpdate.fundNewAccount(agent.keys.publicKey, 2);
-          await this.engine.contract.createVault(agent.vault!.publicKey);
+        {
+          transactionType: VaultTransactionType.CREATE_VAULT,
+          args: {
+            transactionId: `Create Vault for ${name}`,
+            vaultAddress: vaultKeyPair.publicKey.toBase58(),
+            newAccounts: 2,
+          },
         },
         {
-          name: `Create Vault for ${name}`,
           extraSigners: [agent.vault!.privateKey],
         }
       );
@@ -529,6 +686,7 @@ export class TestHelper {
       {
         name: `Stop the protocol #${this.protocolStopCounter}`,
         extraSigners: [this.networkKeys.protocolAdmin.privateKey],
+        executor: 'local', // use local executor for tx not supported by workers
       }
     );
   }
@@ -554,106 +712,55 @@ export class TestHelper {
         await this.engine.contract.toggleEmergencyStop(Bool(false));
       },
       {
+        executor: 'local', // use local executor for tx not supported by workers
         name: `Resume the protocol #${this.protocolResumeCounter}`,
         extraSigners: [this.networkKeys.protocolAdmin.privateKey],
       }
     );
   }
 
-  async getPriceSubmissions({
-    oraclePrice,
-    blockHeight,
-  }: {
-    oraclePrice: UInt64;
-    blockHeight: UInt32;
-  }) {
-    const oraclePriceSubmissions: OraclePriceSubmissions = {
-      submissions: [],
-    };
-
-    for (let i = 0; i < this.whitelist.addresses.length; i++) {
-      const oracleName = 'oracle' + (i + 1);
-      const oraclePrivateKey = this.oracles[oracleName].privateKey;
-      const oraclePublicKey = oraclePrivateKey.toPublicKey();
-
-      const signature = client.signFields(
-        [oraclePrice.toBigInt(), blockHeight.toBigint()],
-        oraclePrivateKey.toBase58()
-      );
-
-      //build the price submission
-      const priceSubmission = new PriceSubmission({
-        publicKey: oraclePublicKey,
-        signature: Signature.fromBase58(signature.signature),
-        price: oraclePrice,
-        blockHeight: blockHeight,
-        isDummy: Bool(false),
-      });
-
-      oraclePriceSubmissions.submissions.push(priceSubmission);
-    }
-
-    return oraclePriceSubmissions;
+  get minimalPriceValidity() {
+    return this.mina.network.chainId == 'local' ? 1n : 10n;
   }
 
-  async getMinaPriceInput(price: UInt64, blockHeight?: UInt32) {
-    if (!blockHeight) {
-      if (this.mina.network.chainId === 'local') {
-        blockHeight = this.mina.getNetworkState().blockchainLength;
-      } else {
-        blockHeight = (await fetchLastBlock()).blockchainLength;
-      }
-    }
-
-    console.log(
-      'Building mina price input for block height:',
-      blockHeight.toBigint()
+  async getMinaPriceInput(
+    price: UInt64,
+    opts?: { minimalValidity?: bigint; blockHeight?: UInt32 }
+  ) {
+    const minimalValidity = opts?.minimalValidity ?? this.minimalPriceValidity;
+    return this.priceInputMgr.getMinaPriceInput(
+      price,
+      minimalValidity,
+      opts?.blockHeight
     );
-
-    const oraclePriceSubmissions = await this.getPriceSubmissions({
-      oraclePrice: price,
-      blockHeight,
-    });
-
-    const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
-
-    const programOutput = await AggregateOraclePrices.compute(
-      {
-        currentBlockHeight: blockHeight,
-        oracleWhitelistHash,
-      },
-      {
-        oracleWhitelist: this.whitelist,
-        oraclePriceSubmissions,
-      }
-    );
-
-    const minaPriceInput = new MinaPriceInput({
-      proof: programOutput.proof,
-      verificationKey: this.oracleAggregationVk,
-    });
-
-    return minaPriceInput;
   }
-
-  public async retrieveVaultState(agentName: string): Promise<VaultState> {
-    if (!this.agents[agentName]) {
-      throw new Error(`Agent ${agentName} not found`);
-    }
-
-    const vaultAccount = await this.mina.fetchMinaAccount(
-      this.agents[agentName].vault!.publicKey,
-      {
-        tokenId: this.engine.contract.deriveTokenId(),
-        force: true,
-      }
-    );
+  public async retrieveVaultState(
+    vault: PublicKey
+  ): Promise<VaultState | undefined> {
+    const vaultAccount = await this.mina.fetchMinaAccount(vault, {
+      tokenId: this.engine.contract.deriveTokenId(),
+      force: true,
+    });
 
     if (!vaultAccount) {
-      throw new Error(`Vault for ${agentName} does not exist`);
+      return undefined;
     }
 
     return Vault.fromAccount(vaultAccount);
+  }
+
+  public async retrieveAgentVaultState(agentName: string): Promise<VaultState> {
+    if (!this.agents[agentName]) {
+      throw new Error(`Agent ${agentName} not found`);
+    }
+    const vault = this.agents[agentName].vault!.publicKey;
+
+    const vaultState = await this.retrieveVaultState(vault);
+
+    if (!vaultState) {
+      throw new Error(`Vault for ${agentName} does not exist`);
+    }
+    return vaultState as VaultState;
   }
 
   async printAgentState() {
@@ -661,7 +768,7 @@ export class TestHelper {
 
     for (const name of Object.keys(this.agents)) {
       const agent = this.agents[name];
-      const vault = await this.retrieveVaultState(name);
+      const vault = await this.retrieveAgentVaultState(name);
 
       const agentAccount = await this.mina.fetchMinaAccount(
         agent.keys.publicKey,
@@ -715,11 +822,11 @@ export class TestHelper {
   }
   private constructor(
     mina: IMinaNetworkInterface,
-    txExecutor: ITransactionExecutor,
+    txExecutors: WithDefault<E | 'local', ITransactionExecutor>,
     deployer: KeyPair
   ) {
     this.mina = mina;
-    this._txMgr = TransactionManager.new(mina, txExecutor);
+    this._txMgr = TransactionManager.new(mina, txExecutors);
     this.deployer = deployer;
 
     //Set up the agents for lightnet
@@ -734,5 +841,233 @@ export class TestHelper {
         this.agents[agent] = agents[agent];
       }
     }
+  }
+}
+
+type Proof = {
+  proof: JsonProof;
+  hash: string;
+  blockHeight: string;
+};
+
+class PriceInputManager {
+  private o1jsMutex: Mutex;
+  private mina: IMinaNetworkInterface;
+  private oracleAggregationVk: VerificationKey;
+  private whitelist: OracleWhitelist;
+  private oracles: Record<string, KeyPair>;
+
+  private proofPath: string;
+  // proofs by proof hash.
+  private proofs: Map<string, Proof[]> = new Map();
+
+  constructor(
+    o1jsMutex: Mutex,
+    mina: IMinaNetworkInterface,
+    oracleAggregationVk: VerificationKey,
+    whitelist: OracleWhitelist,
+    oracles: Record<string, KeyPair>,
+    proofPath: string
+  ) {
+    this.o1jsMutex = o1jsMutex;
+    this.mina = mina;
+    this.oracleAggregationVk = oracleAggregationVk;
+    this.whitelist = whitelist;
+    this.oracles = oracles;
+    this.proofPath = proofPath;
+  }
+  async init(): Promise<void> {
+    try {
+      await this.loadProofs();
+    } catch (error: any) {
+      // Check if the error is due to the file not existing
+      if (error.code === 'ENOENT') {
+        console.warn(
+          `Proof file not found at ${this.proofPath}. Initializing a new file.`
+        );
+        this.proofs = new Map();
+        await this.saveProofs();
+      } else {
+        console.error('Failed to load proofs:', error);
+        throw new Error('Error loading proofs from file.');
+      }
+    }
+  }
+
+  private async loadProofs(): Promise<void> {
+    try {
+      const proofData = await fs.promises.readFile(this.proofPath, 'utf-8');
+      const proofEntries = JSON.parse(proofData);
+      this.proofs = new Map(proofEntries);
+    } catch (error) {
+      // Rethrow the error so the init() method can handle it appropriately.
+      throw error;
+    }
+  }
+
+  private async saveProofs(): Promise<void> {
+    try {
+      const proofData = JSON.stringify(Array.from(this.proofs.entries()));
+      await fs.promises.writeFile(this.proofPath, proofData);
+    } catch (error) {
+      console.error('Failed to save proofs:', error);
+      throw new Error('Error saving proofs to file.');
+    }
+  }
+
+  private get priceValidity(): number {
+    return validPriceBlockCount[this.mina.network.chainId];
+  }
+
+  private async currentBlockHeight(): Promise<UInt32> {
+    if (this.mina.network.chainId === 'local') {
+      return this.mina.getNetworkState().blockchainLength;
+    } else {
+      return (await fetchLastBlock()).blockchainLength;
+    }
+  }
+
+  async addNewProof(price: UInt64, blockHeight?: UInt32): Promise<Proof> {
+    const blockH = blockHeight ?? (await this.currentBlockHeight());
+
+    logDebug('Building mina price input for block height:', blockH.toBigint());
+
+    const oraclePriceSubmissions = await this.getPriceSubmissions({
+      oraclePrice: price,
+      blockHeight: blockH,
+    });
+
+    const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
+
+    const { proof, proofHash } = await this.o1jsMutex.runExclusive(async () => {
+      logDebug('Proving price input for block height:', blockH.toBigint());
+      const programOutput = await AggregateOraclePrices.compute(
+        {
+          currentBlockHeight: blockH,
+          oracleWhitelistHash,
+        },
+        {
+          oracleWhitelist: this.whitelist,
+          oraclePriceSubmissions,
+        }
+      );
+      const proof = programOutput.proof;
+
+      const proofHash = Poseidon.hash([
+        this.oracleAggregationVk.hash,
+        OracleWhitelist.hash(this.whitelist),
+        ...price.toFields(),
+      ]);
+      logDebug('Price input proof ready');
+      return { proof, proofHash };
+    });
+
+    const storedProof: Proof = {
+      proof: proof.toJSON(),
+      hash: proofHash.toString(),
+      blockHeight: blockH.toString(),
+    };
+
+    if (this.proofs.has(proofHash.toString())) {
+      this.proofs.get(proofHash.toString())?.push(storedProof);
+    } else {
+      this.proofs.set(proofHash.toString(), [storedProof]);
+    }
+
+    await this.saveProofs();
+    return storedProof;
+  }
+  async getMinaPriceInputForProof(
+    jsonproof: JsonProof
+  ): Promise<MinaPriceInput> {
+    const proof = await AggregateOraclePricesProof.fromJSON(jsonproof);
+
+    return new MinaPriceInput({
+      proof,
+      verificationKey: this.oracleAggregationVk,
+    });
+  }
+
+  async getMinaPriceInput(
+    price: UInt64,
+    minimalValidity = 1n,
+    blockHeight?: UInt32
+  ): Promise<MinaPriceInput> {
+    const blockH = blockHeight ?? (await this.currentBlockHeight());
+    const jsonProof = await this.requestProof(price, minimalValidity, blockH);
+    return this.getMinaPriceInputForProof(jsonProof.proof);
+  }
+
+  computeHash(price: UInt64) {
+    return Poseidon.hash([
+      this.oracleAggregationVk.hash,
+      OracleWhitelist.hash(this.whitelist),
+      ...price.toFields(),
+    ]);
+  }
+
+  async requestProof(
+    price: UInt64,
+    minimalValidity: bigint = 1n,
+    blockHeight?: UInt32
+  ): Promise<Proof> {
+    const blockH = blockHeight ?? (await this.currentBlockHeight());
+    const proofHash = this.computeHash(price);
+    const proofs = this.proofs.get(proofHash.toString());
+
+    if (!proofs) {
+      return await this.addNewProof(price, blockH);
+    } else {
+      // Try to find a valid proof - the first one that is not expired yet
+      for (const proof of proofs) {
+        if (
+          BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
+            blockH.toBigint() + minimalValidity &&
+          // and already valid!
+          blockH.toBigint() >= BigInt(proof.blockHeight)
+        ) {
+          return proof;
+        }
+      }
+    }
+
+    const storedProof = await this.addNewProof(price, blockH);
+    return storedProof;
+  }
+
+  async getPriceSubmissions({
+    oraclePrice,
+    blockHeight,
+  }: {
+    oraclePrice: UInt64;
+    blockHeight: UInt32;
+  }) {
+    const oraclePriceSubmissions: OraclePriceSubmissions = {
+      submissions: [],
+    };
+
+    for (let i = 0; i < this.whitelist.addresses.length; i++) {
+      const oracleName = 'oracle' + (i + 1);
+      const oraclePrivateKey = this.oracles[oracleName].privateKey;
+      const oraclePublicKey = oraclePrivateKey.toPublicKey();
+
+      const signature = client.signFields(
+        [oraclePrice.toBigInt(), blockHeight.toBigint()],
+        oraclePrivateKey.toBase58()
+      );
+
+      // Build the price submission
+      const priceSubmission = new PriceSubmission({
+        publicKey: oraclePublicKey,
+        signature: Signature.fromBase58(signature.signature),
+        price: oraclePrice,
+        blockHeight: blockHeight,
+        isDummy: Bool(false),
+      });
+
+      oraclePriceSubmissions.submissions.push(priceSubmission);
+    }
+
+    return oraclePriceSubmissions;
   }
 }

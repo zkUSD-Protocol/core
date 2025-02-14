@@ -3,11 +3,11 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 import { AccountUpdate, UInt64 } from 'o1js';
-import { Vault, VaultErrors, VaultState } from '../../../types/vault.js';
-import { ZkUsdEngineErrors } from '../../../types/engine.js';
+import { Vault, VaultErrors } from '../../../system/vault.js';
+import { ZkUsdEngineErrors } from '../../../system/engine.js';
 
 describe('zkUSD Vault Mint Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let oneUsdPrice: MinaPriceInput;
 
   before(async () => {
@@ -42,7 +42,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       th.agents.alice.keys.publicKey
     );
 
-    const debtAmount = (await th.retrieveVaultState('alice')).debtAmount;
+    const debtAmount = (await th.retrieveAgentVaultState('alice')).debtAmount;
 
     assert.deepStrictEqual(debtAmount, TestAmounts.DEBT_5_ZKUSD);
     assert.deepStrictEqual(aliceBalance, TestAmounts.DEBT_5_ZKUSD);
@@ -76,7 +76,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
 
   it('should track total debt correctly across multiple mint operations', async () => {
-    const initialDebt = (await th.retrieveVaultState('alice')).debtAmount;
+    const initialDebt = (await th.retrieveAgentVaultState('alice')).debtAmount;
 
     // Perform multiple small mints
     for (let i = 0; i < 3; i++) {
@@ -97,7 +97,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       );
     }
 
-    const finalDebt = (await th.retrieveVaultState('alice')).debtAmount;
+    const finalDebt = (await th.retrieveAgentVaultState('alice')).debtAmount;
     assert.deepStrictEqual(
       finalDebt,
       initialDebt?.add(TestAmounts.DEBT_1_ZKUSD.mul(3))

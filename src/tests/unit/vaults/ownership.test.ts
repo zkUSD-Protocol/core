@@ -5,7 +5,7 @@ import { AccountUpdate } from 'o1js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 
 describe('zkUSD Vault Ownership Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let priceOneUsd: MinaPriceInput;
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
@@ -55,8 +55,8 @@ describe('zkUSD Vault Ownership Test Suite', () => {
     );
 
     // Verify the new owner is set correctly
-    const vaultOwner = (await th.retrieveVaultState('alice')).owner; //
-    (await th.retrieveVaultState('alice')).owner;
+    const vaultOwner = (await th.retrieveAgentVaultState('alice')).owner; //
+    (await th.retrieveAgentVaultState('alice')).owner;
     assert.deepStrictEqual(
       vaultOwner?.toBase58(),
       th.agents.bob.keys.publicKey.toBase58()
@@ -107,7 +107,7 @@ describe('zkUSD Vault Ownership Test Suite', () => {
       { name: 'Ownership Test Suite: Bob mints zkUSD' }
     );
 
-    const vault = await th.retrieveVaultState('alice');
+    const vault = await th.retrieveAgentVaultState('alice');
     const collateralAmount = vault.collateralAmount;
     const debtAmount = vault.debtAmount;
 
@@ -223,7 +223,7 @@ describe('zkUSD Vault Ownership Test Suite', () => {
     );
 
     // Verify Charlie is the new owner
-    let vaultOwner = (await th.retrieveVaultState('alice')).owner;
+    let vaultOwner = (await th.retrieveAgentVaultState('alice')).owner;
     assert.deepStrictEqual(
       vaultOwner?.toBase58(),
       th.agents.charlie.keys.publicKey.toBase58()
@@ -244,7 +244,7 @@ describe('zkUSD Vault Ownership Test Suite', () => {
     );
 
     // Verify Alice is the owner again
-    vaultOwner = (await th.retrieveVaultState('alice')).owner;
+    vaultOwner = (await th.retrieveAgentVaultState('alice')).owner;
     assert.deepStrictEqual(
       vaultOwner?.toBase58(),
       th.agents.alice.keys.publicKey.toBase58()

@@ -1,11 +1,11 @@
 import { AccountUpdate, Bool, PrivateKey } from 'o1js';
 import { TestAmounts, TestHelper } from '../../test-helper.js';
-import { ProtocolData } from '../../../types/engine.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
+import { ProtocolData } from '../../../system/engine.js';
 
 describe('zkUSD Protocol Administration Test Suite', async () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
 
   const newAdmin = PrivateKey.randomKeypair();
 

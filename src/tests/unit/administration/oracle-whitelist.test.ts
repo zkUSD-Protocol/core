@@ -1,11 +1,11 @@
 import { Field, Poseidon, PrivateKey, PublicKey } from 'o1js';
 import { TestHelper } from '../../test-helper.js';
-import { OracleWhitelist } from '../../../types/oracle.js';
+import { OracleWhitelist } from '../../../system/oracle.js';
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert';
 
 describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
-  let th: TestHelper;
+  let th: TestHelper<'local'>;
   let whitelist: OracleWhitelist;
   let previousWhitelistHash: Field;
   let newWhitelistHash: Field;
