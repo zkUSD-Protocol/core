@@ -117,10 +117,15 @@ export interface TransactionHandle {
     timeout?: number;
   }): Promise<void>;
 
-  subscribeToLifecycleChange(cb: (lifecycle: TransactionLifecycle) => void): void;
+  subscribeToLifecycleChange(
+    cb: (lifecycle: TransactionLifecycle) => void
+  ): void;
 }
 
-export type TransactionStatusUpdateCallback = ((statuses: { lifecycle: TxLifecycleStatus | "unchanged"; status: TransactionStatus | "unchanged" }) => void)
+export type TransactionStatusUpdateCallback = (statuses: {
+  lifecycle: TxLifecycleStatus | 'unchanged';
+  status: TransactionStatus | 'unchanged';
+}) => void;
 
 /**
  * Internal representation of a transaction, holding its request, status, and associated promises.
@@ -133,7 +138,9 @@ export class TransactionInternal {
   // this is not a tx nonce, it is just an ordinal number of tx creation call site.
   private _dependentTxIds: string[] = [];
   readonly _statusUpdateCallbacks: TransactionStatusUpdateCallback[];
-  readonly _lifecycleUpdateCallbacks: ((lifecycle: TransactionLifecycle) => void)[] = [];
+  readonly _lifecycleUpdateCallbacks: ((
+    lifecycle: TransactionLifecycle
+  ) => void)[] = [];
 
   public signedTransaction?: Transaction<any, true>;
   public get status(): TransactionStatus {
@@ -147,7 +154,9 @@ export class TransactionInternal {
     status: TransactionStatus | 'unchanged',
     lifecyleStatus: TxLifecycleStatus | 'unchanged'
   ) {
-    this._statusUpdateCallbacks.forEach(cb => cb({ lifecycle: lifecyleStatus, status }));
+    this._statusUpdateCallbacks.forEach((cb) =>
+      cb({ lifecycle: lifecyleStatus, status })
+    );
     if (status !== 'unchanged') this._status = status;
     if (lifecyleStatus !== 'unchanged') this._lifecycleStatus = lifecyleStatus;
   }
@@ -321,7 +330,7 @@ export class TransactionInternal {
    * Provides a minimal handle to monitor transaction state.
    */
   public get handle(): TransactionHandle {
-    if(this._handle) return this._handle;
+    if (this._handle) return this._handle;
     const self = this;
     this._handle = {
       get hash() {
@@ -353,8 +362,12 @@ export class TransactionInternal {
   }
 
   // Private constructor to force usage of static methods
-  private constructor(readonly _statusUpdateCallback?: TransactionStatusUpdateCallback) {
-    this._statusUpdateCallbacks = _statusUpdateCallback ? [_statusUpdateCallback] : [];
+  private constructor(
+    readonly _statusUpdateCallback?: TransactionStatusUpdateCallback
+  ) {
+    this._statusUpdateCallbacks = _statusUpdateCallback
+      ? [_statusUpdateCallback]
+      : [];
   }
 }
 

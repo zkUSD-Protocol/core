@@ -2,7 +2,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { CacheHeader, Cache } from 'o1js';
 
 export class FileSystemCache implements Cache {
-  constructor(public debug: boolean = false, public directory = 'cache') {
+  constructor(
+    public debug: boolean = false,
+    public directory = 'cache'
+  ) {
     if (!existsSync(directory)) {
       mkdirSync(directory, { recursive: true });
     }
