@@ -116,7 +116,11 @@ export interface TransactionHandle {
     statusPollInterval?: number;
     timeout?: number;
   }): Promise<void>;
+
+  subscribeToLifecycleChange(cb: (lifecycle: TransactionLifecycle) => void): void;
 }
+
+export type TransactionStatusUpdateCallback = ((statuses: { lifecycle: TxLifecycleStatus | "unchanged"; status: TransactionStatus | "unchanged" }) => void)
 
 /**
  * Internal representation of a transaction, holding its request, status, and associated promises.
@@ -128,6 +132,8 @@ export class TransactionInternal {
   private _request?: TransactionRequest;
   // this is not a tx nonce, it is just an ordinal number of tx creation call site.
   private _dependentTxIds: string[] = [];
+  readonly _statusUpdateCallbacks: TransactionStatusUpdateCallback[];
+  readonly _lifecycleUpdateCallbacks: ((lifecycle: TransactionLifecycle) => void)[] = [];
 
   public signedTransaction?: Transaction<any, true>;
   public get status(): TransactionStatus {
@@ -141,7 +147,7 @@ export class TransactionInternal {
     status: TransactionStatus | 'unchanged',
     lifecyleStatus: TxLifecycleStatus | 'unchanged'
   ) {
-    this._statusUpdateCallback?.();
+    this._statusUpdateCallbacks.forEach(cb => cb({ lifecycle: lifecyleStatus, status }));
     if (status !== 'unchanged') this._status = status;
     if (lifecyleStatus !== 'unchanged') this._lifecycleStatus = lifecyleStatus;
   }
@@ -305,6 +311,12 @@ export class TransactionInternal {
     }
   }
 
+  public subscribeToLifecycleChange(
+    cb: (lifecycle: TransactionLifecycle) => void
+  ): void {
+    this._lifecycleUpdateCallbacks.push(cb);
+  }
+
   /**
    * Provides a minimal handle to monitor transaction state.
    */
@@ -334,12 +346,16 @@ export class TransactionInternal {
       awaitStatusChange: self.awaitStatusChange.bind(self),
 
       awaitIncluded: self.awaitIncluded.bind(self),
+
+      subscribeToLifecycleChange: self.subscribeToLifecycleChange.bind(self),
     };
     return this._handle;
   }
 
   // Private constructor to force usage of static methods
-  private constructor(private readonly _statusUpdateCallback?: () => void) {}
+  private constructor(readonly _statusUpdateCallback?: TransactionStatusUpdateCallback) {
+    this._statusUpdateCallbacks = _statusUpdateCallback ? [_statusUpdateCallback] : [];
+  }
 }
 
 //  Do not call from concurrent threads
