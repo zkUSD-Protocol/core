@@ -383,6 +383,11 @@ export class TransactionManager<E extends string> {
   private _o1jsMutex: Mutex = new Mutex(
     MUTEX_DEBUG ? 'txmgr-O1jsMutex' : undefined
   );
+
+  private _txMethodMutex: Mutex = new Mutex(
+    MUTEX_DEBUG ? 'txmgr-O1jsMutex' : undefined
+  );
+
   private _mina: IMinaNetworkInterface;
 
   private readonly statusSubscribers: Map<
@@ -502,6 +507,9 @@ export class TransactionManager<E extends string> {
     },
     args?: TransactionArgs
   ): Promise<TransactionHandle> {
+
+    return await this._txMethodMutex.runExclusive(async () => {
+
     const { waitForIncluded } = options ?? {};
     let name = options?.name;
 
@@ -667,7 +675,8 @@ export class TransactionManager<E extends string> {
 
     tx.installLifecycle(lifecycle);
     return tx.handle;
-  }
+    })
+                                      }
 
   private constructor(
     networkInterface: IMinaNetworkInterface,
