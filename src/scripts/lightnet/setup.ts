@@ -1,5 +1,5 @@
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
-import { TransactionManager } from '../../transaction/manager.js';;
+import { TransactionManager } from '../../transaction/manager.js';
 import { DeploymentService } from '../../deployment/deployment.js';
 import { AccountUpdate, PublicKey } from 'o1js';
 import { LocalTransactionExecutor } from '../../transaction/local-executor.js';
@@ -14,7 +14,7 @@ const AMOUNT = 500e9; // 100 Mina
 async function main() {
   const MinaChain = await MinaNetworkInterface.initLightnet();
   const executor: ITransactionExecutor = new LocalTransactionExecutor();
-  const txMgr = TransactionManager.new(MinaChain, {'local': executor});
+  const txMgr = TransactionManager.new(MinaChain, { local: executor });
   const deploymentService = await DeploymentService.create(txMgr);
 
   const keys = getNetworkKeys('lightnet');
@@ -56,9 +56,8 @@ async function main() {
     await txHandle.awaitIncluded();
   }
 
-  const receiverAccount = await txMgr.mina.fetchMinaAccount(
-    RECEIVER_PUBLIC_KEY
-  );
+  const receiverAccount =
+    await txMgr.mina.fetchMinaAccount(RECEIVER_PUBLIC_KEY);
 
   const receiverAccountTx = await txMgr.tx(
     deploymentService.deployer,

@@ -42,7 +42,8 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       try {
         builtTx = await tx.buildTx;
       } catch (error) {
-        throw failed_before_sending('Awaiting deps and building tx', error);
+        const errorMessage = JSON.stringify(error);
+        throw failed_before_sending('Building the tx', errorMessage);
       }
       try {
         if (config?.printTx) {

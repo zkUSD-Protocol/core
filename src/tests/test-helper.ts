@@ -56,6 +56,17 @@ import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 
+const DEBUG = !!process.env.DEBUG;
+
+/**
+ * Logs debug messages if `DEBUG` is enabled.
+ * Otherwise, it does nothing.
+ * @param {...any} args - The arguments to log
+ */
+const logDebug = (...args: any[]) => {
+  if (DEBUG) console.debug(...args);
+};
+
 const client = new Client({
   network: 'testnet',
 });
@@ -840,7 +851,7 @@ type Proof = {
 };
 
 class PriceInputManager {
-  private o1jsMutex: Mutex; // to use or not to use
+  private o1jsMutex: Mutex;
   private mina: IMinaNetworkInterface;
   private oracleAggregationVk: VerificationKey;
   private whitelist: OracleWhitelist;
@@ -919,10 +930,7 @@ class PriceInputManager {
   async addNewProof(price: UInt64, blockHeight?: UInt32): Promise<Proof> {
     const blockH = blockHeight ?? (await this.currentBlockHeight());
 
-    console.log(
-      'Building mina price input for block height:',
-      blockH.toBigint()
-    );
+    logDebug('Building mina price input for block height:', blockH.toBigint());
 
     const oraclePriceSubmissions = await this.getPriceSubmissions({
       oraclePrice: price,
@@ -932,6 +940,7 @@ class PriceInputManager {
     const oracleWhitelistHash = OracleWhitelist.hash(this.whitelist);
 
     const { proof, proofHash } = await this.o1jsMutex.runExclusive(async () => {
+      logDebug('Proving price input for block height:', blockH.toBigint());
       const programOutput = await AggregateOraclePrices.compute(
         {
           currentBlockHeight: blockH,
@@ -949,6 +958,7 @@ class PriceInputManager {
         OracleWhitelist.hash(this.whitelist),
         ...price.toFields(),
       ]);
+      logDebug('Price input proof ready');
       return { proof, proofHash };
     });
 

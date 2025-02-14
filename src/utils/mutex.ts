@@ -3,8 +3,16 @@
  * runs in the critical section at a time.
  */
 export class Mutex {
+  public constructor(private _debugName?: string) {}
+
   private locked: boolean = false; // Indicates if the mutex is currently locked
   private waiting: (() => void)[] = []; // Queue of waiting tasks
+
+  private debugLog(message: string): void {
+    if (this._debugName) {
+      console.log(`[Mutex:${this._debugName}] ${message}`);
+    }
+  }
 
   /**
    * Acquires the mutex, blocking execution until the mutex is available.
@@ -13,11 +21,19 @@ export class Mutex {
    * @returns A promise that resolves when the mutex is acquired.
    */
   async acquire(): Promise<void> {
+    const callSite = new Error().stack?.split('\n')[3]?.trim(); // Get the caller
+
+    this.debugLog(`Acquiring mutex (Called from: ${callSite})`);
+
     if (this.locked) {
-      // If already locked, wait until it's available
+      this.debugLog(
+        `Acquiring mutex - Locked. Waiting... (Caller: ${callSite})`
+      );
       await new Promise<void>((resolve) => this.waiting.push(resolve));
     }
+
     this.locked = true; // Lock the mutex
+    this.debugLog(`Acquiring mutex - Success (Caller: ${callSite})`);
   }
 
   /**
@@ -25,6 +41,7 @@ export class Mutex {
    * Throws an error if the mutex is not currently locked.
    */
   release(): void {
+    this.debugLog('Releasing mutex');
     if (!this.locked) {
       throw new Error('Cannot release a mutex that is not locked');
     }
@@ -32,8 +49,10 @@ export class Mutex {
     // If there are tasks waiting, wake up the next task in the queue
     const next = this.waiting.shift();
     if (next) {
+      this.debugLog('Releasing mutex- Waking up next task in the queue');
       next();
     } else {
+      this.debugLog('Releasing mutex- empty - release');
       this.locked = false;
     }
   }

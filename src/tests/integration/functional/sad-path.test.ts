@@ -16,46 +16,60 @@ describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
   it('should fail to perform protocol actions when the protocol is stopped', async () => {
     await th.stopTheProtocol();
 
-    await assert.rejects(async () => {
-      await th.includeTx(
-        th.agents.alice.keys,
-        async () => {
-          await th.engine.contract.mintZkUsd(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.DEBT_5_ZKUSD,
-            await th.getMinaPriceInput(TestAmounts.PRICE_1_USD)
-          );
-        },
-        { name: 'Sad Path Test Suite: Mint while protocol stopped' }
-      );
-    }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
+    await assert.rejects(
+      async () => {
+        const priceInput = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.mintZkUsd(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.DEBT_5_ZKUSD,
+              priceInput
+            );
+          },
+          { name: 'Sad Path Test Suite: Mint while protocol stopped' }
+        );
+      },
+      (error: any) => error.message.includes(ZkUsdEngineErrors.EMERGENCY_HALT)
+    );
 
-    await assert.rejects(async () => {
-      await th.includeTx(
-        th.agents.alice.keys,
-        async () => {
-          await th.engine.contract.redeemCollateral(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.COLLATERAL_1_MINA,
-            await th.getMinaPriceInput(TestAmounts.PRICE_1_USD)
-          );
-        },
-        { name: 'Sad Path Test Suite: Redeem while protocol stopped' }
-      );
-    }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
+    await assert.rejects(
+      async () => {
+        const priceInput = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.redeemCollateral(
+              th.agents.alice.vault!.publicKey,
+              TestAmounts.COLLATERAL_1_MINA,
+              priceInput
+            );
+          },
+          { name: 'Sad Path Test Suite: Redeem while protocol stopped' }
+        );
+      },
+      (error: any) => error.message.includes(ZkUsdEngineErrors.EMERGENCY_HALT)
+    );
 
-    await assert.rejects(async () => {
-      await th.includeTx(
-        th.agents.alice.keys,
-        async () => {
-          await th.engine.contract.liquidate(
-            th.agents.bob.vault!.publicKey,
-            await th.getMinaPriceInput(TestAmounts.PRICE_25_CENT)
-          );
-        },
-        { name: 'Sad Path Test Suite: Liquidate while protocol stopped' }
-      );
-    }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
+    await assert.rejects(
+      async () => {
+        const priceInput = await th.getMinaPriceInput(
+          TestAmounts.PRICE_25_CENT
+        );
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.liquidate(
+              th.agents.bob.vault!.publicKey,
+              priceInput
+            );
+          },
+          { name: 'Sad Path Test Suite: Liquidate while protocol stopped' }
+        );
+      },
+      (error: any) => error.message.includes(ZkUsdEngineErrors.EMERGENCY_HALT)
+    );
 
     await th.resumeTheProtocol();
   });
@@ -74,22 +88,6 @@ describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
 
     console.log('Price expired, trying to mint');
 
-    await assert.rejects(async () => {
-      await th.includeTx(
-        th.agents.alice.keys,
-        async () => {
-          await th.engine.contract.mintZkUsd(
-            th.agents.alice.vault!.publicKey,
-            TestAmounts.DEBT_1_ZKUSD,
-            expiredPrice
-          );
-        },
-        { name: 'Sad Path Test Suite: Mint with expired price' }
-      );
-    }, /Protocol_state_precondition_unsatisfied/i);
-  });
-
-  it('should fail to mint when the health factor is too low', async () => {
     await assert.rejects(
       async () => {
         await th.includeTx(
@@ -97,8 +95,31 @@ describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
           async () => {
             await th.engine.contract.mintZkUsd(
               th.agents.alice.vault!.publicKey,
+              TestAmounts.DEBT_1_ZKUSD,
+              expiredPrice
+            );
+          },
+          { name: 'Sad Path Test Suite: Mint with expired price' }
+        );
+      },
+      (error: any) =>
+        error.message
+          .toLowerCase()
+          .includes('protocol_state_precondition_unsatisfied'.toLowerCase())
+    );
+  });
+
+  it('should fail to mint when the health factor is too low', async () => {
+    await assert.rejects(
+      async () => {
+        const priceInput = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
+        await th.includeTx(
+          th.agents.alice.keys,
+          async () => {
+            await th.engine.contract.mintZkUsd(
+              th.agents.alice.vault!.publicKey,
               TestAmounts.DEBT_100_ZKUSD, // Attempting to mint far too much
-              await th.getMinaPriceInput(TestAmounts.PRICE_1_USD)
+              priceInput
             );
           },
           { name: 'Sad Path Test Suite: Mint beyond collateral ratio' }
@@ -116,13 +137,14 @@ describe('zkUSD Integration - Functional - Sad Path Test Suite', () => {
 
     await assert.rejects(
       async () => {
+        const priceInput = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
         await th.includeTx(
           th.agents.alice.keys,
           async () => {
             await th.engine.contract.redeemCollateral(
               th.agents.alice.vault!.publicKey,
               tooMuchCollateral,
-              await th.getMinaPriceInput(TestAmounts.PRICE_1_USD)
+              priceInput
             );
           },
           { name: 'Sad Path Test Suite: Redeem too much collateral' }

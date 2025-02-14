@@ -30,6 +30,9 @@ import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
 import { Account } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
+const DEBUG = !!process.env.DEBUG;
+const MUTEX_DEBUG = DEBUG && false; // set to true to debug mutex
+
 /**
  * Default configuration options for constructing transactions.
  */
@@ -183,7 +186,10 @@ export class TransactionInternal {
   /**
    * Constructs an internal transaction from a TransactionRequest.
    */
-  public static fromRequest(request: TransactionRequest, statusUpdateCallback:()=>void): TransactionInternal {
+  public static fromRequest(
+    request: TransactionRequest,
+    statusUpdateCallback: () => void
+  ): TransactionInternal {
     const tx = new TransactionInternal(statusUpdateCallback);
     tx._request = request;
     tx._dependentTxIds = request.waitForIncluded.map((dep) =>
@@ -335,10 +341,15 @@ export class TransactionInternal {
 
 //  Do not call from concurrent threads
 export class TransactionManager<E extends string> {
-  private _o1jsMutex: Mutex = new Mutex();
+  private _o1jsMutex: Mutex = new Mutex(
+    MUTEX_DEBUG ? 'txmgr-O1jsMutex' : undefined
+  );
   private _mina: IMinaNetworkInterface;
 
-  private readonly statusSubscribers: Map<string, ((txs: TransactionHandle[]) => void)> = new Map();
+  private readonly statusSubscribers: Map<
+    string,
+    (txs: TransactionHandle[]) => void
+  > = new Map();
 
   public get transactionHandles(): TransactionHandle[] {
     return Array.from(this.transactions.values()).map((tx) => tx.handle);
@@ -352,7 +363,8 @@ export class TransactionManager<E extends string> {
     cb: (txs: TransactionHandle[]) => void
   ) {
     // new random hash
-    const key = Date.now().toString(36) + Math.random().toString(36).substring(2);
+    const key =
+      Date.now().toString(36) + Math.random().toString(36).substring(2);
     this.statusSubscribers.set(key, cb);
   }
 
@@ -379,9 +391,10 @@ export class TransactionManager<E extends string> {
    */
   public static new<E extends string>(
     minaInterface: IMinaNetworkInterface,
-    transactionExecutors: WithDefault<E, ITransactionExecutor> | { [K in E]: ITransactionExecutor }
+    transactionExecutors:
+      | WithDefault<E, ITransactionExecutor>
+      | { [K in E]: ITransactionExecutor }
   ): TransactionManager<E> {
-
     let executor: WithDefault<E, ITransactionExecutor>;
 
     // if transactionExecutors satisfies the interface
@@ -396,7 +409,6 @@ export class TransactionManager<E extends string> {
 
     return new TransactionManager(minaInterface, executor);
   }
-
 
   private transactions: Map<string, TransactionInternal> = new Map();
 
@@ -496,7 +508,10 @@ export class TransactionManager<E extends string> {
 
     //=== include the transaction in the manager
     // -- create the tx and add it to the manager
-    const tx = TransactionInternal.fromRequest(request, this.transactionStatusChanged.bind(this));
+    const tx = TransactionInternal.fromRequest(
+      request,
+      this.transactionStatusChanged.bind(this)
+    );
     this.transactions.set(tx.getId(), tx);
     // --
 
