@@ -122,6 +122,7 @@ export interface TransactionHandle {
  * Internal representation of a transaction, holding its request, status, and associated promises.
  */
 export class TransactionInternal {
+  private _handle: TransactionHandle | undefined;
   private _status: TransactionStatus = 'Scheduled';
   private _lifecycleStatus: TxLifecycleStatus = TxLifecycleStatus.SCHEDULED;
   private _request?: TransactionRequest;
@@ -308,8 +309,9 @@ export class TransactionInternal {
    * Provides a minimal handle to monitor transaction state.
    */
   public get handle(): TransactionHandle {
+    if(this._handle) return this._handle;
     const self = this;
-    return {
+    this._handle = {
       get hash() {
         return self.hash;
       },
@@ -333,6 +335,7 @@ export class TransactionInternal {
 
       awaitIncluded: self.awaitIncluded.bind(self),
     };
+    return this._handle;
   }
 
   // Private constructor to force usage of static methods
