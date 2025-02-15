@@ -27,7 +27,7 @@ import {
 import { zkUsdTransaction } from './execution.js';
 import { ZkUsdEngine } from '../system/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
-import { Account } from '../mina/utils.js';
+import { Account, isKeyPair } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
 const DEBUG = !!process.env.DEBUG;
@@ -84,7 +84,7 @@ export type TransactionRequest = {
   /**
    * TODO: future: avoid passing the private key
    */
-  sender: KeyPair;
+  sender: KeyPair | PublicKey;
   callback: () => Promise<void>;
   options: TransactionOptions;
   /**
@@ -116,17 +116,31 @@ export interface TransactionHandle {
     statusPollInterval?: number;
     timeout?: number;
   }): Promise<void>;
+
+  subscribeToLifecycleChange(
+    cb: (lifecycle: TransactionLifecycle) => void
+  ): void;
 }
+
+export type TransactionStatusUpdateCallback = (statuses: {
+  lifecycle: TxLifecycleStatus | 'unchanged';
+  status: TransactionStatus | 'unchanged';
+}) => void;
 
 /**
  * Internal representation of a transaction, holding its request, status, and associated promises.
  */
 export class TransactionInternal {
+  private _handle: TransactionHandle | undefined;
   private _status: TransactionStatus = 'Scheduled';
   private _lifecycleStatus: TxLifecycleStatus = TxLifecycleStatus.SCHEDULED;
   private _request?: TransactionRequest;
   // this is not a tx nonce, it is just an ordinal number of tx creation call site.
   private _dependentTxIds: string[] = [];
+  readonly _statusUpdateCallbacks: TransactionStatusUpdateCallback[];
+  readonly _lifecycleUpdateCallbacks: ((
+    lifecycle: TransactionLifecycle
+  ) => void)[] = [];
 
   public signedTransaction?: Transaction<any, true>;
   public get status(): TransactionStatus {
@@ -140,7 +154,9 @@ export class TransactionInternal {
     status: TransactionStatus | 'unchanged',
     lifecyleStatus: TxLifecycleStatus | 'unchanged'
   ) {
-    this._statusUpdateCallback?.();
+    this._statusUpdateCallbacks.forEach((cb) =>
+      cb({ lifecycle: lifecyleStatus, status })
+    );
     if (status !== 'unchanged') this._status = status;
     if (lifecyleStatus !== 'unchanged') this._lifecycleStatus = lifecyleStatus;
   }
@@ -205,7 +221,11 @@ export class TransactionInternal {
     if (!this.request) {
       throw new Error('TODO - implement sender for non-request transactions');
     }
-    return this.request.sender.publicKey;
+    if ('publicKey' in this.request.sender) {
+      return (this.request.sender as KeyPair).publicKey;
+    } else {
+      return this.request.sender;
+    }
   }
 
   /**
@@ -304,12 +324,19 @@ export class TransactionInternal {
     }
   }
 
+  public subscribeToLifecycleChange(
+    cb: (lifecycle: TransactionLifecycle) => void
+  ): void {
+    this._lifecycleUpdateCallbacks.push(cb);
+  }
+
   /**
    * Provides a minimal handle to monitor transaction state.
    */
   public get handle(): TransactionHandle {
+    if (this._handle) return this._handle;
     const self = this;
-    return {
+    this._handle = {
       get hash() {
         return self.hash;
       },
@@ -332,11 +359,20 @@ export class TransactionInternal {
       awaitStatusChange: self.awaitStatusChange.bind(self),
 
       awaitIncluded: self.awaitIncluded.bind(self),
+
+      subscribeToLifecycleChange: self.subscribeToLifecycleChange.bind(self),
     };
+    return this._handle;
   }
 
   // Private constructor to force usage of static methods
-  private constructor(private readonly _statusUpdateCallback?: () => void) {}
+  private constructor(
+    readonly _statusUpdateCallback?: TransactionStatusUpdateCallback
+  ) {
+    this._statusUpdateCallbacks = _statusUpdateCallback
+      ? [_statusUpdateCallback]
+      : [];
+  }
 }
 
 //  Do not call from concurrent threads
@@ -417,7 +453,7 @@ export class TransactionManager<E extends string> {
   }
 
   async engineTx(
-    sender: KeyPair,
+    sender: KeyPair | PublicKey,
     args: TransactionArgs,
     engine: InstanceType<ZkUsdEngine>,
     minaPriceInput?: MinaPriceInput | undefined,
@@ -426,9 +462,10 @@ export class TransactionManager<E extends string> {
       waitForIncluded?: (string | TransactionHandle)[];
     }
   ) {
+    const senderKey = isKeyPair(sender) ? sender.publicKey : sender
     const { callback } = await zkUsdTransaction({
       kind: args.transactionType,
-      sender: sender.publicKey,
+      sender: senderKey,
       txArgs: args.args,
       engine,
       accountsUpToDate: true,
@@ -453,7 +490,7 @@ export class TransactionManager<E extends string> {
   // the transaction should be retried until it is included or failed
   // or timed out
   async tx(
-    sender: KeyPair, // TODO: future: avoid passing the private key
+    sender: KeyPair | PublicKey, // TODO: future: avoid passing the private key
     callback: () => Promise<void>,
     options?: TransactionOptions & {
       name?: string;
@@ -582,7 +619,7 @@ export class TransactionManager<E extends string> {
         const builtTx = await transactionBuild(
           this._o1jsMutex,
           this.mina,
-          sender,
+          extractPublicKey(sender),
           callback,
           buildOptions
         );
@@ -643,7 +680,7 @@ export class TransactionManager<E extends string> {
 export async function transactionBuild(
   mutex: Mutex,
   chain: IMinaNetworkInterface,
-  sender: KeyPair,
+  sender: PublicKey,
   callback: () => Promise<void>,
   options: TransactionOptions & {
     nonce?: UInt32;
@@ -664,7 +701,7 @@ export async function transactionBuild(
     async () =>
       await chain.transaction(
         {
-          sender: sender.publicKey,
+          sender: sender,
           ...(startingFee && { fee: startingFee }),
           ...(nonce && { nonce: Number(nonce) }),
           ...(memo && { memo }),
@@ -680,7 +717,7 @@ export async function transactionBuild(
     async () =>
       await chain.transaction(
         {
-          sender: sender.publicKey,
+          sender: sender,
           ...(startingFee && { fee: startingFee }),
           ...(nonce && { nonce: Number(nonce) }),
           ...(memo && { memo }),
@@ -728,4 +765,12 @@ export async function transactionBuild(
     console.log(tx.transaction.accountUpdates);
   }
   return tx;
+}
+
+function extractPublicKey(x: KeyPair | PublicKey) {
+  if ('publicKey' in x) {
+    return (x as KeyPair).publicKey;
+  } else {
+    return x;
+  }
 }

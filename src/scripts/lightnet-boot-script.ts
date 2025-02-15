@@ -17,11 +17,11 @@ export interface LightnetOptions {
 
 export enum LightnetStatus {
   Running = 'Running',
-  NotReady = 'NotReady',     // Code=1
-  NotYetRun = 'NotYetRun',   // Code=0 but "Exit code: 137"
+  NotReady = 'NotReady', // Code=1
+  NotYetRun = 'NotYetRun', // Code=0 but "Exit code: 137"
   KilledByOOM = 'KilledByOOM', // Code=0 "Killed by OOM: true"
   GeneralNotRunning = 'GeneralNotRunning', // Code=0 but "Is running: false"
-  Unknown = 'Unknown',       // Any other situation
+  Unknown = 'Unknown', // Any other situation
 }
 
 export interface LightnetStatusResult {
@@ -42,11 +42,26 @@ export async function checkLightnetStatus(): Promise<LightnetStatusResult> {
 
   // Analyze output for specific conditions if exitCode === 0
   const conditions = [
-    { condition: raw.stdout.includes('try again a bit later'), status: LightnetStatus.NotReady },
-    { condition: raw.stdout.includes('Is running: true'), status: LightnetStatus.Running },
-    { condition: raw.stdout.includes('Exit code: 137'), status: LightnetStatus.NotYetRun },
-    { condition: raw.stdout.includes('Killed by OOM: true'), status: LightnetStatus.KilledByOOM },
-    { condition: raw.stdout.includes('Is running: false'), status: LightnetStatus.GeneralNotRunning },
+    {
+      condition: raw.stdout.includes('try again a bit later'),
+      status: LightnetStatus.NotReady,
+    },
+    {
+      condition: raw.stdout.includes('Is running: true'),
+      status: LightnetStatus.Running,
+    },
+    {
+      condition: raw.stdout.includes('Exit code: 137'),
+      status: LightnetStatus.NotYetRun,
+    },
+    {
+      condition: raw.stdout.includes('Killed by OOM: true'),
+      status: LightnetStatus.KilledByOOM,
+    },
+    {
+      condition: raw.stdout.includes('Is running: false'),
+      status: LightnetStatus.GeneralNotRunning,
+    },
   ];
 
   for (const { condition, status } of conditions) {
@@ -65,7 +80,9 @@ export async function startLightnet(): Promise<ShellResult> {
   const result = await runCommand('zk', ['lightnet', 'start']);
 
   if (result.code === 127) {
-    error('The "zk" command was not found in PATH. Ensure `zkapp-cli` is installed.');
+    error(
+      'The "zk" command was not found in PATH. Ensure `zkapp-cli` is installed.'
+    );
     throw new Error('Missing "zk" command (exit code 127).');
   }
 
@@ -73,7 +90,9 @@ export async function startLightnet(): Promise<ShellResult> {
     error(`"zk lightnet start" finished with code: ${result.code}`);
     error(`stdout: ${result.stdout}`);
     error(`stderr: ${result.stderr}`);
-    throw new Error(`"zk lightnet start" did not succeed (code ${result.code}).`);
+    throw new Error(
+      `"zk lightnet start" did not succeed (code ${result.code}).`
+    );
   }
 
   return result;
@@ -98,10 +117,16 @@ async function waitForLightnetReady(options: LightnetOptions): Promise<void> {
       return;
     }
 
-    const notReadyStatuses = [LightnetStatus.NotReady, LightnetStatus.NotYetRun, LightnetStatus.GeneralNotRunning];
+    const notReadyStatuses = [
+      LightnetStatus.NotReady,
+      LightnetStatus.NotYetRun,
+      LightnetStatus.GeneralNotRunning,
+    ];
 
     if (notReadyStatuses.includes(status.status)) {
-      log(`Lightnet not ready yet. Retrying in ${pollIntervalSeconds} seconds...`);
+      log(
+        `Lightnet not ready yet. Retrying in ${pollIntervalSeconds} seconds...`
+      );
       await sleep(pollIntervalMs);
       continue;
     }
@@ -111,7 +136,9 @@ async function waitForLightnetReady(options: LightnetOptions): Promise<void> {
   }
 
   error('Timed out while waiting for Lightnet to become ready.');
-  throw new Error('Timeout: Lightnet did not become ready within the allotted time.');
+  throw new Error(
+    'Timeout: Lightnet did not become ready within the allotted time.'
+  );
 }
 
 /**
@@ -149,7 +176,9 @@ export async function ensureLightnetRunning(
       error(`Unexpected status: ${initialStatus.status}`);
       log(`stdout: ${initialStatus.raw.stdout}`);
       log(`stderr: ${initialStatus.raw.stderr}`);
-      throw new Error(`Unexpected status from "zk lightnet status": ${initialStatus.status}`);
+      throw new Error(
+        `Unexpected status from "zk lightnet status": ${initialStatus.status}`
+      );
   }
 }
 

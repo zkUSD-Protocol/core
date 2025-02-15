@@ -11,7 +11,10 @@ export interface ShellResult {
 /**
  * Runs a command with given args, collecting stdout and stderr.
  */
-export function runCommand(command: string, args: string[]): Promise<ShellResult> {
+export function runCommand(
+  command: string,
+  args: string[]
+): Promise<ShellResult> {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';

@@ -97,7 +97,7 @@ interface PreparedTransaction {
   buildTx: Promise<Transaction<false, false>>;
   args?: TransactionArgs;
   keys: {
-    sender: KeyPair;
+    sender: KeyPair | PublicKey;
     extraSigners: PrivateKey[];
   };
   nonceLock: (

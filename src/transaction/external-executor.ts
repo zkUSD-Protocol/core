@@ -33,6 +33,8 @@ import { testnetMinaSigner } from '../signers/mina-signer.js';
 import { Signed } from '../o1js-compat/signed.js';
 import { SignerZkappCommand } from '../o1js-compat/zkappcommand.js';
 import { Transaction } from 'o1js';
+import { browserWalletSigner } from '../signers/browserwallet-signer.js';
+import { isKeyPair } from '../mina/utils.js';
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving
@@ -103,8 +105,15 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
   /**
    * Returns the global Mina-signer instance (e.g., for offline signing).
    */
-  public get signer() {
+  public get minaSigner() {
     return testnetMinaSigner;
+  }
+
+  /**
+   * Returns the global Mina-signer instance (e.g., for offline signing).
+   */
+  public get browserWallerSigner() {
+    return browserWalletSigner;
   }
 
   /**
@@ -142,7 +151,9 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     });
 
     // Acquire a nonce lock to ensure a consistent nonce for this tx
-    const nonceLock = await tx.nonceLock(tx.keys.sender.publicKey);
+    const nonceLock = isKeyPair(tx.keys.sender)
+      ? await tx.nonceLock(tx.keys.sender.publicKey)
+      : await tx.nonceLock(tx.keys.sender);
 
     let builtTxGlobal: Transaction<false, false>;
     let signedTxGlobal: Signed<SignerZkappCommand>;
@@ -154,13 +165,27 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       try {
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
         const signedTx = (
-          await this.signer({
-            fee: config.startingFee,
-            nonce: nonceLock.nonce,
-            tx: builtTx,
-            keys: tx.keys,
-          })
+          isKeyPair(tx.keys.sender)
+            ? await this.minaSigner({
+                fee: config.startingFee,
+                nonce: nonceLock.nonce,
+                tx: builtTx,
+                keys: {
+                  sender: tx.keys.sender,
+                  extraSigners: tx.keys.extraSigners,
+                },
+              })
+            : await this.browserWallerSigner({
+                fee: config.startingFee,
+                nonce: nonceLock.nonce,
+                tx: builtTx,
+                keys: {
+                  sender: tx.keys.sender,
+                  extraSigners: tx.keys.extraSigners,
+                },
+              })
         ).signedTx;
+
         signedTxGlobal = signedTx;
         const ret: TxProvingInput = {
           txId: tx.getId(),
