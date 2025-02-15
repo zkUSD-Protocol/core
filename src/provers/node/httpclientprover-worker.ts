@@ -112,18 +112,6 @@ function mkHandleRequest(
 
         let { tracker, result } = mkExecutionTracker();
 
-        console.log(
-          'signed data payload - signedData (From Browser Wallet)',
-          //@ts-ignore
-          payload.transaction.signedZkappCommand.signedData
-        );
-
-        console.log(
-          'signed data payload - data (From KeyPair)',
-          //@ts-ignore
-          payload.transaction.signedZkappCommand.data
-        );
-
         const provingResult = await mutex.runExclusive(async () => {
           await proveTransaction(
             context,

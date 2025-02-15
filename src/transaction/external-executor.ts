@@ -231,8 +231,6 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       const input = await signingPromise;
       try {
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.PROVING);
-        console.log('Prover: ', this.prover);
-        console.log('Input: ', input);
         const output = await this.prover.proveTransaction(input);
         if (output.success === false) {
           const status: FailedBeforeSending = {
