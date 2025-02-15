@@ -163,7 +163,9 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       builtTxGlobal = builtTx;
 
       try {
+        console.log('Setting status to signing');
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
+        console.log('Status set to signing');
         const signedTx = (
           isKeyPair(tx.keys.sender)
             ? await this.minaSigner({
@@ -186,12 +188,26 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
               })
         ).signedTx;
 
-        signedTxGlobal = signedTx;
+        let processedSignedTx = signedTx;
+
+        //Check if the signed transaction comes from the browser wallet
+        if ('signedData' in signedTx) {
+          const parsedSignedData = JSON.parse(signedTx.signedData);
+
+          processedSignedTx = {
+            ...signedTxGlobal,
+            data: parsedSignedData,
+          };
+        } else {
+          processedSignedTx = signedTx;
+        }
+
+        signedTxGlobal = processedSignedTx;
         const ret: TxProvingInput = {
           txId: tx.getId(),
           transaction: {
             serializedTx: serializeTransaction(builtTx),
-            signedZkappCommand: signedTx,
+            signedZkappCommand: processedSignedTx,
           },
           ...txArgs,
         };
@@ -215,6 +231,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       const input = await signingPromise;
       try {
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.PROVING);
+        console.log('Prover: ', this.prover);
+        console.log('Input: ', input);
         const output = await this.prover.proveTransaction(input);
         if (output.success === false) {
           const status: FailedBeforeSending = {
@@ -242,8 +260,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         const errors = Array.isArray(error)
           ? error.map((e) => (e instanceof Error ? e.message : String(e)))
           : error instanceof Error
-          ? [error.message]
-          : [String(error)];
+            ? [error.message]
+            : [String(error)];
 
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
