@@ -163,9 +163,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       builtTxGlobal = builtTx;
 
       try {
-        console.log('Setting status to signing');
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
-        console.log('Status set to signing');
         const signedTx = (
           isKeyPair(tx.keys.sender)
             ? await this.minaSigner({
