@@ -1,5 +1,5 @@
 import { PrivateKey, PublicKey, Transaction, UInt32, UInt64 } from 'o1js';
-import { SignedBrowserData, Signer } from './types.js';
+import { Signer } from './types.js';
 import { ZkappCommand } from 'o1js/dist/node/mina-signer/src/types';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { Signed } from '../o1js-compat/signed.js';
@@ -53,7 +53,7 @@ const browserWalletSigner: Signer<'AuroWalletSigner'> = <
 async function browserSign<T extends boolean>(
   tx: Transaction<T, any>,
   feePayer: FeePayer
-): Promise<SignedBrowserData> {
+): Promise<Signed<ZkappCommand>> {
   if (!window) {
     throw new Error(
       'Browser wallet signer can only be used in a browser environment'
@@ -77,5 +77,13 @@ async function browserSign<T extends boolean>(
   if (!('signedData' in signResult)) {
     throw new Error('Expected signed zkApp command');
   }
-  return signResult;
+
+  const parsedSignedData = JSON.parse(signResult.signedData);
+
+  const signedTx: Signed<ZkappCommand> = {
+    ...signResult,
+    data: parsedSignedData,
+  };
+
+  return signedTx;
 }

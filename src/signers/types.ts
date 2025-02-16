@@ -4,18 +4,14 @@ import { SignerZkappCommand } from '../o1js-compat/zkappcommand';
 import { KeyPair } from '../types/utility';
 import { TrackedPromise } from '../utils/tracked-promise';
 
-export { Signer, SignedTxType, TxSignerType, SignedBrowserData };
+export { Signer, SignedTxType, TxSignerType };
 
 type TxSignerType = 'O1jsSigner' | 'MinaSigner' | 'AuroWalletSigner';
-
-type SignedBrowserData = {
-  signedData: string;
-};
 
 type SignedTxType<Proven extends boolean> = {
   ['O1jsSigner']: Transaction<Proven, true>;
   ['MinaSigner']: Signed<SignerZkappCommand>;
-  ['AuroWalletSigner']: SignedBrowserData;
+  ['AuroWalletSigner']: Signed<SignerZkappCommand>;
 };
 
 type SenderType = {

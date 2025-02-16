@@ -47,6 +47,13 @@ import { Mutex } from './utils/mutex.js';
 import { TransactionStatus, TxLifecycleStatus } from './transaction/status.js';
 import { TransactionManager } from './transaction/manager.js';
 import { fetchMinaAccount } from './o1js-compat/zckw-fetch.js';
+import { proveTransaction } from './transaction/execution.js';
+import {
+  TxProvingInput,
+  TxProvingOutput,
+} from './provers/itransactionprover.js';
+import { TxProvingTracker } from './transaction/execution.js';
+import { FailedBeforeSending } from './transaction/status.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -105,3 +112,14 @@ export {
   Mutex,
   HttpClientProver,
 };
+
+//export transaction prover types
+export type {
+  TxProvingInput,
+  TxProvingOutput,
+  TxProvingTracker,
+  FailedBeforeSending,
+};
+
+//export transaction prover
+export { proveTransaction };

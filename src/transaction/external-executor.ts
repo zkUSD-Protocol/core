@@ -188,26 +188,12 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
               })
         ).signedTx;
 
-        let processedSignedTx = signedTx;
-
-        //Check if the signed transaction comes from the browser wallet
-        if ('signedData' in signedTx) {
-          const parsedSignedData = JSON.parse(signedTx.signedData);
-
-          processedSignedTx = {
-            ...signedTxGlobal,
-            data: parsedSignedData,
-          };
-        } else {
-          processedSignedTx = signedTx;
-        }
-
-        signedTxGlobal = processedSignedTx;
+        signedTxGlobal = signedTx;
         const ret: TxProvingInput = {
           txId: tx.getId(),
           transaction: {
             serializedTx: serializeTransaction(builtTx),
-            signedZkappCommand: processedSignedTx,
+            signedZkappCommand: signedTx,
           },
           ...txArgs,
         };

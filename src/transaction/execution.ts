@@ -8,6 +8,7 @@ import {
   PendingTransaction,
   RejectedTransaction,
   Field,
+  Cache,
 } from 'o1js';
 
 import {
@@ -89,6 +90,7 @@ interface ExecutorContext {
 interface CompilationConfig {
   tokenPublicKey: PublicKey;
   enginePublicKey: PublicKey;
+  cache?: Cache;
 }
 
 function compilationConfigIsEqual(
@@ -125,9 +127,12 @@ async function compileContracts(
 ): Promise<CompilationResults> {
   console.time('Compiling contracts');
 
+  // Only include cache in compile options if it's provided
+  const compileOptions = config.cache ? { cache: config.cache } : {};
+
   // 1. Compile oracle aggregation proof
   const oracleAggregationVk = new VerificationKey(
-    (await AggregateOraclePrices.compile()).verificationKey
+    (await AggregateOraclePrices.compile(compileOptions)).verificationKey
   );
 
   // 2. Create the ZkUsdEngine contract class
@@ -141,12 +146,12 @@ async function compileContracts(
 
   // 4. Compile the FungibleToken contract
   const tokenVk = new VerificationKey(
-    (await FungibleToken.compile()).verificationKey
+    (await FungibleToken.compile(compileOptions)).verificationKey
   );
 
   // 5. Compile the ZkUsdEngine contract
   const engineVk = new VerificationKey(
-    (await ZkUsdEngine.compile()).verificationKey
+    (await ZkUsdEngine.compile(compileOptions)).verificationKey
   );
 
   // 6. Create instances for both contracts

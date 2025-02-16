@@ -27,13 +27,16 @@
   "bin": {
     "zkusd-cli": "./dist/cli.js"
   },
+  "files": [
+    "build",
+    "src"
+  ],
   "exports": {
-    ".": {
-      "node": "./dist/node/index.node.js",
-      "browser": "./dist/web/index.web.js",
-      "default": "./dist/node/index.node.js"
-    }
+    ".": "./build/src/index.js",
+    "./*": "./build/src/*"
   },
+  "main": "./build/src/index.js",
+  "types": "./build/src/index.d.ts",
   "devDependencies": {
     "@changesets/cli": "^2.27.12",
     "@types/bun": "latest",
