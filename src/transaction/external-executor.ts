@@ -242,8 +242,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         const errors = Array.isArray(error)
           ? error.map((e) => (e instanceof Error ? e.message : String(e)))
           : error instanceof Error
-          ? [error.message]
-          : [String(error)];
+            ? [error.message]
+            : [String(error)];
 
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',

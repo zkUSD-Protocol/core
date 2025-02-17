@@ -77,5 +77,13 @@ async function browserSign<T extends boolean>(
   if (!('signedData' in signResult)) {
     throw new Error('Expected signed zkApp command');
   }
-  return signResult;
+
+  const parsedSignedData = JSON.parse(signResult.signedData);
+
+  const signedTx: Signed<ZkappCommand> = {
+    ...signResult,
+    data: parsedSignedData,
+  };
+
+  return signedTx;
 }

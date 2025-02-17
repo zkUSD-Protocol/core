@@ -462,7 +462,7 @@ export class TransactionManager<E extends string> {
       waitForIncluded?: (string | TransactionHandle)[];
     }
   ) {
-    const senderKey = isKeyPair(sender) ? sender.publicKey : sender
+    const senderKey = isKeyPair(sender) ? sender.publicKey : sender;
     const { callback } = await zkUsdTransaction({
       kind: args.transactionType,
       sender: senderKey,
