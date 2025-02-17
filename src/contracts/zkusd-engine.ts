@@ -710,6 +710,13 @@ export function ZkUsdEngineContract(args: {
       });
     }
 
+    getAdmin() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.admin;
+    }
+
     /**
      * @notice  Updates the admin public key
      * @param   newAdmin The new admin public key
@@ -722,7 +729,7 @@ export function ZkUsdEngineContract(args: {
         this.protocolDataPacked.getAndRequireEquals()
       );
 
-      const previousAdmin = protocolData.admin;
+      const previousAdmin = this.getAdmin();
 
       protocolData.admin = newAdmin;
       this.protocolDataPacked.set(protocolData.pack());

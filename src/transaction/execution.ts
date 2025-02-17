@@ -12,10 +12,10 @@ import {
 } from 'o1js';
 
 import {
-  VaultTransactionType,
+  ZkusdEngineTransactionType,
   CreateVaultArgs,
   PriceProofArgs,
-  VaultTransactionArgs,
+  ZkusdEngineTransactionArgs,
 } from '../system/transaction.js';
 
 import { MinaNetworkInterface } from '../mina/network-interface.js';
@@ -116,7 +116,7 @@ interface CompilationResults {
   FungibleToken: FungibleTokenType;
   engineInstance: InstanceType<ZkUsdEngineType>;
   tokenInstance: InstanceType<FungibleTokenType>;
-  transactionConfigs: { [K in VaultTransactionType]: TransactionConfig<K> };
+  transactionConfigs: { [K in ZkusdEngineTransactionType]: TransactionConfig<K> };
 }
 
 /**
@@ -220,9 +220,9 @@ async function fetchLatestAccounts(args: {
   });
 }
 
-async function recreateTransaction<T extends VaultTransactionType>(args: {
+async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
   tx: string;
-  txArgs: VaultTransactionArgs[T];
+  txArgs: ZkusdEngineTransactionArgs[T];
   chain: MinaNetworkInterface;
   config: TransactionConfig<T>;
   oracleAggregationVk: VerificationKey;
@@ -529,47 +529,47 @@ async function proveTransaction(
 }
 
 export function buildArgs(
-  task: VaultTransactionType,
+  task: ZkusdEngineTransactionType,
   argsJson: string
 ): TransactionArgs {
   // Parse the JSON into a plain object.
   const parsed = JSON.parse(argsJson);
 
   switch (task) {
-    case VaultTransactionType.CREATE_VAULT:
+    case ZkusdEngineTransactionType.CREATE_VAULT:
       return {
-        transactionType: VaultTransactionType.CREATE_VAULT,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.CREATE_VAULT],
+        transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.CREATE_VAULT],
       };
 
-    case VaultTransactionType.DEPOSIT_COLLATERAL:
+    case ZkusdEngineTransactionType.DEPOSIT_COLLATERAL:
       return {
-        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.DEPOSIT_COLLATERAL],
+        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.DEPOSIT_COLLATERAL],
       };
 
-    case VaultTransactionType.REDEEM_COLLATERAL:
+    case ZkusdEngineTransactionType.REDEEM_COLLATERAL:
       return {
-        transactionType: VaultTransactionType.REDEEM_COLLATERAL,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.REDEEM_COLLATERAL],
+        transactionType: ZkusdEngineTransactionType.REDEEM_COLLATERAL,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.REDEEM_COLLATERAL],
       };
 
-    case VaultTransactionType.MINT_ZKUSD:
+    case ZkusdEngineTransactionType.MINT_ZKUSD:
       return {
-        transactionType: VaultTransactionType.MINT_ZKUSD,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.MINT_ZKUSD],
+        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.MINT_ZKUSD],
       };
 
-    case VaultTransactionType.BURN_ZKUSD:
+    case ZkusdEngineTransactionType.BURN_ZKUSD:
       return {
-        transactionType: VaultTransactionType.BURN_ZKUSD,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.BURN_ZKUSD],
+        transactionType: ZkusdEngineTransactionType.BURN_ZKUSD,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.BURN_ZKUSD],
       };
 
-    case VaultTransactionType.LIQUIDATE:
+    case ZkusdEngineTransactionType.LIQUIDATE:
       return {
-        transactionType: VaultTransactionType.LIQUIDATE,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.LIQUIDATE],
+        transactionType: ZkusdEngineTransactionType.LIQUIDATE,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.LIQUIDATE],
       };
 
     default:
@@ -577,14 +577,14 @@ export function buildArgs(
   }
 }
 
-export type MinaPriceInputArgs<T> = T extends VaultTransactionType
+export type MinaPriceInputArgs<T> = T extends ZkusdEngineTransactionType
   ? MinaPriceInput
   : undefined;
 
-const zkUsdTransaction = async <T extends VaultTransactionType>(args: {
+const zkUsdTransaction = async <T extends ZkusdEngineTransactionType>(args: {
   kind: T;
   sender: PublicKey;
-  txArgs: VaultTransactionArgs[T];
+  txArgs: ZkusdEngineTransactionArgs[T];
   engine: InstanceType<ZkUsdEngineType>;
   accountsUpToDate: boolean; // just to inform the function user
   minaPriceInput: MinaPriceInput | undefined;

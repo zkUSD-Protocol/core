@@ -1,6 +1,6 @@
 import { ZkUsdEngineContract } from './contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { Field, initializeBindings, VerificationKey } from 'o1js';
+import { VerificationKey } from 'o1js';
 import { verificationKeys } from './config/verification-keys.js';
 import { validPriceBlockCount } from './mina/networks.js';
 import {
@@ -13,8 +13,8 @@ import {
 import { Vault } from './system/vault.js';
 import { getNetworkKeys, NetworkKeyPairs } from './config/keys.js';
 import {
-  VaultTransactionArgs,
-  VaultTransactionType,
+  ZkusdEngineTransactionArgs,
+  ZkusdEngineTransactionType,
 } from './system/transaction.js';
 import { OracleWhitelist } from './system/oracle.js';
 import {
@@ -73,8 +73,8 @@ export {
   MinaPriceInput,
   getNetworkKeys,
   NetworkKeyPairs,
-  VaultTransactionType,
-  VaultTransactionArgs,
+  ZkusdEngineTransactionArgs,
+  ZkusdEngineTransactionType,
   Vault,
   MinaNetworkInterface,
   blockchain,

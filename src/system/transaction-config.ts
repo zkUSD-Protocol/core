@@ -6,12 +6,13 @@ import {
   CollateralAmountArgs,
   CreateVaultArgs,
   PriceProofArgs,
-  VaultTransactionArgs,
-  VaultTransactionType,
+  ZkusdEngineTransactionType,
   ZkUSDAmountAndPriceProofArgs,
   ZkUSDAmountArgs,
+  ZkusdEngineTransactionArgs,
 } from './transaction.js';
-import { PublicKey, UInt64 } from 'o1js';
+import { Bool, PublicKey, UInt32, UInt64 } from 'o1js';
+import { OracleWhitelist } from './oracle.js';
 
 export {
   ZkUsdEngine,
@@ -23,10 +24,10 @@ export {
 type ZkUsdEngine = ReturnType<typeof ZkUsdEngineContract>;
 type FungibleToken = ReturnType<typeof FungibleTokenContract>;
 
-interface TransactionConfig<T extends VaultTransactionType> {
+interface TransactionConfig<T extends ZkusdEngineTransactionType> {
   method: T;
   buildTx: (
-    args: VaultTransactionArgs[T],
+    args: ZkusdEngineTransactionArgs[T],
     minaPriceInput?: MinaPriceInput
   ) => Promise<void>;
   requiresNewAccounts?: boolean;
@@ -42,19 +43,19 @@ interface TransactionConfig<T extends VaultTransactionType> {
  * - requiresPriceProof: Whether a price proof is needed for the operation
  */
 function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
-  [K in VaultTransactionType]: TransactionConfig<K>;
+  [K in ZkusdEngineTransactionType]: TransactionConfig<K>;
 } {
   return {
-    [VaultTransactionType.CREATE_VAULT]: {
-      method: VaultTransactionType.CREATE_VAULT,
+    [ZkusdEngineTransactionType.CREATE_VAULT]: {
+      method: ZkusdEngineTransactionType.CREATE_VAULT,
       buildTx: async (args: CreateVaultArgs) => {
         await engine.createVault(PublicKey.fromBase58(args.vaultAddress));
       },
       requiresNewAccounts: true,
     },
 
-    [VaultTransactionType.DEPOSIT_COLLATERAL]: {
-      method: VaultTransactionType.DEPOSIT_COLLATERAL,
+    [ZkusdEngineTransactionType.DEPOSIT_COLLATERAL]: {
+      method: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
       buildTx: async (args: CollateralAmountArgs) => {
         await engine.depositCollateral(
           PublicKey.fromBase58(args.vaultAddress),
@@ -63,8 +64,8 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
       },
     },
 
-    [VaultTransactionType.REDEEM_COLLATERAL]: {
-      method: VaultTransactionType.REDEEM_COLLATERAL,
+    [ZkusdEngineTransactionType.REDEEM_COLLATERAL]: {
+      method: ZkusdEngineTransactionType.REDEEM_COLLATERAL,
       buildTx: async (
         args: CollateralAmountAndPriceProofArgs,
         minaPriceInput?: MinaPriceInput
@@ -78,8 +79,8 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
       requiresPriceProof: true,
     },
 
-    [VaultTransactionType.BURN_ZKUSD]: {
-      method: VaultTransactionType.BURN_ZKUSD,
+    [ZkusdEngineTransactionType.BURN_ZKUSD]: {
+      method: ZkusdEngineTransactionType.BURN_ZKUSD,
       buildTx: async (args: ZkUSDAmountArgs) => {
         await engine.burnZkUsd(
           PublicKey.fromBase58(args.vaultAddress),
@@ -88,8 +89,8 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
       },
     },
 
-    [VaultTransactionType.MINT_ZKUSD]: {
-      method: VaultTransactionType.MINT_ZKUSD,
+    [ZkusdEngineTransactionType.MINT_ZKUSD]: {
+      method: ZkusdEngineTransactionType.MINT_ZKUSD,
       buildTx: async (
         args: ZkUSDAmountAndPriceProofArgs,
         minaPriceInput?: MinaPriceInput
@@ -103,8 +104,8 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
       requiresPriceProof: true,
     },
 
-    [VaultTransactionType.LIQUIDATE]: {
-      method: VaultTransactionType.LIQUIDATE,
+    [ZkusdEngineTransactionType.LIQUIDATE]: {
+      method: ZkusdEngineTransactionType.LIQUIDATE,
       buildTx: async (
         args: PriceProofArgs,
         minaPriceInput?: MinaPriceInput
@@ -115,6 +116,34 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
         );
       },
       requiresPriceProof: true,
+    },
+    [ZkusdEngineTransactionType.UPDATE_ADMIN]: {
+      method: ZkusdEngineTransactionType.UPDATE_ADMIN,
+      buildTx: async (args) => {
+        const newAdmin = PublicKey.fromBase58(args.newAdmin);
+        await engine.updateAdmin(newAdmin);
+      },
+    },
+    [ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT]: {
+      method: ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT,
+      buildTx: async (args) => {
+        await engine.updateValidPriceBlockCount(UInt32.from(args.newValidPriceBlockCount));
+      },
+    },
+    [ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST]: {
+      method: ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST,
+      buildTx: async (args) => {
+        const whitelist: OracleWhitelist = new OracleWhitelist({
+          addresses: args.oracleWhitelist.map((addr) => PublicKey.fromBase58(addr)),
+        });
+        await engine.updateOracleWhitelist(whitelist);
+      },
+    },
+    [ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP]: {
+      method: ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP,
+      buildTx: async (args) => {
+        await engine.toggleEmergencyStop(Bool(args.shouldStop));
+      },
     },
   };
 }

@@ -21,8 +21,8 @@ import {
   TxLifecycleStatus,
 } from './status.js';
 import {
-  VaultTransactionArgs,
-  VaultTransactionType,
+  ZkusdEngineTransactionArgs,
+  ZkusdEngineTransactionType,
 } from '../system/transaction.js';
 
 export type {
@@ -122,26 +122,26 @@ interface ITransactionExecutor {
 /** Type-safe transaction arguments. */
 type TransactionArgs =
   | {
-      transactionType: VaultTransactionType.BURN_ZKUSD;
-      args: VaultTransactionArgs[VaultTransactionType.BURN_ZKUSD];
+      transactionType: ZkusdEngineTransactionType.BURN_ZKUSD;
+      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.BURN_ZKUSD];
     }
   | {
-      transactionType: VaultTransactionType.CREATE_VAULT;
-      args: VaultTransactionArgs[VaultTransactionType.CREATE_VAULT];
+      transactionType: ZkusdEngineTransactionType.CREATE_VAULT;
+      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.CREATE_VAULT];
     }
   | {
-      transactionType: VaultTransactionType.DEPOSIT_COLLATERAL;
-      args: VaultTransactionArgs[VaultTransactionType.DEPOSIT_COLLATERAL];
+      transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL;
+      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.DEPOSIT_COLLATERAL];
     }
   | {
-      transactionType: VaultTransactionType.LIQUIDATE;
-      args: VaultTransactionArgs[VaultTransactionType.LIQUIDATE];
+      transactionType: ZkusdEngineTransactionType.LIQUIDATE;
+      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.LIQUIDATE];
     }
   | {
-      transactionType: VaultTransactionType.MINT_ZKUSD;
-      args: VaultTransactionArgs[VaultTransactionType.MINT_ZKUSD];
+      transactionType: ZkusdEngineTransactionType.MINT_ZKUSD;
+      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.MINT_ZKUSD];
     }
   | {
-      transactionType: VaultTransactionType.REDEEM_COLLATERAL;
-      args: VaultTransactionArgs[VaultTransactionType.REDEEM_COLLATERAL];
+      transactionType: ZkusdEngineTransactionType.REDEEM_COLLATERAL;
+      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.REDEEM_COLLATERAL];
     };
