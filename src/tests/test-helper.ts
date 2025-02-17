@@ -510,19 +510,13 @@ export class TestHelper<E extends string> {
 
     let refreshAccounts: Account[] = [
       { publicKey: this.engine.contract.address }, // engine
-      // sender
-      { publicKey: senderKey },
-      // vault
-      {
+      { publicKey: senderKey }, // sender
+      ('vaultAddress' in args.args && { // vault (only included if vaultAddress exists)
         publicKey: PublicKey.fromBase58(args.args.vaultAddress),
         tokenId: this.engine.contract.deriveTokenId(),
-      },
-      // sender zkusd
-      {
-        publicKey: senderKey,
-        tokenId: this.engine.contract.deriveTokenId(),
-      },
-    ];
+      }) as Account,
+      { publicKey: senderKey, tokenId: this.engine.contract.deriveTokenId() }, // sender zkusd
+    ].filter(Boolean); // Removes `undefined` entries
 
     return this.txMgr.engineTx(
       sender,

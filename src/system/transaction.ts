@@ -83,45 +83,10 @@ export type ZkusdEngineTransactionArgs = {
   [ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP]: ToggleEmergencyStopArgs;
 };
 
-export type TransactionArgs =
-  | {
-      transactionType: ZkusdEngineTransactionType.BURN_ZKUSD;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.BURN_ZKUSD];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.CREATE_VAULT;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.CREATE_VAULT];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.DEPOSIT_COLLATERAL];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.LIQUIDATE;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.LIQUIDATE];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.MINT_ZKUSD;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.MINT_ZKUSD];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.REDEEM_COLLATERAL;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.REDEEM_COLLATERAL];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.UPDATE_ADMIN;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.UPDATE_ADMIN];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP];
-    };
-
+/** Type-safe transaction arguments. */
+export type TransactionArgs = {
+  [K in keyof ZkusdEngineTransactionArgs]: {
+    transactionType: K;
+    args: ZkusdEngineTransactionArgs[K];
+  };
+}[keyof ZkusdEngineTransactionArgs];

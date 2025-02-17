@@ -152,7 +152,7 @@ export class HttpServerProver implements ITransactionProver {
    * Shuts down the EPM by stopping all workers and closing the HTTP server.
    */
   public async shutdown(): Promise<void> {
-    console.log('Shutting down ChildProcessWorkerManager...');
+    console.log('Shutting down HttpServerProver...');
     this.isShuttingDown = true; // Prevent worker restarts
 
     // Stop worker processes
@@ -166,7 +166,7 @@ export class HttpServerProver implements ITransactionProver {
     if (this.server) {
       await new Promise((resolve) => this.server.close(resolve));
     }
-    console.log('ChildProcessWorkerManager shut down.');
+    console.log('HttpServerProver shut down.');
   }
 
   /**

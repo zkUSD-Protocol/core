@@ -20,10 +20,7 @@ import {
   RejectedOnReceive,
   TxLifecycleStatus,
 } from './status.js';
-import {
-  ZkusdEngineTransactionArgs,
-  ZkusdEngineTransactionType,
-} from '../system/transaction.js';
+import { TransactionArgs } from '../system/transaction.js';
 
 export type {
   AwaitedTransaction,
@@ -118,30 +115,3 @@ interface ITransactionExecutor {
     options?: unknown
   ): Promise<TransactionLifecycle>;
 }
-
-/** Type-safe transaction arguments. */
-type TransactionArgs =
-  | {
-      transactionType: ZkusdEngineTransactionType.BURN_ZKUSD;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.BURN_ZKUSD];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.CREATE_VAULT;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.CREATE_VAULT];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.DEPOSIT_COLLATERAL];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.LIQUIDATE;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.LIQUIDATE];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.MINT_ZKUSD;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.MINT_ZKUSD];
-    }
-  | {
-      transactionType: ZkusdEngineTransactionType.REDEEM_COLLATERAL;
-      args: ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.REDEEM_COLLATERAL];
-    };

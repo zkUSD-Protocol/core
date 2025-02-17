@@ -717,6 +717,13 @@ export function ZkUsdEngineContract(args: {
       return protocolData.admin;
     }
 
+    isEmergencyStopped() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.emergencyStop;
+    }
+
     /**
      * @notice  Updates the admin public key
      * @param   newAdmin The new admin public key

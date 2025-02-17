@@ -70,7 +70,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
   dependencyStatusPollTimeout: 300000,
-  awaitingTimeoutMs: 65000,
+  awaitingTimeoutMs: 300000,
   memo: '',
   refreshAccounts: [],
 };
@@ -117,9 +117,7 @@ export interface TransactionHandle {
     timeout?: number;
   }): Promise<void>;
 
-  subscribeToLifecycleChange(
-    cb: (lifecycle: TxLifecycleStatus) => void
-  ): void;
+  subscribeToLifecycleChange(cb: (lifecycle: TxLifecycleStatus) => void): void;
 }
 
 export type TransactionStatusUpdateCallback = (statuses: {
@@ -158,7 +156,7 @@ export class TransactionInternal {
       cb({ lifecycle: lifecyleStatus, status })
     );
     if (status !== 'unchanged') this._status = status;
-    if (lifecyleStatus !== 'unchanged'){
+    if (lifecyleStatus !== 'unchanged') {
       this._lifecycleStatus = lifecyleStatus;
       this._lifecycleUpdateCallbacks.forEach((cb) => cb(lifecyleStatus));
     }
@@ -507,176 +505,182 @@ export class TransactionManager<E extends string> {
     },
     args?: TransactionArgs
   ): Promise<TransactionHandle> {
-
     return await this._txMethodMutex.runExclusive(async () => {
+      const { waitForIncluded } = options ?? {};
+      let name = options?.name;
 
-    const { waitForIncluded } = options ?? {};
-    let name = options?.name;
-
-    if (!name) {
-      let i = 1;
-      while (true) {
-        if (this.transactions.has(`tx${i}`)) {
-          i = i + 1;
-        } else {
-          name = `tx${i}`;
-          break;
+      if (!name) {
+        let i = 1;
+        while (true) {
+          if (this.transactions.has(`tx${i}`)) {
+            i = i + 1;
+          } else {
+            name = `tx${i}`;
+            break;
+          }
         }
       }
-    }
 
-    // prepare and verify transaction request as scheduled by function user
-    const request: TransactionRequest = {
-      name,
-      sender,
-      callback,
-      options: options ?? {},
-      waitForIncluded: waitForIncluded ?? [],
-      args,
-    };
+      // prepare and verify transaction request as scheduled by function user
+      const request: TransactionRequest = {
+        name,
+        sender,
+        callback,
+        options: options ?? {},
+        waitForIncluded: waitForIncluded ?? [],
+        args,
+      };
 
-    // dependencies must be met
-    const deps: TransactionInternal[] = [];
-    for (const mDepId of request.waitForIncluded) {
-      const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId;
-      const dep = this.transactions.get(depId);
-      if (!dep) {
-        throw new Error(`Transaction ${depId} does not exist`);
+      // dependencies must be met
+      const deps: TransactionInternal[] = [];
+      for (const mDepId of request.waitForIncluded) {
+        const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId;
+        const dep = this.transactions.get(depId);
+        if (!dep) {
+          throw new Error(`Transaction ${depId} does not exist`);
+        }
+        deps.push(dep);
       }
-      deps.push(dep);
-    }
 
-    // name must be unique if it is provided
-    if (request.name) {
-      if (this.transactions.has(request.name)) {
-        throw new Error(`Transaction with name ${request.name} already exists`);
-      }
-    }
-    //=== the request is assumed to be valid at this point
-
-    //=== include the transaction in the manager
-    // -- create the tx and add it to the manager
-    const tx = TransactionInternal.fromRequest(
-      request,
-      this.transactionStatusChanged.bind(this)
-    );
-    this.transactions.set(tx.getId(), tx);
-    // --
-
-    //=== the transaction is included in the manager at this point
-    // const failed_before_sending = (phase: string, error: unknown) =>
-    const failed_before_sending = (phase: string, error: unknown) => {
-      return mkStatusFailedBeforeSending(tx.getId(), phase, error);
-    };
-
-    // schedule waiting for dependencies to be included
-    const depsAwaitingPromise = new TrackedPromise(async () => {
-      try {
-        if (tx.dependencies.length !== 0) {
-          tx.setStatuses(
-            {
-              kind: 'AwaitingForOtherTx',
-              txs: tx.dependencies.map((dep) => dep.txId),
-            },
-            TxLifecycleStatus.AWAITING_DEPENDENCIES
+      // name must be unique if it is provided
+      if (request.name) {
+        if (this.transactions.has(request.name)) {
+          throw new Error(
+            `Transaction with name ${request.name} already exists`
           );
         }
-        await Promise.all(
-          deps.map(async (dep) => {
-            const depStatus = await dep.awaitStatusChange({
-              until: (status) =>
-                status === 'Included' || statusIsFailed(status),
-              statusPollInterval: options?.dependencyStatusPollInterval,
-              timeout: options?.dependencyStatusPollTimeout,
+      }
+      //=== the request is assumed to be valid at this point
+
+      //=== include the transaction in the manager
+      // -- create the tx and add it to the manager
+      const tx = TransactionInternal.fromRequest(
+        request,
+        this.transactionStatusChanged.bind(this)
+      );
+      this.transactions.set(tx.getId(), tx);
+      // --
+
+      //=== the transaction is included in the manager at this point
+      // const failed_before_sending = (phase: string, error: unknown) =>
+      const failed_before_sending = (phase: string, error: unknown) => {
+        return mkStatusFailedBeforeSending(tx.getId(), phase, error);
+      };
+
+      // schedule waiting for dependencies to be included
+      const depsAwaitingPromise = new TrackedPromise(async () => {
+        try {
+          if (tx.dependencies.length !== 0) {
+            tx.setStatuses(
+              {
+                kind: 'AwaitingForOtherTx',
+                txs: tx.dependencies.map((dep) => dep.txId),
+              },
+              TxLifecycleStatus.AWAITING_DEPENDENCIES
+            );
+          }
+          await Promise.all(
+            deps.map(async (dep) => {
+              const depStatus = await dep.awaitStatusChange({
+                until: (status) =>
+                  status === 'Included' || statusIsFailed(status),
+                statusPollInterval: options?.dependencyStatusPollInterval,
+                timeout: options?.dependencyStatusPollTimeout,
+              });
+              if (depStatus !== 'Included') {
+                throw {
+                  kind: 'DependencyRejectedFailedOrDropped',
+                  depId: dep.getId(),
+                  depStatus,
+                };
+              }
+              return;
+            })
+          );
+          tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
+        } catch (error) {
+          if (typeof error === 'object' && error !== null && 'kind' in error) {
+            throw error;
+          }
+          throw failed_before_sending(
+            'awaiting for the tx dependencies',
+            error
+          );
+        }
+      });
+
+      let buildOptions: TransactionOptions & {
+        nonce?: UInt32;
+        forceFetchAllTxParties: (
+          tx: Record<string, any> & { transaction: MinaZkappCommand }
+        ) => Promise<void>;
+      } = {
+        ...options,
+        forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(
+          this.mina
+        ),
+      };
+
+      const builtTxPromise = depsAwaitingPromise.then(async () => {
+        try {
+          for (const acc of options?.refreshAccounts ?? []) {
+            await this.mina.fetchMinaAccount(acc.publicKey, {
+              tokenId: acc.tokenId,
+              force: true,
             });
-            if (depStatus !== 'Included') {
-              throw {
-                kind: 'DependencyRejectedFailedOrDropped',
-                depId: dep.getId(),
-                depStatus,
-              };
-            }
-            return;
-          })
-        );
-        tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
-      } catch (error) {
-        if (typeof error === 'object' && error !== null && 'kind' in error) {
-          throw error;
+          }
+
+          const builtTx = await transactionBuild(
+            this._o1jsMutex,
+            this.mina,
+            extractPublicKey(sender),
+            callback,
+            buildOptions
+          );
+          return builtTx;
+        } catch (error) {
+          throw failed_before_sending('building the tx', error);
         }
-        throw failed_before_sending('awaiting for the tx dependencies', error);
-      }
+      });
+
+      //=== prepare promises that will manage the transaction lifecycle
+      const nonceLock = this.mina.nonceManager.getAccountNonce.bind(
+        this.mina.nonceManager
+      );
+
+      const preparedTx: PreparedTransaction = {
+        getId: () => tx.getId(),
+        args: tx.request?.args ?? undefined,
+        buildTx: builtTxPromise,
+        setStatuses: (
+          s: TransactionStatus | 'unchanged',
+          lcs: TxLifecycleStatus | 'unchanged'
+        ) => {
+          tx.setStatuses(s, lcs);
+        },
+        keys: { sender, extraSigners: options?.extraSigners ?? [] },
+        nonceLock,
+      };
+
+      //=== delegate the rest of execution
+      const executorKey =
+        options?.executor ?? this.transactionExecutors.default;
+      const txExecutor = this.transactionExecutors[executorKey];
+
+      const lifecycle = await txExecutor.executeTransaction(preparedTx, {
+        o1jsMutex: this._o1jsMutex,
+        mina: this.mina,
+        startingFee: options?.startingFee ?? defaultOptions.startingFee,
+        printTx: options?.printTx,
+        awaitingTimeoutMs:
+          options?.dependencyStatusPollTimeout ??
+          defaultOptions.dependencyStatusPollTimeout,
+      });
+
+      tx.installLifecycle(lifecycle);
+      return tx.handle;
     });
-
-    let buildOptions: TransactionOptions & {
-      nonce?: UInt32;
-      forceFetchAllTxParties: (
-        tx: Record<string, any> & { transaction: MinaZkappCommand }
-      ) => Promise<void>;
-    } = {
-      ...options,
-      forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(this.mina),
-    };
-
-    const builtTxPromise = depsAwaitingPromise.then(async () => {
-      try {
-        for (const acc of options?.refreshAccounts ?? []) {
-          await this.mina.fetchMinaAccount(acc.publicKey, {
-            tokenId: acc.tokenId,
-            force: true,
-          });
-        }
-
-        const builtTx = await transactionBuild(
-          this._o1jsMutex,
-          this.mina,
-          extractPublicKey(sender),
-          callback,
-          buildOptions
-        );
-        return builtTx;
-      } catch (error) {
-        throw failed_before_sending('building the tx', error);
-      }
-    });
-
-    //=== prepare promises that will manage the transaction lifecycle
-    const nonceLock = this.mina.nonceManager.getAccountNonce.bind(
-      this.mina.nonceManager
-    );
-
-    const preparedTx: PreparedTransaction = {
-      getId: () => tx.getId(),
-      args: tx.request?.args ?? undefined,
-      buildTx: builtTxPromise,
-      setStatuses: (
-        s: TransactionStatus | 'unchanged',
-        lcs: TxLifecycleStatus | 'unchanged'
-      ) => {
-        tx.setStatuses(s, lcs);
-      },
-      keys: { sender, extraSigners: options?.extraSigners ?? [] },
-      nonceLock,
-    };
-
-    //=== delegate the rest of execution
-    const executorKey = options?.executor ?? this.transactionExecutors.default;
-    const txExecutor = this.transactionExecutors[executorKey];
-
-    const lifecycle = await txExecutor.executeTransaction(preparedTx, {
-      o1jsMutex: this._o1jsMutex,
-      mina: this.mina,
-      startingFee: options?.startingFee ?? defaultOptions.startingFee,
-      printTx: options?.printTx,
-      awaitingTimeoutMs:
-        options?.dependencyStatusPollTimeout ??
-        defaultOptions.dependencyStatusPollTimeout,
-    });
-
-    tx.installLifecycle(lifecycle);
-    return tx.handle;
-    })
-                                      }
+  }
 
   private constructor(
     networkInterface: IMinaNetworkInterface,

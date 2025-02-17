@@ -22,8 +22,8 @@ import {
   GqlVars,
   queryGraphQL,
 } from './graphql.js';
-import { extractAllTxParties } from './utils.js';
-import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
+import { extractAllTxParties, extractAllTxPartiesJson } from './utils.js';
+import { MinaZkappCommand, SignerZkappCommand } from '../o1js-compat/zkappcommand.js';
 import { MinaApi } from './types.js';
 import { fetchMinaAccount as zkcwfetchMinaAccount } from '../o1js-compat/zckw-fetch.js';
 
@@ -323,6 +323,16 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   ): Promise<void> {
     let requests: Promise<any>[] = [];
     extractAllTxParties(tx.transaction).forEach(({ publicKey, tokenId }) => {
+      requests.push(this.fetchMinaAccount(publicKey, { tokenId, force: true }));
+    });
+    await Promise.all(requests);
+  }
+
+  async forceFetchAllTxPartiesJson(
+    tx: SignerZkappCommand
+  ): Promise<void> {
+    let requests: Promise<any>[] = [];
+    extractAllTxPartiesJson(tx).forEach(({ publicKey, tokenId }) => {
       requests.push(this.fetchMinaAccount(publicKey, { tokenId, force: true }));
     });
     await Promise.all(requests);

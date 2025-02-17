@@ -50,8 +50,6 @@ export async function startProvingLoop(config: HttpServerProverWorkerConfig) {
 
       const executionTracker = mkExecutionTracker(epmBaseUrl, job.id);
 
-      console.log(JSON.stringify(job.payload));
-
       await proveTransaction(
         context,
         JSON.stringify({

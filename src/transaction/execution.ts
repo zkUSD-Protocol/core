@@ -7,7 +7,6 @@ import {
   Transaction,
   PendingTransaction,
   RejectedTransaction,
-  Field,
   Cache,
 } from 'o1js';
 
@@ -16,6 +15,7 @@ import {
   CreateVaultArgs,
   PriceProofArgs,
   ZkusdEngineTransactionArgs,
+  TransactionArgs,
 } from '../system/transaction.js';
 
 import { MinaNetworkInterface } from '../mina/network-interface.js';
@@ -41,7 +41,6 @@ import {
   RejectedOnReceive,
   mkStatusFailedBeforeSending,
 } from './status.js';
-import { TransactionArgs } from '../system/transaction.js';
 
 export {
   CompilationConfig,
@@ -116,7 +115,9 @@ interface CompilationResults {
   FungibleToken: FungibleTokenType;
   engineInstance: InstanceType<ZkUsdEngineType>;
   tokenInstance: InstanceType<FungibleTokenType>;
-  transactionConfigs: { [K in ZkusdEngineTransactionType]: TransactionConfig<K> };
+  transactionConfigs: {
+    [K in ZkusdEngineTransactionType]: TransactionConfig<K>;
+  };
 }
 
 /**
@@ -196,30 +197,6 @@ async function getMinaPriceInputFromJsonProof(
   });
 }
 
-/**
- * Ensures all relevant accounts are fetched with their latest state.
- */
-async function fetchLatestAccounts(args: {
-  engineInstance: InstanceType<ZkUsdEngineType>;
-  engineKey: PublicKey;
-  sender: PublicKey;
-  vaultAddress: string;
-  fetchMinaAccount: (
-    publicKey: string | PublicKey,
-    options?: { tokenId?: Field; force?: boolean }
-  ) => Promise<any>;
-}): Promise<void> {
-  const { fetchMinaAccount, engineInstance, engineKey, sender, vaultAddress } =
-    args;
-
-  await fetchMinaAccount(engineKey, { force: true });
-  await fetchMinaAccount(sender, { force: true });
-  await fetchMinaAccount(PublicKey.fromBase58(vaultAddress), {
-    force: true,
-    tokenId: engineInstance.deriveTokenId(),
-  });
-}
-
 async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
   tx: string;
   txArgs: ZkusdEngineTransactionArgs[T];
@@ -229,15 +206,7 @@ async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
   engineInstance: InstanceType<ZkUsdEngineType>;
   engineKey: PublicKey;
 }): Promise<Transaction<false, false>> {
-  const {
-    tx,
-    config,
-    oracleAggregationVk,
-    txArgs,
-    engineInstance,
-    engineKey,
-    chain,
-  } = args;
+  const { tx, config, oracleAggregationVk, txArgs, chain } = args;
 
   // Parse the transaction details
   const { serializedTx, signedData } = JSON.parse(tx);
@@ -256,14 +225,8 @@ async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
     );
   }
 
-  // Ensure the account states are up to date
-  await fetchLatestAccounts({
-    engineInstance: engineInstance,
-    engineKey: engineKey,
-    sender,
-    vaultAddress: (txArgs as CreateVaultArgs).vaultAddress,
-    fetchMinaAccount: chain.fetchMinaAccount,
-  });
+  // fetch all the required accounts
+  chain.forceFetchAllTxPartiesJson(signedData);
 
   // Build the transaction
   const txNew = await chain.transaction(

@@ -15,16 +15,14 @@ import { ProtocolData } from '../../../system/engine.js';
 
 const printTx = !!process.env.DEBUG;
 
-describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path + Engine Updates', () => {
-  let oldAdmin: PublicKey;
-  let newAdmin: KeyPair;
+describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', () => {
   let th: TestHelper<'local' | 'external'>;
   let mike: {
     mintedHandle: TransactionHandle;
     keys: KeyPair;
     vault: KeyPair;
   };
-  let resumed: TransactionHandle|undefined;
+  let resumed: TransactionHandle | undefined;
   let stop: () => void;
 
   let newman: KeyPair;
@@ -34,8 +32,6 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path + En
     const stopExecutor = new Promise<void>((resolve) => {
       stop = resolve;
     });
-
-    newAdmin = PrivateKey.randomKeypair();
 
     const txExecutorInitializers: WithDefault<
       'local' | 'external',
@@ -58,7 +54,6 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path + En
   });
 
   const ensureProtocolResume = async () => {
-
     const protocolDataPacked =
       await th.engine.contract.protocolDataPacked.fetch();
 
@@ -67,19 +62,19 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path + En
     const emergencyStopFlag = protocolData.emergencyStop;
 
     if (emergencyStopFlag.toBoolean()) {
-    resumed = await th.tx(
-      th.deployer,
-      async () => {
-        await th.engine.contract.toggleEmergencyStop(Bool(false));
-      },
-      {
-        executor: 'local', // use local executor for tx not supported by workers
-        name: 'Resuming the protocol',
-        extraSigners: [th.networkKeys.protocolAdmin.privateKey],
-      }
-    );
+      resumed = await th.tx(
+        th.deployer,
+        async () => {
+          await th.engine.contract.toggleEmergencyStop(Bool(false));
+        },
+        {
+          executor: 'local', // use local executor for tx not supported by workers
+          name: 'Resuming the protocol',
+          extraSigners: [th.networkKeys.protocolAdmin.privateKey],
+        }
+      );
     }
-  }
+  };
 
   const makeMike = async () => {
     const mike = await th.mina.newAccount();
@@ -158,13 +153,10 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path + En
   });
 
   it('should start protocol updates testing without waiting', async () => {
-
     const current = th.engine.contract.getAdmin();
     const old = th.networkKeys.protocolAdmin;
 
     assert.ok(old.publicKey.equals(current), 'unknown current admin!');
-
-
 
     // extraSigners: [th.networkKeys.protocolAdmin.privateKey],
 
