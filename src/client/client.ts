@@ -88,12 +88,12 @@ export class ZKUSDClient {
     vaultPrivateKey: PrivateKey,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
-    const zkusdTokenAccount = await fetchMinaAccount({
-      publicKey: sender,
+    const zkusdTokenAccount = await this.txMgr.mina.fetchMinaAccount(sender, {
       tokenId: this.token.deriveTokenId(),
+      force: true,
     });
 
-    const newAccounts = zkusdTokenAccount.account ? 1 : 2;
+    const newAccounts = zkusdTokenAccount ? 1 : 2;
 
     return this.executeTransaction(
       VaultTransactionType.CREATE_VAULT,
