@@ -1,8 +1,5 @@
 import { PrivateKey, PublicKey, UInt64 } from 'o1js';
-import {
-  IMinaNetworkInterface,
-  MinaNetworkInterface,
-} from '../mina/network-interface.js';
+import { MinaNetworkInterface } from '../mina/network-interface.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation';
 import { HttpClientProver } from '../provers/httpclientprover.js';
 import { ExternalTransactionExecutor } from '../transaction/external-executor.js';
@@ -21,7 +18,6 @@ import {
   VaultTransactionType,
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
-import { fetchMinaAccount } from '../o1js-compat/zckw-fetch.js';
 
 interface ZKUSDClientConfig {
   chain: blockchain;
@@ -195,29 +191,34 @@ export class ZKUSDClient {
    * Fetches the current state of a vault
    */
   async getVaultState(vaultAddress: string): Promise<VaultState> {
-    const vaultAccount = await fetchMinaAccount({
-      publicKey: PublicKey.fromBase58(vaultAddress),
-      tokenId: this.engine.deriveTokenId(),
-      force: true,
-    });
+    const vaultAccount = await this.txMgr.mina.fetchMinaAccount(
+      PublicKey.fromBase58(vaultAddress),
+      {
+        tokenId: this.engine.deriveTokenId(),
+        force: true,
+      }
+    );
 
-    if (!vaultAccount.account) {
+    if (!vaultAccount) {
       throw new Error('Vault not found');
     }
 
-    return Vault.fromAccount(vaultAccount.account);
+    return Vault.fromAccount(vaultAccount);
   }
 
   /**
    * Fetches the vault account for a given address
    */
   async fetchVaultAccount(vaultAddress: string) {
-    const vaultAccount = await fetchMinaAccount({
-      publicKey: PublicKey.fromBase58(vaultAddress),
-      tokenId: this.engine.deriveTokenId(),
-    });
+    const vaultAccount = await this.txMgr.mina.fetchMinaAccount(
+      PublicKey.fromBase58(vaultAddress),
+      {
+        tokenId: this.engine.deriveTokenId(),
+        force: true,
+      }
+    );
 
-    return vaultAccount.account;
+    return vaultAccount;
   }
 
   public getTokenId() {
