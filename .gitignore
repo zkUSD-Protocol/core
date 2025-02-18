@@ -25,3 +25,9 @@ keys
 # cache
 **/cache/**
 /dist/
+
+# local
+local
+
+# price-input
+price-inputs.json
