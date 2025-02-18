@@ -496,6 +496,7 @@ export class TestHelper<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E;
     }
   ) {
     let minaPriceInput: MinaPriceInput | undefined;
@@ -533,6 +534,7 @@ export class TestHelper<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E;
     }
   ) {
     const h = await this.engineTx(sender, args, options);

@@ -475,6 +475,7 @@ export class TransactionManager<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E;
     }
   ) {
     const senderKey = isKeyPair(sender) ? sender.publicKey : sender;

@@ -551,7 +551,7 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPriceInput: MinaPriceInput
     ) {
-      //Ensure the protocol is not stopped
+      //Ensure the protocol is not stopped // TODO reconsider
       await this.ensureProtocolNotStopped();
 
       // //Get the vault

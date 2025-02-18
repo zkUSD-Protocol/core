@@ -47,7 +47,7 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
   let th: TestHelper<'local' | 'external'>;
 
   let users: User[] = [];
-  let handles: TransactionHandle[] = [];
+  let globalHandles: TransactionHandle[] = [];
 
   let stop: () => void;
 
@@ -105,7 +105,8 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
         user.keys.publicKey,
         {
           tokenId: th.engine.contract.deriveTokenId(),
-        });
+        }
+      );
 
       const handle = await th.engineTx(
         user.keys,
@@ -138,13 +139,14 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
       },
       {
         extraSigners: [user.vault.privateKey],
-        waitForIncluded: user.createVaultHandle ? [user.createVaultHandle] : undefined
+        waitForIncluded: user.createVaultHandle
+          ? [user.createVaultHandle]
+          : undefined,
       }
     );
     user.depositCollateralHandle = handle;
-    handles.push(handle);
     return handle;
-  }
+  };
 
   const allUsersDepositCollateral = async (start: number, count: number) => {
     const handles: TransactionHandle[] = [];
@@ -153,10 +155,12 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
       handles.push(handle);
     }
     return handles;
-  }
+  };
 
   const mintZkusd = async (user: User, amount: UInt64) => {
-    const minaPriceProof = (await th.priceInputMgr.requestProof(MINA_PRICE_START)).proof;
+    const minaPriceProof = (
+      await th.priceInputMgr.requestProof(MINA_PRICE_START)
+    ).proof;
     const handle = await th.engineTx(
       user.keys,
       {
@@ -165,26 +169,31 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
           transactionId: `User ${user.keys.publicKey.toBase58()} mints zkUSD`,
           vaultAddress: user.vault.publicKey.toBase58(),
           zkusdAmount: amount.toString(),
-          minaPriceProof
-        }
+          minaPriceProof,
+        },
       },
       {
-        waitForIncluded: user.depositCollateralHandle ? [user.depositCollateralHandle] : undefined
+        waitForIncluded: user.depositCollateralHandle
+          ? [user.depositCollateralHandle]
+          : undefined,
       }
     );
     user.mintZkusdHandle = handle;
-    handles.push(handle);
     return handle;
-  }
+  };
 
-  const allUsersMintZkusd = async (start: number, count: number, amount: UInt64) => {
+  const allUsersMintZkusd = async (
+    start: number,
+    count: number,
+    amount: UInt64
+  ) => {
     const handles: TransactionHandle[] = [];
     for (let i = 0; i < count; i++) {
       const handle = await mintZkusd(users[start + i], amount);
       handles.push(handle);
     }
     return handles;
-  }
+  };
 
   //burn
   const burnZkusd = async (user: User, amount: UInt64) => {
@@ -196,25 +205,30 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
           transactionId: `User ${user.keys.publicKey.toBase58()} burns zkUSD`,
           vaultAddress: user.vault.publicKey.toBase58(),
           zkusdAmount: amount.toString(),
-        }
+        },
       },
       {
-        waitForIncluded: user.mintZkusdHandle ? [user.mintZkusdHandle] : undefined
+        waitForIncluded: user.mintZkusdHandle
+          ? [user.mintZkusdHandle]
+          : undefined,
       }
     );
     user.burnZkusdHandle = handle;
-    handles.push(handle);
     return handle;
-  }
+  };
 
-  const allUsersBurnZkusd = async (start: number, count: number, amount: UInt64) => {
+  const allUsersBurnZkusd = async (
+    start: number,
+    count: number,
+    amount: UInt64
+  ) => {
     const handles: TransactionHandle[] = [];
     for (let i = 0; i < count; i++) {
       const handle = await burnZkusd(users[start + i], amount);
       handles.push(handle);
     }
     return handles;
-  }
+  };
 
   const awaitHandles = async (handles: TransactionHandle[]) => {
     await Promise.allSettled(
@@ -227,49 +241,76 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
   for (let i = 0; i < BATCHES; i++) {
     let start = i * TX_IN_BATCH;
 
-    it(`Should schedule vault creation for users ${start}-${start + TX_IN_BATCH - 1}`, async () => {
+    it(`Should schedule vault creation for users ${start}-${
+      start + TX_IN_BATCH - 1
+    }`, async () => {
       users.push(...(await createUsers(TX_IN_BATCH)));
-      handles.push(...(await createVaults(start, TX_IN_BATCH)));
+      globalHandles.push(...(await createVaults(start, TX_IN_BATCH)));
     });
 
-    it(`Should schedule collateral deposition for users ${start}-${start + TX_IN_BATCH - 1}`, async () => {
-      handles.push(...(await allUsersDepositCollateral(start, TX_IN_BATCH)));
+    it(`Should schedule collateral deposition for users ${start}-${
+      start + TX_IN_BATCH - 1
+    }`, async () => {
+      globalHandles.push(
+        ...(await allUsersDepositCollateral(start, TX_IN_BATCH))
+      );
     });
 
-    it(`Should schedule zkUSD minting for users ${start}-${start + TX_IN_BATCH - 1}`, async () => {
-      handles.push(...(await allUsersMintZkusd(start, TX_IN_BATCH, INITIAL_MINTING)));
-    })
+    it(`Should schedule zkUSD minting for users ${start}-${
+      start + TX_IN_BATCH - 1
+    }`, async () => {
+      globalHandles.push(
+        ...(await allUsersMintZkusd(start, TX_IN_BATCH, INITIAL_MINTING))
+      );
+    });
 
-    it(`Should schedule zkUSD burning for users ${start}-${start + TX_IN_BATCH - 1}`, async () => {
-      handles.push(...(await allUsersBurnZkusd(start, TX_IN_BATCH, INITIAL_BURNING)));
-    })
+    it(`Should schedule zkUSD burning for users ${start}-${
+      start + TX_IN_BATCH - 1
+    }`, async () => {
+      globalHandles.push(
+        ...(await allUsersBurnZkusd(start, TX_IN_BATCH, INITIAL_BURNING))
+      );
+    });
 
     // divide users between liquidators and liquidated.
 
     // 80% of users mint zkUSD
     const liquidatedUsers = Math.floor(TX_IN_BATCH * 0.8);
-    assert.ok(liquidatedUsers > 0,"must have liquidated users");
-    assert.ok(TX_IN_BATCH - liquidatedUsers > 0,"must have liquidators");
+    assert.ok(liquidatedUsers > 0, 'must have liquidated users');
+    assert.ok(TX_IN_BATCH - liquidatedUsers > 0, 'must have liquidators');
 
     const liquidated = users.slice(start, start + liquidatedUsers);
-    const liquidators = users.slice(start + liquidatedUsers, start + TX_IN_BATCH);
+    const liquidators = users.slice(
+      start + liquidatedUsers,
+      start + TX_IN_BATCH
+    );
 
-    const liquidated_per_liquidator = Math.floor(liquidatedUsers / liquidators.length);
+    const liquidated_per_liquidator = Math.floor(
+      liquidatedUsers / liquidators.length
+    );
     // last liquidator may need to liquidate one more
-    const liquidated_last = liquidatedUsers - liquidated_per_liquidator * liquidators.length;
+    const liquidated_last =
+      liquidatedUsers - liquidated_per_liquidator * liquidators.length;
 
-
-    it(`Should schedule liquidation for users ${start}-${start + TX_IN_BATCH - 1}`, async () => {
-    // lets get price proof at which we can liquidate
-    const minaPriceProof = (await th.priceInputMgr.requestProof(MINA_PRICE_LOW)).proof;
+    it(`Should schedule liquidation for users ${start}-${
+      start + TX_IN_BATCH - 1
+    }`, async () => {
+      // lets get price proof at which we can liquidate
+      const minaPriceProof = (
+        await th.priceInputMgr.requestProof(MINA_PRICE_LOW)
+      ).proof;
       // each liquidator schedule liquidations for their part of the users:
       for (let i = 0; i < liquidators.length; i++) {
-
         const liquidator = liquidators[i];
         const liquidated_start = i * liquidated_per_liquidator;
-        const liquidated_end = i === liquidators.length - 1 ? liquidated_start + liquidated_per_liquidator + liquidated_last : liquidated_start + liquidated_per_liquidator;
+        const liquidated_end =
+          i === liquidators.length - 1
+            ? liquidated_start + liquidated_per_liquidator + liquidated_last
+            : liquidated_start + liquidated_per_liquidator;
         // dependencies are liquidators burn handle and liquidatee burn handle
-        const dependencies = liquidated.slice(liquidated_start, liquidated_end).map((u) => u.burnZkusdHandle);
+        const dependencies = liquidated
+          .slice(liquidated_start, liquidated_end)
+          .map((u) => u.burnZkusdHandle);
         // liquidators burn handle
         dependencies.push(liquidator.burnZkusdHandle);
 
@@ -279,32 +320,41 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
             {
               transactionType: ZkusdEngineTransactionType.LIQUIDATE,
               args: {
-                transactionId: `User ${liquidator.keys.publicKey.toBase58()} liquidates user ${liquidated[j].keys.publicKey.toBase58()}`,
+                transactionId: `User ${liquidator.keys.publicKey.toBase58()} liquidates user ${liquidated[
+                  j
+                ].keys.publicKey.toBase58()}`,
                 vaultAddress: liquidated[j].vault.publicKey.toBase58(),
-                minaPriceProof
-              }
-            }, { waitForIncluded: dependencies.filter(Boolean) as TransactionHandle[] }
-          )
+                minaPriceProof,
+              },
+            },
+            {
+              waitForIncluded: dependencies.filter(
+                Boolean
+              ) as TransactionHandle[],
+            }
+          );
           liquidated[j].wasLiquidatedHandle = handle;
           if (liquidator.didLiquidatedHandles) {
             liquidator.didLiquidatedHandles.push(handle);
-          } else{
+          } else {
             liquidator.didLiquidatedHandles = [handle];
           }
-          handles.push(handle);
+          globalHandles.push(handle);
         }
       }
     });
   }
 
   it(`Should have included all the transactions`, async () => {
-    await awaitHandles(handles);
-    let transactionIncluded = handles.filter((h) => h.txStatus === 'Included');
-    let transactionNotIncluded = handles.filter(
+    await awaitHandles(globalHandles);
+    let transactionIncluded = globalHandles.filter(
+      (h) => h.txStatus === 'Included'
+    );
+    let transactionNotIncluded = globalHandles.filter(
       (h) => h.txStatus !== 'Included'
     );
     console.log(`Transactions included: ${transactionIncluded.length}`);
     console.log(`Transactions not included: ${transactionNotIncluded.length}`);
-    assert.ok(transactionIncluded.length === handles.length);
+    assert.ok(transactionIncluded.length === globalHandles.length);
   });
 });
