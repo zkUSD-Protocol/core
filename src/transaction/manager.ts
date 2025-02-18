@@ -118,7 +118,7 @@ export interface TransactionHandle {
   }): Promise<void>;
 
   subscribeToLifecycleChange(
-    cb: (lifecycle: TransactionLifecycle) => void
+    cb: (lifecycle: TxLifecycleStatus) => void
   ): void;
 }
 
@@ -139,7 +139,7 @@ export class TransactionInternal {
   private _dependentTxIds: string[] = [];
   readonly _statusUpdateCallbacks: TransactionStatusUpdateCallback[];
   readonly _lifecycleUpdateCallbacks: ((
-    lifecycle: TransactionLifecycle
+    lifecycle: TxLifecycleStatus
   ) => void)[] = [];
 
   public signedTransaction?: Transaction<any, true>;
@@ -158,7 +158,10 @@ export class TransactionInternal {
       cb({ lifecycle: lifecyleStatus, status })
     );
     if (status !== 'unchanged') this._status = status;
-    if (lifecyleStatus !== 'unchanged') this._lifecycleStatus = lifecyleStatus;
+    if (lifecyleStatus !== 'unchanged'){
+      this._lifecycleStatus = lifecyleStatus;
+      this._lifecycleUpdateCallbacks.forEach((cb) => cb(lifecyleStatus));
+    }
   }
 
   private _lifecycle: Partial<TransactionLifecycle> = {};
@@ -325,7 +328,7 @@ export class TransactionInternal {
   }
 
   public subscribeToLifecycleChange(
-    cb: (lifecycle: TransactionLifecycle) => void
+    cb: (lifecycle: TxLifecycleStatus) => void
   ): void {
     this._lifecycleUpdateCallbacks.push(cb);
   }

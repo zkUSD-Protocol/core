@@ -45,7 +45,10 @@ import { MinaNetworkInterface } from './mina/network-interface.js';
 import { blockchain } from './mina/networks.js';
 import { Mutex } from './utils/mutex.js';
 import { TransactionStatus, TxLifecycleStatus } from './transaction/status.js';
-import { TransactionManager } from './transaction/manager.js';
+import {
+  TransactionManager,
+  TransactionHandle,
+} from './transaction/manager.js';
 import { fetchMinaAccount } from './o1js-compat/zckw-fetch.js';
 import { proveTransaction } from './transaction/execution.js';
 import {
@@ -54,6 +57,7 @@ import {
 } from './provers/itransactionprover.js';
 import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
+import { ZKUSDClient } from './client/client.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -98,6 +102,7 @@ export {
 
 //export transaction services
 export {
+  TransactionHandle,
   TransactionManager,
   ExternalTransactionExecutor,
   TransactionStatus,
@@ -123,3 +128,5 @@ export type {
 
 //export transaction prover
 export { proveTransaction };
+
+export { ZKUSDClient };
