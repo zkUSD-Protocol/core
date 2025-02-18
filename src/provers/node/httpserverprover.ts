@@ -60,26 +60,36 @@ export interface ChildProcessWorker {
  */
 export class HttpServerProver implements ITransactionProver {
   private mutex = new Mutex(); // no concurrent job-store access
-  private isShuttingDown = false; // when shutting down we dont restart workers
+  private isShuttingDown = false; // when shutting down we don't restart workers
   private app = express();
-
   private server: any; // store the HTTP server instance
   private jobTrackers: Map<string, TxProvingTracker> = new Map();
 
-  // after 8 minutes after scheduling.
-  private static readonly _jobTimeout: number = 8 * 60 * 1000; // 8 minutes
+  // Default job timeout (8 minutes)
+  private static readonly _jobTimeoutSec: number = 8 * 60;
+
+  private jobStore: JobStore<TransactionExecutionJob>;
+  private port: number;
+  private childWorkers: ChildProcessWorker[];
 
   /**
-   * @param jobStore - An object responsible for storing and retrieving job data.
-   * @param port - The HTTP port the manager's server will listen on.
+   * @param options - Object containing initialization parameters.
    */
-  public constructor(
-    private jobStore: JobStore<TransactionExecutionJob> = new InMemoryJobStore(
-      HttpServerProver._jobTimeout
-    ),
-    private port: number = 4646,
-    private childWorkers: ChildProcessWorker[] = []
-  ) {
+  public constructor({
+    jobTimeoutSec = HttpServerProver._jobTimeoutSec,
+    jobStore = new InMemoryJobStore(jobTimeoutSec),
+    port = 4646,
+    childWorkers = [],
+  }: {
+    jobTimeoutSec?: number;
+    jobStore?: JobStore<TransactionExecutionJob>;
+    port?: number;
+    childWorkers?: ChildProcessWorker[];
+  } = {}) {
+    this.jobStore = jobStore;
+    this.port = port;
+    this.childWorkers = childWorkers;
+
     this.app.use(express.json({ limit: '50mb' })); // Adjust the limit as needed
     this.setupRoutes();
   }
@@ -126,7 +136,7 @@ export class HttpServerProver implements ITransactionProver {
         this.jobTrackers.set(txId, { proving: { resolver, rejector } });
       });
 
-      console.debug(`Scheduled transaction job ${txId} successfully.`);
+      console.debug(`Scheduled transaction job "${txId}" successfully.`);
       return ret;
     } catch (err) {
       console.error(`Failed to schedule tx execution for job ${txId}:`, err);

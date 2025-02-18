@@ -47,7 +47,9 @@ export interface DefaultTransactionOptions {
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeout: number;
-  awaitingTimeoutMs: number;
+  statusChangeWaitingIntervalMs: number,
+  statusChangeWaitingTimeoutMs: number,
+  inclusionAwaitingTimeoutMs: number;
   memo: string;
   refreshAccounts: Account[];
 }
@@ -70,7 +72,9 @@ export const defaultOptions: DefaultTransactionOptions = {
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
   dependencyStatusPollTimeout: 300000,
-  awaitingTimeoutMs: 300000,
+  statusChangeWaitingIntervalMs: 1000,
+  statusChangeWaitingTimeoutMs: 300000,
+  inclusionAwaitingTimeoutMs: 300000,
   memo: '',
   refreshAccounts: [],
 };
@@ -205,9 +209,10 @@ export class TransactionInternal {
    */
   public static fromRequest(
     request: TransactionRequest,
-    statusUpdateCallback: () => void
+    statusUpdateCallback: () => void,
+    defaultOptions: DefaultTransactionOptions
   ): TransactionInternal {
-    const tx = new TransactionInternal(statusUpdateCallback);
+    const tx = new TransactionInternal(defaultOptions, statusUpdateCallback);
     tx._request = request;
     tx._dependentTxIds = request.waitForIncluded.map((dep) =>
       typeof dep === 'string' ? dep : dep.txId
@@ -281,9 +286,9 @@ export class TransactionInternal {
     timeout?: number;
   }): Promise<TransactionStatus> {
     let { until } = args;
-    const timeout = args.timeout ?? defaultOptions.dependencyStatusPollTimeout;
+    const timeout = args.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
     const statusPollInterval =
-      args.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
+      args.statusPollInterval ?? this._defaultOptions.statusChangeWaitingIntervalMs;
 
     let currentStatus = this.status;
     const startTime = Date.now();
@@ -306,8 +311,8 @@ export class TransactionInternal {
     timeout?: number;
   }): Promise<void> {
     const statusPollInterval =
-      args?.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
-    const timeout = args?.timeout ?? defaultOptions.dependencyStatusPollTimeout;
+      args?.statusPollInterval ?? this._defaultOptions.statusChangeWaitingIntervalMs;
+    const timeout = args?.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
 
     const status: TransactionStatus = await this.awaitStatusChange({
       until: (status) => !statusShouldBeWaitedFor(status),
@@ -368,6 +373,7 @@ export class TransactionInternal {
 
   // Private constructor to force usage of static methods
   private constructor(
+    readonly _defaultOptions: DefaultTransactionOptions,
     readonly _statusUpdateCallback?: TransactionStatusUpdateCallback
   ) {
     this._statusUpdateCallbacks = _statusUpdateCallback
@@ -393,12 +399,14 @@ export class TransactionManager<E extends string> {
     (txs: TransactionHandle[]) => void
   > = new Map();
 
-  public get transactionHandles(): TransactionHandle[] {
-    return Array.from(this.transactions.values()).map((tx) => tx.handle);
-  }
-
   private transactionStatusChanged() {
     this.statusSubscribers.forEach((cb) => cb(this.transactionHandles));
+  }
+  // ---------------------
+  public transactionOptions: DefaultTransactionOptions = defaultOptions;
+
+  public get transactionHandles(): TransactionHandle[] {
+    return Array.from(this.transactions.values()).map((tx) => tx.handle);
   }
 
   public subscribeToTransactionStatusChanges(
@@ -435,7 +443,8 @@ export class TransactionManager<E extends string> {
     minaInterface: IMinaNetworkInterface,
     transactionExecutors:
       | WithDefault<E, ITransactionExecutor>
-      | { [K in E]: ITransactionExecutor }
+      | { [K in E]: ITransactionExecutor },
+    overrideOptions?: TransactionOptions
   ): TransactionManager<E> {
     let executor: WithDefault<E, ITransactionExecutor>;
 
@@ -449,7 +458,7 @@ export class TransactionManager<E extends string> {
       executor = singleDefault(firstKey, firstValue as ITransactionExecutor);
     }
 
-    return new TransactionManager(minaInterface, executor);
+    return new TransactionManager(minaInterface, executor,overrideOptions);
   }
 
   private transactions: Map<string, TransactionInternal> = new Map();
@@ -556,7 +565,8 @@ export class TransactionManager<E extends string> {
       // -- create the tx and add it to the manager
       const tx = TransactionInternal.fromRequest(
         request,
-        this.transactionStatusChanged.bind(this)
+        this.transactionStatusChanged.bind(this),
+        this.transactionOptions
       );
       this.transactions.set(tx.getId(), tx);
       // --
@@ -670,11 +680,11 @@ export class TransactionManager<E extends string> {
       const lifecycle = await txExecutor.executeTransaction(preparedTx, {
         o1jsMutex: this._o1jsMutex,
         mina: this.mina,
-        startingFee: options?.startingFee ?? defaultOptions.startingFee,
+        startingFee: options?.startingFee ?? this.transactionOptions.startingFee,
         printTx: options?.printTx,
-        awaitingTimeoutMs:
-          options?.dependencyStatusPollTimeout ??
-          defaultOptions.dependencyStatusPollTimeout,
+        inclusionAwaitingTimeoutMs:
+          options?.inclusionAwaitingTimeoutMs ??
+          this.transactionOptions.inclusionAwaitingTimeoutMs,
       });
 
       tx.installLifecycle(lifecycle);
@@ -684,10 +694,12 @@ export class TransactionManager<E extends string> {
 
   private constructor(
     networkInterface: IMinaNetworkInterface,
-    transactionExecutors: WithDefault<E, ITransactionExecutor>
+    transactionExecutors: WithDefault<E, ITransactionExecutor>,
+    overrideOption?: TransactionOptions
   ) {
     this.transactionExecutors = transactionExecutors;
     this._mina = networkInterface;
+    this.transactionOptions = { ...defaultOptions, ...overrideOption};
   }
 }
 

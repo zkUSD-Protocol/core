@@ -342,7 +342,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           );
           const inclusionStatus = await this.awaitTx(
             sentTx.hash,
-            config.awaitingTimeoutMs
+            config.inclusionAwaitingTimeoutMs
           );
 
           if (inclusionStatus === 'Included') {

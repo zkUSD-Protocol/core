@@ -84,7 +84,7 @@ interface TransactionExecutionConfig {
   o1jsMutex: Mutex;
   mina: IMinaNetworkInterface;
   startingFee: UInt64;
-  awaitingTimeoutMs: number;
+  inclusionAwaitingTimeoutMs: number;
   printTx?: boolean;
 }
 
