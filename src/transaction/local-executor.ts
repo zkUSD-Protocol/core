@@ -1,6 +1,7 @@
 import { Transaction, UInt64 } from 'o1js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import {
+  AwaitedTransaction,
   ITransactionExecutor,
   PreparedTransaction,
   TransactionExecutionConfig,
@@ -40,8 +41,8 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       return mkStatusFailedBeforeSending(tx.getId(), phase, error);
     };
 
-    const mkState = <T>(transaction: T) => {
-      return { isLocal: true as true, transaction };
+    const mkState = <T>(transaction: T, resolutionBlockHeight?: bigint) => {
+      return { isLocal: true as true, transaction, resolutionBlockHeight };
     };
 
     // schedule proving
@@ -120,7 +121,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     const sendingPromise = mkSendingPromise(config.startingFee);
 
     // schedule waiting for the transaction to be included
-    const waitingPromise = new TrackedPromise(async () => {
+    const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
       try {
         const { transaction: sentTx } = await sendingPromise;
         if (statusIsRejectedTransaction(sentTx)) return mkState(sentTx);
@@ -132,6 +133,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           TxLifecycleStatus.AWAITING_INCLUSION
         );
         const awaitedTx = await sentTx.safeWait();
+        const resolutionBlockHeight = config.mina.getNetworkState().blockchainLength;
         if (awaitedTx.status === 'included') {
           tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
           // make sure that the local state matches the state after tx
@@ -155,7 +157,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
             );
           }
         }
-        return mkState(awaitedTx);
+        return mkState(awaitedTx, resolutionBlockHeight.toBigint());
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           const status = error as TransactionStatus;

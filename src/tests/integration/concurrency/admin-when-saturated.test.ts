@@ -12,17 +12,19 @@ import { TransactionHandle } from '../../../transaction/manager.js';
 import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 import {
   TxLifecycleStatus,
+  statusIsChainResolved,
   statusIsFinal,
+  statusIsOfKind,
 } from '../../../transaction/status.js';
 
-// const DEBUG = !!process.env.DEBUG;
-// const printTx = DEBUG && true;
+const DEBUG = !!process.env.DEBUG;
+const printTx = DEBUG && true;
 
-// const debugLog = (msg: string) => {
-//   if (DEBUG) {
-//     console.debug(msg);
-//   }
-// };
+const debugLog = (msg: string) => {
+  if (DEBUG) {
+    console.debug(msg);
+  }
+};
 
 type User = {
   keys: KeyPair;
@@ -36,7 +38,7 @@ type User = {
 };
 
 const BATCHES = 1;
-const TX_IN_BATCH = 50;
+const TX_IN_BATCH = 40;
 
 describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => {
   let th: TestHelper<'local' | 'external'>;
@@ -74,6 +76,25 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
       }
     );
     assert.notStrictEqual(engineTokenAccount, undefined);
+
+    // if protocol stopped then resume
+    const stopped = th.engine.contract.isEmergencyStopped().toBoolean()
+
+    if (stopped) {
+      debugLog('Protocol is stopped, resuming first...');
+      await th.includeEngineTx(
+        th.deployer,
+        {
+          transactionType: ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP,
+          args: {
+            transactionId: `Pre-test resuming the protocol`,
+            shouldStop: false,
+          },
+        },
+        { printTx, extraSigners: [th.networkKeys.protocolAdmin.privateKey] }
+      );
+      debugLog('Protocol resumed...');
+    }
   });
 
   after(async () => {
@@ -132,7 +153,7 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
     }
   });
 
-  it('hmm', async () => {
+  it('Should be able to stop the protocol within 2 slots even in mempool saturated', async () => {
     // until there are at least 20 transaction awaiting inclusion - wait
     let awaitingInclusion = globalHandles.filter(
       (handle) =>
@@ -146,10 +167,13 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
           handle.lifecycleStatus === TxLifecycleStatus.AWAITING_INCLUSION
       ).length;
     }
+    console.log(`Awaiting inclusion: ${awaitingInclusion}`);
+    console.log('Mempool assumed empty - lightnet processes 5-6 zkapp txes per block.')
+    console.log('Stopping the protocol..')
     // create an admin transaction stopping the protocol with higher fee
     // we wait 2 slots only
 
-    await th.includeEngineTx(
+    const stopProtocolHandle = await th.includeEngineTx(
       th.deployer,
       {
         transactionType: ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP,
@@ -172,5 +196,20 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
         handle.awaitStatusChange({ until: (status) => statusIsFinal(status) })
       )
     );
+
+    assert.ok(stopProtocolHandle.resolutionBlockHeight);
+    const stoppedAtBlock = stopProtocolHandle.resolutionBlockHeight;
+    globalHandles.forEach((handle) => {
+
+      assert.ok(statusIsChainResolved(handle.txStatus));
+      assert.ok(handle.resolutionBlockHeight !== undefined);
+
+      if (handle.resolutionBlockHeight > stoppedAtBlock) {
+        assert.ok(statusIsOfKind(handle.txStatus, "RejectedOnInclusion"))
+      } else {
+        assert.ok(statusIsOfKind(handle.txStatus, "Included"))
+      }
+    })
+    console.log('All tx before stopped were included, all after were rejected.')
   });
 });

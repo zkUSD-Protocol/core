@@ -49,21 +49,28 @@ type SentTransaction =
 /** Represents a transaction that is awaiting inclusion or rejection. */
 type AwaitedTransaction =
   | {
-      isLocal: true;
-      transaction:
-        | IncludedTransaction
-        | RejectedTransaction
-        | PendingTransaction
-        | undefined;
-    }
+    isLocal: true;
+    transaction:
+    | IncludedTransaction
+    | RejectedTransaction
+    | PendingTransaction
+    | undefined;
+    resolutionBlockHeight?: bigint;
+  }
   | {
-      isLocal: false;
-      status:
-        | 'Included'
-        | RejectedOnInclusion
-        | RejectedOnReceive
-        | 'StuckInMempool';
-    };
+    isLocal: false;
+    status:
+    | 'Included'
+    | RejectedOnInclusion
+    resolutionBlockHeight: bigint;
+
+  } |
+  {
+    isLocal: false;
+    status:
+    | RejectedOnReceive
+    | 'StuckInMempool';
+  };
 
 /** Represents the full transaction state lifecycle. */
 type TransactionState =

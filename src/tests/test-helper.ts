@@ -538,7 +538,8 @@ export class TestHelper<E extends string> {
     }
   ) {
     const h = await this.engineTx(sender, args, options);
-    return await h.awaitIncluded();
+    await h.awaitIncluded();
+    return h;
   }
 
   async depositAgentCollateral(amount: UInt64, ...names: string[]) {

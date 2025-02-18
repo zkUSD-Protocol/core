@@ -14,6 +14,7 @@ import {
   TransactionStatus,
   TxLifecycleStatus,
   mkStatusFailedBeforeSending,
+  statusIsChainResolved,
   statusIsFailed,
   statusShouldBeWaitedFor,
 } from './status.js';
@@ -109,6 +110,7 @@ export interface TransactionHandle {
   readonly signedTransaction: Transaction<any, true> | undefined;
   readonly sender: PublicKey;
   readonly hash: string | undefined;
+  readonly resolutionBlockHeight: bigint | undefined;
 
   awaitStatusChange(args: {
     until: (status: TransactionStatus) => boolean;
@@ -186,6 +188,22 @@ export class TransactionInternal {
     }
     return undefined;
   }
+
+  public get resolutionBlockHeight() : bigint|undefined {
+    const s = this._lifecycle.waitingPromise;
+    if (s?.state === 'fulfilled') {
+      if (!s.result.isLocal && statusIsChainResolved(s.result.status)) {
+        if ('resolutionBlockHeight' in s.result) {
+        return s.result.resolutionBlockHeight;
+        } else{
+          console.error('resolutionBlockHeight not found in chain resolved awaited transaction')
+          return undefined
+        }
+      }
+    }
+    return undefined;
+  }
+
 
   /**
    * Returns the transaction hash if available.
@@ -361,7 +379,9 @@ export class TransactionInternal {
       get lifecycleStatus(): TxLifecycleStatus {
         return self.lifecycleStatus;
       },
-
+      get resolutionBlockHeight(): bigint | undefined {
+        return self.resolutionBlockHeight;
+      },
       awaitStatusChange: self.awaitStatusChange.bind(self),
 
       awaitIncluded: self.awaitIncluded.bind(self),
@@ -500,7 +520,6 @@ export class TransactionManager<E extends string> {
   // it will throw if tx cannot be created or is missing dependencies
   // the interaction with the transaction is done through the returned handle
   // it will take care of nonce
-  // do not call concurrently
   // TODO:
   // if the fee is too low, it should retry with higher fee
   // the transaction should be retried until it is included or failed

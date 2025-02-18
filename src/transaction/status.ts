@@ -80,6 +80,12 @@ export const statusIsRejected = (
   return statusIsOfKind(status, 'RejectedOnReceive', 'RejectedOnInclusion');
 };
 
+export const statusIsChainResolved = (
+  status: TransactionStatus
+): status is RejectedOnInclusion | 'Included' => {
+  return statusIsOfKind(status, 'RejectedOnInclusion', 'Included');
+};
+
 /**
  * Processing states for a transaction that is still in progress.
  */

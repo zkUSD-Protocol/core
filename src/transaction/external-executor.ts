@@ -122,7 +122,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
   private async awaitTx(
     hash: string,
     timeoutMs: number
-  ): Promise<'Included' | RejectedOnInclusion> {
+  ): Promise<{ resolutionBlockHeight: bigint, resolution: 'Included' | RejectedOnInclusion}> {
     return this.inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
   }
 
@@ -340,17 +340,17 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             'unchanged' as const,
             TxLifecycleStatus.AWAITING_INCLUSION
           );
-          const inclusionStatus = await this.awaitTx(
+          const {resolution: inclusionStatus, resolutionBlockHeight} = await this.awaitTx(
             sentTx.hash,
             config.inclusionAwaitingTimeoutMs
           );
 
           if (inclusionStatus === 'Included') {
             tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
-            return wrapNoErrors({ status: 'Included' });
+            return wrapNoErrors({ status: 'Included', resolutionBlockHeight });
           } else {
             tx.setStatuses(inclusionStatus, TxLifecycleStatus.FAILED);
-            return wrapNoErrors({ status: inclusionStatus });
+            return wrapNoErrors({ status: inclusionStatus, resolutionBlockHeight });
           }
         } catch {
           // If we fail to get a final status, assume it's stuck

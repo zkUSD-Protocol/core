@@ -77,7 +77,7 @@ describe('zkUSD Integration - Services - Transaction Status Scanner tests', () =
     assert.equal(true, statusIsOfKind(status1, 'Pending'));
 
     // 2) Await the status from the scanner
-    const status = await statusScanner.awaitTransactionStatus(
+    const {resolution: status} = await statusScanner.awaitTransactionStatus(
       txh.hash!,
       500_000
     ); // 1 min timeout
