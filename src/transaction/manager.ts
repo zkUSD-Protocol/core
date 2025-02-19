@@ -28,7 +28,7 @@ import {
 import { zkUsdTransaction } from './execution.js';
 import { ZkUsdEngine } from '../system/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
-import { Account, isKeyPair } from '../mina/utils.js';
+import { Account, isKeyPair, printTxAccountUpdates } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
 const DEBUG = !!process.env.DEBUG;
@@ -192,13 +192,11 @@ export class TransactionInternal {
   public get resolutionBlockHeight() : bigint|undefined {
     const s = this._lifecycle.waitingPromise;
     if (s?.state === 'fulfilled') {
-      if (!s.result.isLocal && statusIsChainResolved(s.result.status)) {
-        if ('resolutionBlockHeight' in s.result) {
+      if (statusIsChainResolved(this.status) && 'resolutionBlockHeight' in s.result) {
         return s.result.resolutionBlockHeight;
         } else{
           console.error('resolutionBlockHeight not found in chain resolved awaited transaction')
           return undefined
-        }
       }
     }
     return undefined;
@@ -778,40 +776,7 @@ export async function transactionBuild(
     console.log(tx.toPretty());
   }
 
-  if (printAccountUpdates) {
-    const auCount: { publicKey: PublicKey; tokenId: Field; count: number }[] =
-      [];
-    let proofAuthorizationCount = 0;
-    for (const au of tx.transaction.accountUpdates) {
-      const { publicKey, tokenId, authorizationKind } = au.body;
-      if (au.authorization.proof) {
-        proofAuthorizationCount++;
-        if (authorizationKind.isProved.toBoolean() === false)
-          console.error('Proof authorization exists but isProved is false');
-      } else if (authorizationKind.isProved.toBoolean() === true)
-        console.error('isProved is true but no proof authorization');
-      const index = auCount.findIndex(
-        (item) =>
-          item.publicKey.equals(publicKey).toBoolean() &&
-          item.tokenId.equals(tokenId).toBoolean()
-      );
-      if (index === -1) auCount.push({ publicKey, tokenId, count: 1 });
-      else auCount[index].count++;
-    }
-    console.log(
-      `Account updates for tx: ${auCount.length}, proof authorizations: ${proofAuthorizationCount}`
-    );
-    for (const au of auCount) {
-      if (au.count > 1) {
-        console.log(
-          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
-            au.count
-          }`
-        );
-      }
-    }
-    console.log(tx.transaction.accountUpdates);
-  }
+  if (printAccountUpdates) printTxAccountUpdates(tx);
   return tx;
 }
 

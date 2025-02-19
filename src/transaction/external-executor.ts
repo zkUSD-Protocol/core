@@ -312,7 +312,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         }
       } catch (error) {
         await nonceLock.unlock();
-        const stringError = error instanceof Error ? error.message : '';
+        const stringError = error instanceof Error ? error.message : JSON.stringify(error);
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
           errors: ['Exceptional failure', stringError],

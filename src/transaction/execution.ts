@@ -56,6 +56,14 @@ export {
   proveTransaction,
 };
 
+const DEBUG = !!process.env.DEBUG;
+
+const debugLog = (msg: string) => {
+  if (DEBUG) {
+    console.debug(msg);
+  }
+};
+
 type ZkUsdEngineType = ReturnType<typeof ZkUsdEngineContract>;
 type FungibleTokenType = ReturnType<typeof FungibleTokenContract>;
 
@@ -354,7 +362,7 @@ async function executeTransaction(
   transaction: string,
   executionTracker?: Partial<TxLifecycleTracker>
 ): Promise<ExecutedTx> {
-  console.log('Executing transaction');
+  debugLog('Executing transaction');
 
   // Identify the transaction config
   const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
@@ -425,7 +433,7 @@ async function proveTransaction(
   transaction: string,
   executionTracker: TxProvingTracker
 ): Promise<void> {
-  console.log('Executing transaction');
+  debugLog('Executing transaction');
 
   // Identify the transaction config
   const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.

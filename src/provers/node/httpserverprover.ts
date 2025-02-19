@@ -22,6 +22,15 @@ type TxProvingTracker = {
   };
 };
 
+// const DEBUG = !!process.env.DEBUG;
+
+// const debugLog = (msg: string) => {
+//   if (DEBUG) {
+//     console.debug(msg);
+//   }
+// };
+
+
 /**
  * Represents an abstract external prover “worker”.
  * Instead of directly spawning a Node script, any implementation
