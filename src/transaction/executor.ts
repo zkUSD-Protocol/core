@@ -17,7 +17,6 @@ import { KeyPair } from '../types/utility.js';
 import {
   TransactionStatus,
   RejectedOnInclusion,
-  RejectedOnReceive,
   TxLifecycleStatus,
 } from './status.js';
 import { TransactionArgs } from '../system/transaction.js';
@@ -67,9 +66,7 @@ type AwaitedTransaction =
   } |
   {
     isLocal: false;
-    status:
-    | RejectedOnReceive
-    | 'StuckInMempool';
+    status: TransactionStatus
   };
 
 /** Represents the full transaction state lifecycle. */
@@ -98,7 +95,7 @@ interface TransactionExecutionConfig {
 /** Represents a transaction that has been prepared for execution. */
 interface PreparedTransaction {
   getId: () => string;
-  buildTx: Promise<Transaction<false, false>>;
+  buildTx: TrackedPromise<Transaction<false, false>>;
   args?: TransactionArgs;
   keys: {
     sender: KeyPair | PublicKey;

@@ -14,6 +14,7 @@ import {
   RejectedOnReceive,
   TransactionStatus,
   TxLifecycleStatus,
+  isTransactionStatus,
 } from './status.js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import {
@@ -122,7 +123,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
   private async awaitTx(
     hash: string,
     timeoutMs: number
-  ): Promise<{ resolutionBlockHeight: bigint, resolution: 'Included' | RejectedOnInclusion}> {
+  ): Promise<{ resolutionBlockHeight: bigint, resolution: 'Included' | RejectedOnInclusion }> {
     return this.inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
   }
 
@@ -167,23 +168,23 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         const signedTx = (
           isKeyPair(tx.keys.sender)
             ? await this.minaSigner({
-                fee: config.startingFee,
-                nonce: nonceLock.nonce,
-                tx: builtTx,
-                keys: {
-                  sender: tx.keys.sender,
-                  extraSigners: tx.keys.extraSigners,
-                },
-              })
+              fee: config.startingFee,
+              nonce: nonceLock.nonce,
+              tx: builtTx,
+              keys: {
+                sender: tx.keys.sender,
+                extraSigners: tx.keys.extraSigners,
+              },
+            })
             : await this.browserWallerSigner({
-                fee: config.startingFee,
-                nonce: nonceLock.nonce,
-                tx: builtTx,
-                keys: {
-                  sender: tx.keys.sender,
-                  extraSigners: tx.keys.extraSigners,
-                },
-              })
+              fee: config.startingFee,
+              nonce: nonceLock.nonce,
+              tx: builtTx,
+              keys: {
+                sender: tx.keys.sender,
+                extraSigners: tx.keys.extraSigners,
+              },
+            })
         ).signedTx;
 
         signedTxGlobal = signedTx;
@@ -242,8 +243,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         const errors = Array.isArray(error)
           ? error.map((e) => (e instanceof Error ? e.message : String(e)))
           : error instanceof Error
-          ? [error.message]
-          : [String(error)];
+            ? [error.message]
+            : [String(error)];
 
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
@@ -324,7 +325,13 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
 
     // ---- Waiting Promise (chain inclusion) ----
     const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
-      const sentTx = await sendingPromise;
+      let sentTx;
+      try {
+        sentTx = await sendingPromise;
+      } catch (error) {
+        const status: TransactionStatus = isTransactionStatus(error) ? error : { kind: 'FailedBeforeSending', errors: [JSON.stringify(error)] } as TransactionStatus;
+        return wrapNoErrors({ status });
+      }
 
       if (sentTx.isLocal) {
         throw new Error('isLocal should be false in external executor');
@@ -340,7 +347,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             'unchanged' as const,
             TxLifecycleStatus.AWAITING_INCLUSION
           );
-          const {resolution: inclusionStatus, resolutionBlockHeight} = await this.awaitTx(
+          const { resolution: inclusionStatus, resolutionBlockHeight } = await this.awaitTx(
             sentTx.hash,
             config.inclusionAwaitingTimeoutMs
           );

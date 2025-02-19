@@ -168,6 +168,33 @@ export function mkStatusFailedBeforeSending(
   return { kind: 'FailedBeforeSending', errors: [err] };
 }
 
+export function isTransactionStatus(value : any) : value is TransactionStatus {
+  try{
+    const kind = 'kind' in value ? value.kind : String(value)
+
+    const statuses: string[] = [
+      'Scheduled',
+      'AwaitingForOtherTx',
+      'Pending',
+      'ScheduledForCancellation',
+      'RetryingWithHigherFee',
+      'RejectedOnInclusion',
+      'RejectedOnReceive',
+      'FailedBeforeSending',
+      'Cancelled',
+      'DroppedFromMempool',
+      'StuckInMempool',
+      'DependencyRejectedFailedOrDropped',
+      'Included'
+    ]
+
+    return statuses.includes(kind)
+
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * Represents the user-facing status of a transaction throughout its lifecycle,
  * including preparation, proving, and network stages.

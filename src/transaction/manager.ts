@@ -1,5 +1,4 @@
 import {
-  Field,
   PrivateKey,
   PublicKey,
   Transaction,
@@ -627,13 +626,13 @@ export class TransactionManager<E extends string> {
           );
           tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
         } catch (error) {
-          if (typeof error === 'object' && error !== null && 'kind' in error) {
-            throw error;
-          }
-          throw failed_before_sending(
+
+          const status = (typeof error === 'object' && error !== null && 'kind' in error) ? error : failed_before_sending(
             'awaiting for the tx dependencies',
             error
           );
+          tx.setStatuses(status as TransactionStatus, TxLifecycleStatus.FAILED);
+          throw status;
         }
       });
 
@@ -649,7 +648,10 @@ export class TransactionManager<E extends string> {
         ),
       };
 
-      const builtTxPromise = depsAwaitingPromise.then(async () => {
+      const builtTxPromise = new TrackedPromise(async () => {
+
+        await depsAwaitingPromise;
+
         try {
           for (const acc of options?.refreshAccounts ?? []) {
             await this.mina.fetchMinaAccount(acc.publicKey, {
@@ -667,7 +669,9 @@ export class TransactionManager<E extends string> {
           );
           return builtTx;
         } catch (error) {
-          throw failed_before_sending('building the tx', error);
+          const status = failed_before_sending('building the tx', error);
+          tx.setStatuses(status, TxLifecycleStatus.FAILED);
+          throw status;
         }
       });
 

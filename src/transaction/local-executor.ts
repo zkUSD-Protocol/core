@@ -47,13 +47,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
 
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
-      let builtTx;
-      try {
-        builtTx = await tx.buildTx;
-      } catch (error) {
-        const errorMessage = JSON.stringify(error);
-        throw failed_before_sending('Building the tx', errorMessage);
-      }
+      const builtTx = await tx.buildTx;
       try {
         if (config?.printTx) {
           console.log(`${tx.getId()} - Proving transaction ...`);
@@ -63,7 +57,9 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           await transactionProve(builtTx, config.mina, config.o1jsMutex)
         );
       } catch (error) {
-        throw failed_before_sending('proving the tx', error);
+        const status = failed_before_sending('proving the tx', error);
+        tx.setStatuses(status, TxLifecycleStatus.FAILED);
+        throw status;
       }
     });
 
@@ -71,8 +67,8 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     const mkSendingPromise = function (fee: UInt64) {
       return new TrackedPromise(async () => {
         const results = await provingPromise;
-        const transaction = results.transaction;
 
+        const transaction = results.transaction;
         // TODO don't we need token as well?
         let nonceLock = await tx.nonceLock(sender.publicKey);
         // send the transaction
@@ -113,7 +109,9 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           return mkState(sentTx);
         } catch (error) {
           await nonceLock?.unlock();
-          throw failed_before_sending('sending the tx', error);
+          const status = failed_before_sending('sending the tx', error);
+          tx.setStatuses(status, TxLifecycleStatus.FAILED);
+          throw status;
         }
       });
     };
@@ -122,8 +120,14 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
 
     // schedule waiting for the transaction to be included
     const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
+      let sentTx;
       try {
-        const { transaction: sentTx } = await sendingPromise;
+        const { transaction } = await sendingPromise;
+        sentTx = transaction;
+      } catch (error) {
+        return mkState(undefined);
+      }
+      try {
         if (statusIsRejectedTransaction(sentTx)) return mkState(sentTx);
         if (config?.printTx) {
           console.log(`${tx.getId()} - Awaiting inclusion ...`);
