@@ -4,6 +4,9 @@ import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import { startProvingLoop } from '../httpserverprover-worker-shared.js';
 import os from 'os';
 import { blockchain } from '../../types/utility.js';
+import { Mutex } from '../../utils/mutex.js';
+
+const mutex = new Mutex();
 
 /**
  * This script is invoked via Node (e.g., `node node-executor.js <managerUrl> <blockchain>`).
@@ -65,14 +68,13 @@ async function main(epmBaseUrl: string, chain: blockchain) {
   while (true) {
     try {
       // 4) Start the shared loop
-      await startProvingLoop(config);
+      await startProvingLoop(mutex, config);
     } catch (err) {
       console.error('Error in proving loop:', err);
       await sleep(2000);
     }
   }
 }
-
 
 /**
  * Utility sleep

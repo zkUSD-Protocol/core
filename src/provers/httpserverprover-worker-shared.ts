@@ -6,6 +6,7 @@ import {
   TxProvingTracker,
 } from '../transaction/execution.js';
 import { FailedBeforeSending } from '../transaction/status.js';
+import { Mutex } from '../utils/mutex.js';
 import {
   TransactionProvingJob,
   TxProvingOutput,
@@ -32,46 +33,48 @@ const debugLog = (msg: string) => {
  * Main loop to poll for new jobs and prove transactions.
  * This is the same logic for both Node and Web.
  */
-export async function startProvingLoop(config: HttpServerProverWorkerConfig) {
+export async function startProvingLoop(mutex: Mutex, config: HttpServerProverWorkerConfig) {
   const { workerId, epmBaseUrl, chainInterface, compilationResults, keys } =
     config;
 
-  while (true) {
-    try {
-      debugLog(`Worker ${workerId} polling for jobs...`);
-      const job = await fetchNextJob(epmBaseUrl);
-      if (!job) {
-        // No jobs available; wait a bit
+  await mutex.runExclusive(async () => {
+    while (true) {
+      try {
+        debugLog(`Worker ${workerId} polling for jobs...`);
+        const job = await fetchNextJob(epmBaseUrl);
+        if (!job) {
+          // No jobs available; wait a bit
+          await sleep(2000);
+          continue;
+        }
+
+        console.log(`Worker ${workerId} got job: ${job.id}`);
+
+        // Build context for proving
+        const context: ExecutorContext = {
+          workerId,
+          chain: chainInterface,
+          args: job.payload,
+          keys,
+          compilationResults,
+        };
+
+        const executionTracker = mkExecutionTracker(epmBaseUrl, job.id);
+
+        await proveTransaction(
+          context,
+          JSON.stringify({
+            signedData: job.payload.transaction.signedZkappCommand.data,
+            serializedTx: job.payload.transaction.serializedTx,
+          }),
+          executionTracker
+        );
+      } catch (err) {
+        console.error('Error in proving loop:', err);
         await sleep(2000);
-        continue;
       }
-
-      console.log(`Worker ${workerId} got job: ${job.id}`);
-
-      // Build context for proving
-      const context: ExecutorContext = {
-        workerId,
-        chain: chainInterface,
-        args: job.payload,
-        keys,
-        compilationResults,
-      };
-
-      const executionTracker = mkExecutionTracker(epmBaseUrl, job.id);
-
-      await proveTransaction(
-        context,
-        JSON.stringify({
-          signedData: job.payload.transaction.signedZkappCommand.data,
-          serializedTx: job.payload.transaction.serializedTx,
-        }),
-        executionTracker
-      );
-    } catch (err) {
-      console.error('Error in proving loop:', err);
-      await sleep(2000);
     }
-  }
+  });
 }
 
 /**
@@ -136,3 +139,5 @@ async function postBackResults(epmBaseUrl: string, url: string, body: any) {
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+

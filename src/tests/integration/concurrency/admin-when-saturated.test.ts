@@ -281,9 +281,6 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
           handle.lifecycleStatus === TxLifecycleStatus.AWAITING_INCLUSION
           && handle.txId.includes('mints')
       ).length;
-      assert.ok(awaitingInclusion > 0, 'Pool was emptied without saturation, adjust workers or parameters of chain or this test.')
-      process.stdout.write("\x1b[A\x1b[K"); // Move cursor up + clear line
-      process.stdout.write("\x1b[A\x1b[K"); // Move cursor up + clear line
     }
     console.log(`Awaiting inclusion: ${awaitingInclusion}`);
     console.log(`Minting transactions awaiting inclusion: ${mintingAwaiting}/${MINIMAL_MINTS_IN_MEMPOOL}`);

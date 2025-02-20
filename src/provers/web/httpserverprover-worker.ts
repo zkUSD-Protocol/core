@@ -2,10 +2,13 @@ import { getNetworkKeys } from '../../config/keys.js';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import { blockchain } from '../../mina/networks.js';
 import { compileContracts } from '../../transaction/execution.js';
+import { Mutex } from '../../utils/mutex.js';
 import {
   HttpServerProverWorkerConfig,
   startProvingLoop,
 } from '../httpserverprover-worker-shared.js';
+
+const mutex = new Mutex();
 
 // We'll listen for an initial message from the main thread, providing the manager URL & chain.
 self.addEventListener('message', async (event) => {
@@ -44,7 +47,7 @@ self.addEventListener('message', async (event) => {
     };
 
     // 3) Start the shared loop
-    await startProvingLoop(config);
+    await startProvingLoop(mutex, config);
   } catch (err) {
     console.error('Fatal error in Web Worker:', err);
     // Optionally close the worker
