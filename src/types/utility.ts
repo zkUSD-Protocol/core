@@ -17,7 +17,7 @@ export interface KeyPair {
   publicKey: PublicKey;
 }
 
-type Account = { publicKey: PublicKey; tokenId?: Field };
+export type Account = { publicKey: PublicKey; tokenId?: Field };
 
 /**
  * @notice Helper type for contract instances
@@ -41,3 +41,16 @@ export function singleDefault<K extends string, V>(
     default: key,
   } as WithDefault<K, V, K>;
 }
+
+export type SizedArray<T, L extends number> = [T, ...T[]] & { length: L };
+
+export function createSizedArray<T, L extends number>(
+  data: T[],
+  expectedLength: L = data.length as L // Auto-infer length if possible
+): SizedArray<T, L> {
+  if (data.length !== expectedLength) {
+    throw new Error(`Invalid array length: expected ${expectedLength}, got ${data.length}`);
+  }
+  return data as SizedArray<T, L>;
+}
+

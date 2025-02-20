@@ -3,7 +3,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { UInt64 } from 'o1js';
 
-describe('zkUSD Integration - Functional - Happy Path Test Suite', () => {
+describe('zkUSD Integration - Functional - Happy Path Vault Path + Engine Updates', () => {
   let th: TestHelper<'local'>;
   let startingFee: UInt64 = UInt64.from(1e8);
 

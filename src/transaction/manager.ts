@@ -1,11 +1,4 @@
-import {
-  Field,
-  PrivateKey,
-  PublicKey,
-  Transaction,
-  UInt32,
-  UInt64,
-} from 'o1js';
+import { PrivateKey, PublicKey, Transaction, UInt32, UInt64 } from 'o1js';
 import { KeyPair, WithDefault, singleDefault } from '../types/utility.js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
@@ -14,6 +7,7 @@ import {
   TransactionStatus,
   TxLifecycleStatus,
   mkStatusFailedBeforeSending,
+  statusIsChainResolved,
   statusIsFailed,
   statusShouldBeWaitedFor,
 } from './status.js';
@@ -27,7 +21,7 @@ import {
 import { zkUsdTransaction } from './execution.js';
 import { ZkUsdEngine } from '../system/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
-import { Account, isKeyPair } from '../mina/utils.js';
+import { Account, isKeyPair, printTxAccountUpdates } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
 
 const DEBUG = !!process.env.DEBUG;
@@ -47,7 +41,9 @@ export interface DefaultTransactionOptions {
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeout: number;
-  awaitingTimeoutMs: number;
+  statusChangeWaitingIntervalMs: number;
+  statusChangeWaitingTimeoutMs: number;
+  inclusionAwaitingTimeoutMs: number;
   memo: string;
   refreshAccounts: Account[];
 }
@@ -68,9 +64,11 @@ export const defaultOptions: DefaultTransactionOptions = {
     return failedFee.add(new UInt64(0.01e9));
   },
   printAccountUpdates: false,
-  dependencyStatusPollInterval: 5000,
-  dependencyStatusPollTimeout: 600000,
-  awaitingTimeoutMs: 600000,
+  dependencyStatusPollInterval: 2000,
+  dependencyStatusPollTimeout: 300000,
+  statusChangeWaitingIntervalMs: 1000,
+  statusChangeWaitingTimeoutMs: 300000,
+  inclusionAwaitingTimeoutMs: 300000,
   memo: '',
   refreshAccounts: [],
 };
@@ -105,6 +103,7 @@ export interface TransactionHandle {
   readonly signedTransaction: Transaction<any, true> | undefined;
   readonly sender: PublicKey;
   readonly hash: string | undefined;
+  readonly resolutionBlockHeight: bigint | undefined;
 
   awaitStatusChange(args: {
     until: (status: TransactionStatus) => boolean;
@@ -184,6 +183,24 @@ export class TransactionInternal {
     return undefined;
   }
 
+  public get resolutionBlockHeight(): bigint | undefined {
+    const s = this._lifecycle.waitingPromise;
+    if (s?.state === 'fulfilled') {
+      if (
+        statusIsChainResolved(this.status) &&
+        'resolutionBlockHeight' in s.result
+      ) {
+        return s.result.resolutionBlockHeight;
+      } else {
+        console.error(
+          'resolutionBlockHeight not found in chain resolved awaited transaction'
+        );
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
   /**
    * Returns the transaction hash if available.
    */
@@ -206,9 +223,10 @@ export class TransactionInternal {
    */
   public static fromRequest(
     request: TransactionRequest,
-    statusUpdateCallback: () => void
+    statusUpdateCallback: () => void,
+    defaultOptions: DefaultTransactionOptions
   ): TransactionInternal {
-    const tx = new TransactionInternal(statusUpdateCallback);
+    const tx = new TransactionInternal(defaultOptions, statusUpdateCallback);
     tx._request = request;
     tx._dependentTxIds = request.waitForIncluded.map((dep) =>
       typeof dep === 'string' ? dep : dep.txId
@@ -282,9 +300,11 @@ export class TransactionInternal {
     timeout?: number;
   }): Promise<TransactionStatus> {
     let { until } = args;
-    const timeout = args.timeout ?? defaultOptions.dependencyStatusPollTimeout;
+    const timeout =
+      args.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
     const statusPollInterval =
-      args.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
+      args.statusPollInterval ??
+      this._defaultOptions.statusChangeWaitingIntervalMs;
 
     let currentStatus = this.status;
     const startTime = Date.now();
@@ -307,8 +327,10 @@ export class TransactionInternal {
     timeout?: number;
   }): Promise<void> {
     const statusPollInterval =
-      args?.statusPollInterval ?? defaultOptions.dependencyStatusPollInterval;
-    const timeout = args?.timeout ?? defaultOptions.dependencyStatusPollTimeout;
+      args?.statusPollInterval ??
+      this._defaultOptions.statusChangeWaitingIntervalMs;
+    const timeout =
+      args?.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
 
     const status: TransactionStatus = await this.awaitStatusChange({
       until: (status) => !statusShouldBeWaitedFor(status),
@@ -357,7 +379,9 @@ export class TransactionInternal {
       get lifecycleStatus(): TxLifecycleStatus {
         return self.lifecycleStatus;
       },
-
+      get resolutionBlockHeight(): bigint | undefined {
+        return self.resolutionBlockHeight;
+      },
       awaitStatusChange: self.awaitStatusChange.bind(self),
 
       awaitIncluded: self.awaitIncluded.bind(self),
@@ -369,6 +393,7 @@ export class TransactionInternal {
 
   // Private constructor to force usage of static methods
   private constructor(
+    readonly _defaultOptions: DefaultTransactionOptions,
     readonly _statusUpdateCallback?: TransactionStatusUpdateCallback
   ) {
     this._statusUpdateCallbacks = _statusUpdateCallback
@@ -382,6 +407,11 @@ export class TransactionManager<E extends string> {
   private _o1jsMutex: Mutex = new Mutex(
     MUTEX_DEBUG ? 'txmgr-O1jsMutex' : undefined
   );
+
+  private _txMethodMutex: Mutex = new Mutex(
+    MUTEX_DEBUG ? 'txmgr-O1jsMutex' : undefined
+  );
+
   private _mina: IMinaNetworkInterface;
 
   private readonly statusSubscribers: Map<
@@ -389,12 +419,14 @@ export class TransactionManager<E extends string> {
     (txs: TransactionHandle[]) => void
   > = new Map();
 
-  public get transactionHandles(): TransactionHandle[] {
-    return Array.from(this.transactions.values()).map((tx) => tx.handle);
-  }
-
   private transactionStatusChanged() {
     this.statusSubscribers.forEach((cb) => cb(this.transactionHandles));
+  }
+  // ---------------------
+  public transactionOptions: DefaultTransactionOptions = defaultOptions;
+
+  public get transactionHandles(): TransactionHandle[] {
+    return Array.from(this.transactions.values()).map((tx) => tx.handle);
   }
 
   public subscribeToTransactionStatusChanges(
@@ -431,7 +463,8 @@ export class TransactionManager<E extends string> {
     minaInterface: IMinaNetworkInterface,
     transactionExecutors:
       | WithDefault<E, ITransactionExecutor>
-      | { [K in E]: ITransactionExecutor }
+      | { [K in E]: ITransactionExecutor },
+    overrideOptions?: TransactionOptions
   ): TransactionManager<E> {
     let executor: WithDefault<E, ITransactionExecutor>;
 
@@ -445,7 +478,7 @@ export class TransactionManager<E extends string> {
       executor = singleDefault(firstKey, firstValue as ITransactionExecutor);
     }
 
-    return new TransactionManager(minaInterface, executor);
+    return new TransactionManager(minaInterface, executor, overrideOptions);
   }
 
   private transactions: Map<string, TransactionInternal> = new Map();
@@ -462,6 +495,7 @@ export class TransactionManager<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E;
     }
   ) {
     const senderKey = isKeyPair(sender) ? sender.publicKey : sender;
@@ -486,7 +520,6 @@ export class TransactionManager<E extends string> {
   // it will throw if tx cannot be created or is missing dependencies
   // the interaction with the transaction is done through the returned handle
   // it will take care of nonce
-  // do not call concurrently
   // TODO:
   // if the fee is too low, it should retry with higher fee
   // the transaction should be retried until it is included or failed
@@ -501,185 +534,199 @@ export class TransactionManager<E extends string> {
     },
     args?: TransactionArgs
   ): Promise<TransactionHandle> {
-    const { waitForIncluded } = options ?? {};
-    let name = options?.name;
+    return await this._txMethodMutex.runExclusive(async () => {
+      const { waitForIncluded } = options ?? {};
+      let name = options?.name;
 
-    if (!name) {
-      let i = 1;
-      while (true) {
-        if (this.transactions.has(`tx${i}`)) {
-          i = i + 1;
-        } else {
-          name = `tx${i}`;
-          break;
+      if (!name) {
+        let i = 1;
+        while (true) {
+          if (this.transactions.has(`tx${i}`)) {
+            i = i + 1;
+          } else {
+            name = `tx${i}`;
+            break;
+          }
         }
       }
-    }
 
-    // prepare and verify transaction request as scheduled by function user
-    const request: TransactionRequest = {
-      name,
-      sender,
-      callback,
-      options: options ?? {},
-      waitForIncluded: waitForIncluded ?? [],
-      args,
-    };
+      // prepare and verify transaction request as scheduled by function user
+      const request: TransactionRequest = {
+        name,
+        sender,
+        callback,
+        options: options ?? {},
+        waitForIncluded: waitForIncluded ?? [],
+        args,
+      };
 
-    // dependencies must be met
-    const deps: TransactionInternal[] = [];
-    for (const mDepId of request.waitForIncluded) {
-      const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId;
-      const dep = this.transactions.get(depId);
-      if (!dep) {
-        throw new Error(`Transaction ${depId} does not exist`);
+      // dependencies must be met
+      const deps: TransactionInternal[] = [];
+      for (const mDepId of request.waitForIncluded) {
+        const depId = typeof mDepId === 'string' ? mDepId : mDepId.txId;
+        const dep = this.transactions.get(depId);
+        if (!dep) {
+          throw new Error(`Transaction ${depId} does not exist`);
+        }
+        deps.push(dep);
       }
-      deps.push(dep);
-    }
 
-    // name must be unique if it is provided
-    if (request.name) {
-      if (this.transactions.has(request.name)) {
-        throw new Error(`Transaction with name ${request.name} already exists`);
-      }
-    }
-    //=== the request is assumed to be valid at this point
-
-    //=== include the transaction in the manager
-    // -- create the tx and add it to the manager
-    const tx = TransactionInternal.fromRequest(
-      request,
-      this.transactionStatusChanged.bind(this)
-    );
-    this.transactions.set(tx.getId(), tx);
-
-    console.log('Setting status to preparing at start');
-    tx.setStatuses('unchanged' as const, TxLifecycleStatus.PREPARING);
-    // --
-
-    //=== the transaction is included in the manager at this point
-    // const failed_before_sending = (phase: string, error: unknown) =>
-    const failed_before_sending = (phase: string, error: unknown) => {
-      return mkStatusFailedBeforeSending(tx.getId(), phase, error);
-    };
-
-    // schedule waiting for dependencies to be included
-    const depsAwaitingPromise = new TrackedPromise(async () => {
-      try {
-        if (tx.dependencies.length !== 0) {
-          tx.setStatuses(
-            {
-              kind: 'AwaitingForOtherTx',
-              txs: tx.dependencies.map((dep) => dep.txId),
-            },
-            TxLifecycleStatus.AWAITING_DEPENDENCIES
+      // name must be unique if it is provided
+      if (request.name) {
+        if (this.transactions.has(request.name)) {
+          throw new Error(
+            `Transaction with name ${request.name} already exists`
           );
         }
-        await Promise.all(
-          deps.map(async (dep) => {
-            const depStatus = await dep.awaitStatusChange({
-              until: (status) =>
-                status === 'Included' || statusIsFailed(status),
-              statusPollInterval: options?.dependencyStatusPollInterval,
-              timeout: options?.dependencyStatusPollTimeout,
+      }
+      //=== the request is assumed to be valid at this point
+
+      //=== include the transaction in the manager
+      // -- create the tx and add it to the manager
+      const tx = TransactionInternal.fromRequest(
+        request,
+        this.transactionStatusChanged.bind(this),
+        this.transactionOptions
+      );
+      this.transactions.set(tx.getId(), tx);
+      // --
+
+      //=== the transaction is included in the manager at this point
+      // const failed_before_sending = (phase: string, error: unknown) =>
+      const failed_before_sending = (phase: string, error: unknown) => {
+        return mkStatusFailedBeforeSending(tx.getId(), phase, error);
+      };
+
+      // schedule waiting for dependencies to be included
+      const depsAwaitingPromise = new TrackedPromise(async () => {
+        try {
+          if (tx.dependencies.length !== 0) {
+            tx.setStatuses(
+              {
+                kind: 'AwaitingForOtherTx',
+                txs: tx.dependencies.map((dep) => dep.txId),
+              },
+              TxLifecycleStatus.AWAITING_DEPENDENCIES
+            );
+          }
+          await Promise.all(
+            deps.map(async (dep) => {
+              const depStatus = await dep.awaitStatusChange({
+                until: (status) =>
+                  status === 'Included' || statusIsFailed(status),
+                statusPollInterval: options?.dependencyStatusPollInterval,
+                timeout: options?.dependencyStatusPollTimeout,
+              });
+              if (depStatus !== 'Included') {
+                throw {
+                  kind: 'DependencyRejectedFailedOrDropped',
+                  depId: dep.getId(),
+                  depStatus,
+                };
+              }
+              return;
+            })
+          );
+          tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
+        } catch (error) {
+          const status =
+            typeof error === 'object' && error !== null && 'kind' in error
+              ? error
+              : failed_before_sending(
+                  'awaiting for the tx dependencies',
+                  error
+                );
+          tx.setStatuses(status as TransactionStatus, TxLifecycleStatus.FAILED);
+          throw status;
+        }
+      });
+
+      let buildOptions: TransactionOptions & {
+        nonce?: UInt32;
+        forceFetchAllTxParties: (
+          tx: Record<string, any> & { transaction: MinaZkappCommand }
+        ) => Promise<void>;
+      } = {
+        ...options,
+        forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(
+          this.mina
+        ),
+      };
+
+      const builtTxPromise = new TrackedPromise(async () => {
+        await depsAwaitingPromise;
+
+        try {
+          for (const acc of options?.refreshAccounts ?? []) {
+            await this.mina.fetchMinaAccount(acc.publicKey, {
+              tokenId: acc.tokenId,
+              force: true,
             });
-            if (depStatus !== 'Included') {
-              throw {
-                kind: 'DependencyRejectedFailedOrDropped',
-                depId: dep.getId(),
-                depStatus,
-              };
-            }
-            return;
-          })
-        );
-      } catch (error) {
-        if (typeof error === 'object' && error !== null && 'kind' in error) {
-          throw error;
+          }
+
+          const builtTx = await transactionBuild(
+            this._o1jsMutex,
+            this.mina,
+            extractPublicKey(sender),
+            callback,
+            buildOptions
+          );
+          return builtTx;
+        } catch (error) {
+          const status = failed_before_sending('building the tx', error);
+          tx.setStatuses(status, TxLifecycleStatus.FAILED);
+          throw status;
         }
-        throw failed_before_sending('awaiting for the tx dependencies', error);
-      }
+      });
+
+      //=== prepare promises that will manage the transaction lifecycle
+      const nonceLock = this.mina.nonceManager.getAccountNonce.bind(
+        this.mina.nonceManager
+      );
+
+      const preparedTx: PreparedTransaction = {
+        getId: () => tx.getId(),
+        args: tx.request?.args ?? undefined,
+        buildTx: builtTxPromise,
+        setStatuses: (
+          s: TransactionStatus | 'unchanged',
+          lcs: TxLifecycleStatus | 'unchanged'
+        ) => {
+          tx.setStatuses(s, lcs);
+        },
+        keys: { sender, extraSigners: options?.extraSigners ?? [] },
+        nonceLock,
+      };
+
+      //=== delegate the rest of execution
+      const executorKey =
+        options?.executor ?? this.transactionExecutors.default;
+      const txExecutor = this.transactionExecutors[executorKey];
+
+      const lifecycle = await txExecutor.executeTransaction(preparedTx, {
+        o1jsMutex: this._o1jsMutex,
+        mina: this.mina,
+        startingFee:
+          options?.startingFee ?? this.transactionOptions.startingFee,
+        printTx: options?.printTx,
+        inclusionAwaitingTimeoutMs:
+          options?.inclusionAwaitingTimeoutMs ??
+          this.transactionOptions.inclusionAwaitingTimeoutMs,
+      });
+
+      tx.installLifecycle(lifecycle);
+      return tx.handle;
     });
-
-    let buildOptions: TransactionOptions & {
-      nonce?: UInt32;
-      forceFetchAllTxParties: (
-        tx: Record<string, any> & { transaction: MinaZkappCommand }
-      ) => Promise<void>;
-    } = {
-      ...options,
-      forceFetchAllTxParties: this.mina.forceFetchAllTxParties.bind(this.mina),
-    };
-
-    const builtTxPromise = depsAwaitingPromise.then(async () => {
-      try {
-        for (const acc of options?.refreshAccounts ?? []) {
-          await this.mina.fetchMinaAccount(acc.publicKey, {
-            tokenId: acc.tokenId,
-            force: true,
-          });
-        }
-
-        console.log('Setting status to preparing');
-        tx.setStatuses('unchanged' as const, TxLifecycleStatus.PREPARING);
-
-        const builtTx = await transactionBuild(
-          this._o1jsMutex,
-          this.mina,
-          extractPublicKey(sender),
-          callback,
-          buildOptions
-        );
-
-        return builtTx;
-      } catch (error) {
-        throw failed_before_sending('building the tx', error);
-      }
-    });
-
-    //=== prepare promises that will manage the transaction lifecycle
-    const nonceLock = this.mina.nonceManager.getAccountNonce.bind(
-      this.mina.nonceManager
-    );
-
-    const preparedTx: PreparedTransaction = {
-      getId: () => tx.getId(),
-      args: tx.request?.args ?? undefined,
-      buildTx: builtTxPromise,
-      setStatuses: (
-        s: TransactionStatus | 'unchanged',
-        lcs: TxLifecycleStatus | 'unchanged'
-      ) => {
-        tx.setStatuses(s, lcs);
-      },
-      keys: { sender, extraSigners: options?.extraSigners ?? [] },
-      nonceLock,
-    };
-
-    //=== delegate the rest of execution
-    const executorKey = options?.executor ?? this.transactionExecutors.default;
-    const txExecutor = this.transactionExecutors[executorKey];
-
-    const lifecycle = await txExecutor.executeTransaction(preparedTx, {
-      o1jsMutex: this._o1jsMutex,
-      mina: this.mina,
-      startingFee: options?.startingFee ?? defaultOptions.startingFee,
-      printTx: options?.printTx,
-      awaitingTimeoutMs:
-        options?.dependencyStatusPollTimeout ??
-        defaultOptions.dependencyStatusPollTimeout,
-    });
-
-    tx.installLifecycle(lifecycle);
-    return tx.handle;
   }
 
   private constructor(
     networkInterface: IMinaNetworkInterface,
-    transactionExecutors: WithDefault<E, ITransactionExecutor>
+    transactionExecutors: WithDefault<E, ITransactionExecutor>,
+    overrideOption?: TransactionOptions
   ) {
     this.transactionExecutors = transactionExecutors;
     this._mina = networkInterface;
+    this.transactionOptions = { ...defaultOptions, ...overrideOption };
   }
 }
 
@@ -738,40 +785,7 @@ export async function transactionBuild(
     console.log(tx.toPretty());
   }
 
-  if (printAccountUpdates) {
-    const auCount: { publicKey: PublicKey; tokenId: Field; count: number }[] =
-      [];
-    let proofAuthorizationCount = 0;
-    for (const au of tx.transaction.accountUpdates) {
-      const { publicKey, tokenId, authorizationKind } = au.body;
-      if (au.authorization.proof) {
-        proofAuthorizationCount++;
-        if (authorizationKind.isProved.toBoolean() === false)
-          console.error('Proof authorization exists but isProved is false');
-      } else if (authorizationKind.isProved.toBoolean() === true)
-        console.error('isProved is true but no proof authorization');
-      const index = auCount.findIndex(
-        (item) =>
-          item.publicKey.equals(publicKey).toBoolean() &&
-          item.tokenId.equals(tokenId).toBoolean()
-      );
-      if (index === -1) auCount.push({ publicKey, tokenId, count: 1 });
-      else auCount[index].count++;
-    }
-    console.log(
-      `Account updates for tx: ${auCount.length}, proof authorizations: ${proofAuthorizationCount}`
-    );
-    for (const au of auCount) {
-      if (au.count > 1) {
-        console.log(
-          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
-            au.count
-          }`
-        );
-      }
-    }
-    console.log(tx.transaction.accountUpdates);
-  }
+  if (printAccountUpdates) printTxAccountUpdates(tx);
   return tx;
 }
 

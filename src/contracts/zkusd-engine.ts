@@ -551,7 +551,7 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPriceInput: MinaPriceInput
     ) {
-      //Ensure the protocol is not stopped
+      //Ensure the protocol is not stopped // TODO reconsider
       await this.ensureProtocolNotStopped();
 
       // //Get the vault
@@ -710,6 +710,20 @@ export function ZkUsdEngineContract(args: {
       });
     }
 
+    getAdmin() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.admin;
+    }
+
+    isEmergencyStopped() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.emergencyStop;
+    }
+
     /**
      * @notice  Updates the admin public key
      * @param   newAdmin The new admin public key
@@ -722,7 +736,7 @@ export function ZkUsdEngineContract(args: {
         this.protocolDataPacked.getAndRequireEquals()
       );
 
-      const previousAdmin = protocolData.admin;
+      const previousAdmin = this.getAdmin();
 
       protocolData.admin = newAdmin;
       this.protocolDataPacked.set(protocolData.pack());
