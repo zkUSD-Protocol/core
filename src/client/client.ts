@@ -14,8 +14,8 @@ import { ZkUsdEngineContract } from '../contracts/zkusd-engine';
 import { verificationKeys } from '../config/verification-keys';
 import {
   TransactionArgs,
-  VaultTransactionArgs,
-  VaultTransactionType,
+  ZkusdEngineTransactionType,
+  ZkusdEngineTransactionArgs,
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
 
@@ -92,7 +92,7 @@ export class ZKUSDClient {
     const newAccounts = zkusdTokenAccount ? 1 : 2;
 
     return this.executeTransaction(
-      VaultTransactionType.CREATE_VAULT,
+      ZkusdEngineTransactionType.CREATE_VAULT,
       {
         sender,
         vaultAddress: vaultPrivateKey.toPublicKey().toBase58(),
@@ -115,7 +115,7 @@ export class ZKUSDClient {
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
     return this.executeTransaction(
-      VaultTransactionType.DEPOSIT_COLLATERAL,
+      ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
       { sender, vaultAddress, amount },
       options
     );
@@ -132,7 +132,7 @@ export class ZKUSDClient {
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
     return this.executeTransaction(
-      VaultTransactionType.REDEEM_COLLATERAL,
+      ZkusdEngineTransactionType.REDEEM_COLLATERAL,
       { sender, vaultAddress, amount, minaPriceInput },
       options
     );
@@ -149,7 +149,7 @@ export class ZKUSDClient {
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
     return this.executeTransaction(
-      VaultTransactionType.MINT_ZKUSD,
+      ZkusdEngineTransactionType.MINT_ZKUSD,
       { sender, vaultAddress, amount, minaPriceInput },
       options
     );
@@ -165,7 +165,7 @@ export class ZKUSDClient {
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
     return this.executeTransaction(
-      VaultTransactionType.BURN_ZKUSD,
+      ZkusdEngineTransactionType.BURN_ZKUSD,
       { sender, vaultAddress, amount },
       options
     );
@@ -181,7 +181,7 @@ export class ZKUSDClient {
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
     return this.executeTransaction(
-      VaultTransactionType.LIQUIDATE,
+      ZkusdEngineTransactionType.LIQUIDATE,
       { sender, vaultAddress, minaPriceInput },
       options
     );
@@ -228,7 +228,7 @@ export class ZKUSDClient {
   /**
    * Helper method to execute transactions with consistent error handling and argument preparation
    */
-  private async executeTransaction<T extends VaultTransactionType>(
+  private async executeTransaction<T extends ZkusdEngineTransactionType>(
     type: T,
     context: TransactionContext,
     options?: TransactionOptions
@@ -237,7 +237,7 @@ export class ZKUSDClient {
       const args = this.prepareTransactionArgs(type, context);
       const txArgs: TransactionArgs = {
         transactionType: type,
-        args: args as VaultTransactionArgs[T],
+        args: args as ZkusdEngineTransactionArgs[T],
       } as TransactionArgs;
 
       return await this.txMgr.engineTx(
@@ -257,30 +257,30 @@ export class ZKUSDClient {
    * Prepares transaction arguments based on transaction type
    */
   private prepareTransactionArgs(
-    type: VaultTransactionType,
+    type: ZkusdEngineTransactionType,
     context: TransactionContext
-  ): VaultTransactionArgs[typeof type] {
+  ): ZkusdEngineTransactionArgs[typeof type] {
     const baseArgs = {
       transactionId: PrivateKey.random().toBase58(),
       vaultAddress: context.vaultAddress,
     };
 
     switch (type) {
-      case VaultTransactionType.CREATE_VAULT:
+      case ZkusdEngineTransactionType.CREATE_VAULT:
         if (!context.newAccounts) throw new Error('New accounts required');
         return {
           ...baseArgs,
           newAccounts: context.newAccounts,
         };
 
-      case VaultTransactionType.DEPOSIT_COLLATERAL:
+      case ZkusdEngineTransactionType.DEPOSIT_COLLATERAL:
         if (!context.amount) throw new Error('Amount required');
         return {
           ...baseArgs,
           collateralAmount: context.amount.toString(),
         };
 
-      case VaultTransactionType.REDEEM_COLLATERAL:
+      case ZkusdEngineTransactionType.REDEEM_COLLATERAL:
         if (!context.amount) throw new Error('Amount required');
         if (!context.minaPriceInput) throw new Error('Price input required');
         return {
@@ -289,7 +289,7 @@ export class ZKUSDClient {
           minaPriceProof: context.minaPriceInput.proof.toJSON(),
         };
 
-      case VaultTransactionType.MINT_ZKUSD:
+      case ZkusdEngineTransactionType.MINT_ZKUSD:
         if (!context.amount) throw new Error('Amount required');
         if (!context.minaPriceInput) throw new Error('Price input required');
         return {
@@ -298,14 +298,14 @@ export class ZKUSDClient {
           minaPriceProof: context.minaPriceInput.proof.toJSON(),
         };
 
-      case VaultTransactionType.BURN_ZKUSD:
+      case ZkusdEngineTransactionType.BURN_ZKUSD:
         if (!context.amount) throw new Error('Amount required');
         return {
           ...baseArgs,
           zkusdAmount: context.amount.toString(),
         };
 
-      case VaultTransactionType.LIQUIDATE:
+      case ZkusdEngineTransactionType.LIQUIDATE:
         if (!context.minaPriceInput) throw new Error('Price input required');
         return {
           ...baseArgs,

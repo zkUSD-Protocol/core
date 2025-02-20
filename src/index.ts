@@ -37,7 +37,6 @@ import {
   ExecutorContext,
   compilationConfigIsEqual,
   compileContracts,
-  executeTransaction,
 } from './transaction/execution.js';
 import { ExternalTransactionExecutor } from './transaction/external-executor.js';
 import { HttpClientProver } from './provers/httpclientprover.js';
@@ -113,7 +112,6 @@ export {
   ExecutorContext,
   compilationConfigIsEqual,
   compileContracts,
-  executeTransaction,
   Mutex,
   HttpClientProver,
 };
