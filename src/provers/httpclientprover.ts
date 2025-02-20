@@ -12,7 +12,6 @@ import {
 //   }
 // };
 
-
 type TxProvingRequest = {
   payload: TxProvingInput;
 };

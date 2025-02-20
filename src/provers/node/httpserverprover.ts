@@ -7,7 +7,10 @@ import {
   TxProvingOutput,
 } from '../itransactionprover.js';
 import { JobStore } from '../job-store.js';
-import { InMemoryJobStore } from '../in-memory-job-store.js';
+import {
+  InMemoryJobStore,
+  InMemoryJobStoreTimeouts,
+} from '../in-memory-job-store.js';
 import { Server } from 'http';
 import net from 'net';
 
@@ -32,7 +35,6 @@ type TxProvingTracker = {
 //     console.debug(msg);
 //   }
 // };
-
 
 /**
  * Represents an abstract external prover “worker”.
@@ -78,7 +80,10 @@ export class HttpServerProver implements ITransactionProver {
   private jobTrackers: Map<string, TxProvingTracker> = new Map();
 
   // Default job timeout (8 minutes)
-  private static readonly _jobTimeoutSec: number = 8 * 60;
+  private static readonly _jobTimeouts: InMemoryJobStoreTimeouts = {
+    maxTotalJobTimeSec: 120,
+    maxJobInactivitySec: 3,
+  };
 
   private jobStore: JobStore<TransactionExecutionJob>;
   private port: number;
@@ -90,12 +95,12 @@ export class HttpServerProver implements ITransactionProver {
    * @param options - Object containing initialization parameters.
    */
   public constructor({
-    jobTimeoutSec = HttpServerProver._jobTimeoutSec,
-    jobStore = new InMemoryJobStore(jobTimeoutSec),
+    jobTimeouts = HttpServerProver._jobTimeouts,
+    jobStore = new InMemoryJobStore({ timeouts: jobTimeouts }),
     port = 4646,
     childWorkers = [],
   }: {
-    jobTimeoutSec?: number;
+    jobTimeouts?: InMemoryJobStoreTimeouts;
     jobStore?: JobStore<TransactionExecutionJob>;
     port?: number;
     childWorkers?: ChildProcessWorker[];
@@ -170,7 +175,6 @@ export class HttpServerProver implements ITransactionProver {
         })
         .on('error', reject);
 
-
       this.server.on('connection', (conn) => {
         this.connections.add(conn);
 
@@ -179,9 +183,7 @@ export class HttpServerProver implements ITransactionProver {
           this.connections.delete(conn);
         });
       });
-
     });
-
   }
 
   /**
@@ -213,7 +215,7 @@ export class HttpServerProver implements ITransactionProver {
         // After `forceTimeout` ms, forcibly destroy any remaining open connections.
         setTimeout(() => {
           this.connections.forEach((conn) => {
-            // This will terminate the socket immediately, 
+            // This will terminate the socket immediately,
             // even if the request/response was in progress.
             conn.destroy();
           });
@@ -266,31 +268,38 @@ export class HttpServerProver implements ITransactionProver {
   // TODO use zod schemas to ensure safe transport
   /**
    * Sets up the Express routes for:
-   *   1. GET `/jobs/next`  - Retrieve the next available job
-   *   2. POST `/jobs/:id/proved` - Receive proving result
-   *   3. POST `/jobs/:id/sent`   - Receive sending result
+   *   1. GET `/job/next`  - Retrieve the next available job
+   *   2. POST `/job/:id/proved` - Receive proving result
+   *   3. POST `/job/:id/sent`   - Receive sending result
    *   4. POST `/worker/:workerid/hearbeat` - Receive worker heartbeat
    */
   private setupRoutes(): void {
-
     /**
        4) POST /worker/:workerid/hearbeat
         - Worker sends a heartbeat to the server
       */
-    this.app.post('/worker/:workerid/heartbeat', async (req: Request, res: Response) => {
-      const workerId = req.params.workerid;
-      const status = req.body.status as TransactionProvingWorkerStatus;
+    this.app.post(
+      '/worker/:workerid/heartbeat',
+      async (req: Request, res: Response) => {
+        const workerId = req.params.workerid;
+        const status = req.body.status as TransactionProvingWorkerStatus;
+        console.log('received a heartbeat from worker', workerId, status);
 
-      console.log(`Received heartbeat from worker ${workerId}:`, status);
-      res.json({ status: 'ok' });
-    });
+        if (status.proving) {
+          await this.jobStore.markJobAsBeingProven(status.provingJobId);
+        }
+
+        console.log(`Received heartbeat from worker ${workerId}:`, status);
+        return res.json({ status: 'ok' });
+      }
+    );
 
     /**
-     * 1) GET /jobs/next
+     * 1) GET /job/next
      *    - Returns 204 if no job available
      *    - Otherwise returns the next job in JSON
      */
-    this.app.get('/jobs/next', async (_req: Request, res: Response) => {
+    this.app.get('/job/next', async (_req: Request, res: Response) => {
       try {
         let job: TransactionExecutionJob | undefined;
         await this.mutex.runExclusive(async () => {
@@ -315,10 +324,10 @@ export class HttpServerProver implements ITransactionProver {
     });
 
     /**
-     * 2) POST /jobs/:id/proved
+     * 2) POST /job/:id/proved
      *    - External worker notifies that a job has been proved (or has failed).
      */
-    this.app.post('/jobs/:id/proved', async (req: Request, res: Response) => {
+    this.app.post('/job/:id/proved', async (req: Request, res: Response) => {
       const jobId = req.params.id;
       let provingResult: TxProvingOutput = req.body;
 
@@ -326,10 +335,7 @@ export class HttpServerProver implements ITransactionProver {
       try {
         tracker = this.jobTrackers.get(jobId);
         if (!tracker) {
-          console.warn(
-            'Job missing or already completed: No lifecycle tracker found for jobId=',
-            jobId
-          );
+          console.warn(`Job ${jobId} already completed or missing`);
           return res.status(200).json({
             status: 'ok',
             message: 'Job already completed or missing.',

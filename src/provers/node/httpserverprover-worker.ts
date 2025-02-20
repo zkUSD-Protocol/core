@@ -3,11 +3,19 @@
 import { getContractKeys } from '../../config/keys.js';
 import { compileContracts } from '../../transaction/execution.js';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
-import { HttpServerProverWorkerConfig, startProvingLoop } from '../httpserverprover-worker-shared.js';
+import {
+  HttpServerProverWorkerConfig,
+  WorkerJobContext,
+  startProvingLoop,
+  startStatusPostingLoop,
+} from '../httpserverprover-worker-shared.js';
 import os from 'os';
 import { blockchain } from '../../types/utility.js';
 
 import { Mutex } from '../../utils/mutex.js';
+import { TransactionProvingJob } from '../itransactionprover.js';
+
+const heartbeatLoopMutex = new Mutex();
 
 // 1. Catch unhandled Promise rejections at the process level.
 process.on('unhandledRejection', (reason, promise) => {
@@ -20,7 +28,20 @@ process.on('unhandledRejection', (reason, promise) => {
   if (!config) {
     throw new Error('Config is not defined');
   }
-  startProvingLoop(mutex, config);
+  if (!jobContext) {
+    throw new Error('JobContext is not defined');
+  }
+
+  setTimeout(async () => {
+    if (!config) {
+      throw new Error('Config is not defined');
+    }
+    if (!jobContext) {
+      throw new Error('JobContext is not defined');
+    }
+    await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
+  });
+  startProvingLoop(mutex, config, jobContext);
 });
 
 // 2. Catch uncaught exceptions at the process level.
@@ -32,7 +53,20 @@ process.on('uncaughtException', (err) => {
   if (!config) {
     throw new Error('Config is not defined');
   }
-  startProvingLoop(mutex, config);
+  if (!jobContext) {
+    throw new Error('JobContext is not defined');
+  }
+
+  setTimeout(async () => {
+    if (!config) {
+      throw new Error('Config is not defined');
+    }
+    if (!jobContext) {
+      throw new Error('JobContext is not defined');
+    }
+    await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
+  });
+  startProvingLoop(mutex, config, jobContext);
 });
 
 // Check if this file is being run directly
@@ -57,13 +91,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 const mutex = new Mutex();
 
 let config: HttpServerProverWorkerConfig | undefined;
-
+let jobContext: WorkerJobContext | undefined;
+let _job: TransactionProvingJob | null = null;
 /**
  * Main entry point that calls startProvingLoop(...).
  * If startProvingLoop throws, we catch it here, wait 2s, and try again.
  */
 async function main(epmBaseUrl: string, chain: blockchain) {
-
   const workerId = `HttpServerProver-Worker-@-${os.hostname()}`;
 
   console.log(`Starting Node worker ${workerId}`);
@@ -91,17 +125,45 @@ async function main(epmBaseUrl: string, chain: blockchain) {
     statusPostingIntervalMs: 2000,
   };
 
+  jobContext = {
+    set: (job: TransactionProvingJob) => {
+      _job = job;
+    },
+    unset: () => {
+      _job = null;
+    },
+    get: () => _job,
+  };
+
   try {
+    setTimeout(async () => {
+      if (!config) {
+        throw new Error('Config is not defined');
+      }
+      if (!jobContext) {
+        throw new Error('JobContext is not defined');
+      }
+      await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
+    });
     // Start the infinite proving loop
-    await startProvingLoop(mutex, config);
+    await startProvingLoop(mutex, config, jobContext);
 
     // If startProvingLoop actually returns, we can handle that here
     // (normally it won't, because it's a while(true) loop).
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[ERROR] startProvingLoop threw an error:', err);
     await sleep(500);
-    await startProvingLoop(mutex, config);
+    await startProvingLoop(mutex, config, jobContext);
+
+    setTimeout(async () => {
+      if (!config) {
+        throw new Error('Config is not defined');
+      }
+      if (!jobContext) {
+        throw new Error('JobContext is not defined');
+      }
+      await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
+    });
   }
 }
 

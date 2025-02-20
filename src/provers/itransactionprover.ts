@@ -22,7 +22,7 @@ export type TxProvingOutput =
 export interface ITransactionProver {
   proveTransaction(input: TxProvingInput): Promise<TxProvingOutput>;
   start(): Promise<void>;
-  shutdown(forceTimeoutMs?:number): Promise<void>;
+  shutdown(forceTimeoutMs?: number): Promise<void>;
 }
 
 export type TransactionProvingJob = {
@@ -32,4 +32,6 @@ export type TransactionProvingJob = {
   payload: TxProvingInput;
 };
 
-export type TransactionProvingWorkerStatus = {provingJob: string, proving: "true" } | {proving: "false" };
+export type TransactionProvingWorkerStatus =
+  | { provingJobId: string; proving: true }
+  | { proving: false };

@@ -64,7 +64,7 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     > = {
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver({ jobTimeoutSec: 2 * 60 })
+        { prover: new HttpServerProver()
         , stop: stopExecutor, forcedStopTimeoutMs}
       ),
       default: 'external', // use workers by default
