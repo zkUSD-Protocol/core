@@ -80,6 +80,12 @@ export const statusIsRejected = (
   return statusIsOfKind(status, 'RejectedOnReceive', 'RejectedOnInclusion');
 };
 
+export const statusIsChainResolved = (
+  status: TransactionStatus
+): status is RejectedOnInclusion | 'Included' => {
+  return statusIsOfKind(status, 'RejectedOnInclusion', 'Included');
+};
+
 /**
  * Processing states for a transaction that is still in progress.
  */
@@ -160,6 +166,33 @@ export function mkStatusFailedBeforeSending(
   const errorMessage = error instanceof Error ? error.message : String(error);
   const err = `${txId} - error during ${phase}: ${errorMessage}`;
   return { kind: 'FailedBeforeSending', errors: [err] };
+}
+
+export function isTransactionStatus(value : any) : value is TransactionStatus {
+  try{
+    const kind = 'kind' in value ? value.kind : String(value)
+
+    const statuses: string[] = [
+      'Scheduled',
+      'AwaitingForOtherTx',
+      'Pending',
+      'ScheduledForCancellation',
+      'RetryingWithHigherFee',
+      'RejectedOnInclusion',
+      'RejectedOnReceive',
+      'FailedBeforeSending',
+      'Cancelled',
+      'DroppedFromMempool',
+      'StuckInMempool',
+      'DependencyRejectedFailedOrDropped',
+      'Included'
+    ]
+
+    return statuses.includes(kind)
+
+  } catch (e) {
+    return false;
+  }
 }
 
 /**

@@ -20,6 +20,14 @@ export interface HttpServerProverWorkerConfig {
   keys: any; // Replace 'any' with the actual type from getNetworkKeys
 }
 
+const DEBUG = !!process.env.DEBUG;
+
+const debugLog = (msg: string) => {
+  if (DEBUG) {
+    console.debug(msg);
+  }
+};
+
 /**
  * Main loop to poll for new jobs and prove transactions.
  * This is the same logic for both Node and Web.
@@ -30,6 +38,7 @@ export async function startProvingLoop(config: HttpServerProverWorkerConfig) {
 
   while (true) {
     try {
+      debugLog(`Worker ${workerId} polling for jobs...`);
       const job = await fetchNextJob(epmBaseUrl);
       if (!job) {
         // No jobs available; wait a bit
@@ -49,8 +58,6 @@ export async function startProvingLoop(config: HttpServerProverWorkerConfig) {
       };
 
       const executionTracker = mkExecutionTracker(epmBaseUrl, job.id);
-
-      console.log(JSON.stringify(job.payload));
 
       await proveTransaction(
         context,

@@ -2,6 +2,7 @@ import { getNetworkKeys } from '../../config/keys.js';
 import { compileContracts } from '../../transaction/execution.js';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import { startProvingLoop } from '../httpserverprover-worker-shared.js';
+import os from 'os';
 import { blockchain } from '../../types/utility.js';
 
 /**
@@ -33,7 +34,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
  * Main function for Node environment.
  */
 async function main(epmBaseUrl: string, chain: blockchain) {
-  const workerId = `Mina-Tx-Executor-Worker-Node-${Date.now()}`;
+
+  const workerId = `HttpServerProver-Worker-@-${os.hostname()}`;
 
   console.log(`Starting Node worker ${workerId}`);
   console.log(`Initializing chain interface: ${chain}`);
@@ -60,6 +62,21 @@ async function main(epmBaseUrl: string, chain: blockchain) {
     keys,
   };
 
-  // 4) Start the shared loop
-  await startProvingLoop(config);
+  while (true) {
+    try {
+      // 4) Start the shared loop
+      await startProvingLoop(config);
+    } catch (err) {
+      console.error('Error in proving loop:', err);
+      await sleep(2000);
+    }
+  }
+}
+
+
+/**
+ * Utility sleep
+ */
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

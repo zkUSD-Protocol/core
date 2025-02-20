@@ -1,6 +1,7 @@
 import { Transaction, UInt64 } from 'o1js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import {
+  AwaitedTransaction,
   ITransactionExecutor,
   PreparedTransaction,
   TransactionExecutionConfig,
@@ -40,19 +41,13 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
       return mkStatusFailedBeforeSending(tx.getId(), phase, error);
     };
 
-    const mkState = <T>(transaction: T) => {
-      return { isLocal: true as true, transaction };
+    const mkState = <T>(transaction: T, resolutionBlockHeight?: bigint) => {
+      return { isLocal: true as true, transaction, resolutionBlockHeight };
     };
 
     // schedule proving
     const provingPromise = new TrackedPromise(async () => {
-      let builtTx;
-      try {
-        builtTx = await tx.buildTx;
-      } catch (error) {
-        const errorMessage = JSON.stringify(error);
-        throw failed_before_sending('Building the tx', errorMessage);
-      }
+      const builtTx = await tx.buildTx;
       try {
         if (config?.printTx) {
           console.log(`${tx.getId()} - Proving transaction ...`);
@@ -62,7 +57,9 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           await transactionProve(builtTx, config.mina, config.o1jsMutex)
         );
       } catch (error) {
-        throw failed_before_sending('proving the tx', error);
+        const status = failed_before_sending('proving the tx', error);
+        tx.setStatuses(status, TxLifecycleStatus.FAILED);
+        throw status;
       }
     });
 
@@ -70,8 +67,8 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     const mkSendingPromise = function (fee: UInt64) {
       return new TrackedPromise(async () => {
         const results = await provingPromise;
-        const transaction = results.transaction;
 
+        const transaction = results.transaction;
         // TODO don't we need token as well?
         let nonceLock = await tx.nonceLock(sender.publicKey);
         // send the transaction
@@ -112,7 +109,9 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           return mkState(sentTx);
         } catch (error) {
           await nonceLock?.unlock();
-          throw failed_before_sending('sending the tx', error);
+          const status = failed_before_sending('sending the tx', error);
+          tx.setStatuses(status, TxLifecycleStatus.FAILED);
+          throw status;
         }
       });
     };
@@ -120,9 +119,15 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
     const sendingPromise = mkSendingPromise(config.startingFee);
 
     // schedule waiting for the transaction to be included
-    const waitingPromise = new TrackedPromise(async () => {
+    const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
+      let sentTx;
       try {
-        const { transaction: sentTx } = await sendingPromise;
+        const { transaction } = await sendingPromise;
+        sentTx = transaction;
+      } catch (error) {
+        return mkState(undefined);
+      }
+      try {
         if (statusIsRejectedTransaction(sentTx)) return mkState(sentTx);
         if (config?.printTx) {
           console.log(`${tx.getId()} - Awaiting inclusion ...`);
@@ -132,6 +137,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           TxLifecycleStatus.AWAITING_INCLUSION
         );
         const awaitedTx = await sentTx.safeWait();
+        const resolutionBlockHeight = config.mina.getNetworkState().blockchainLength;
         if (awaitedTx.status === 'included') {
           tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
           // make sure that the local state matches the state after tx
@@ -155,7 +161,7 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
             );
           }
         }
-        return mkState(awaitedTx);
+        return mkState(awaitedTx, resolutionBlockHeight.toBigint());
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           const status = error as TransactionStatus;

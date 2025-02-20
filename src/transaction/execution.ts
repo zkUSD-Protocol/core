@@ -7,15 +7,15 @@ import {
   Transaction,
   PendingTransaction,
   RejectedTransaction,
-  Field,
   Cache,
 } from 'o1js';
 
 import {
-  VaultTransactionType,
+  ZkusdEngineTransactionType,
   CreateVaultArgs,
   PriceProofArgs,
-  VaultTransactionArgs,
+  ZkusdEngineTransactionArgs,
+  TransactionArgs,
 } from '../system/transaction.js';
 
 import { MinaNetworkInterface } from '../mina/network-interface.js';
@@ -41,7 +41,6 @@ import {
   RejectedOnReceive,
   mkStatusFailedBeforeSending,
 } from './status.js';
-import { TransactionArgs } from '../system/transaction.js';
 
 export {
   CompilationConfig,
@@ -55,6 +54,14 @@ export {
   recreateTransaction,
   zkUsdTransaction,
   proveTransaction,
+};
+
+const DEBUG = !!process.env.DEBUG;
+
+const debugLog = (msg: string) => {
+  if (DEBUG) {
+    console.debug(msg);
+  }
 };
 
 type ZkUsdEngineType = ReturnType<typeof ZkUsdEngineContract>;
@@ -116,7 +123,9 @@ interface CompilationResults {
   FungibleToken: FungibleTokenType;
   engineInstance: InstanceType<ZkUsdEngineType>;
   tokenInstance: InstanceType<FungibleTokenType>;
-  transactionConfigs: { [K in VaultTransactionType]: TransactionConfig<K> };
+  transactionConfigs: {
+    [K in ZkusdEngineTransactionType]: TransactionConfig<K>;
+  };
 }
 
 /**
@@ -196,48 +205,16 @@ async function getMinaPriceInputFromJsonProof(
   });
 }
 
-/**
- * Ensures all relevant accounts are fetched with their latest state.
- */
-async function fetchLatestAccounts(args: {
-  engineInstance: InstanceType<ZkUsdEngineType>;
-  engineKey: PublicKey;
-  sender: PublicKey;
-  vaultAddress: string;
-  fetchMinaAccount: (
-    publicKey: string | PublicKey,
-    options?: { tokenId?: Field; force?: boolean }
-  ) => Promise<any>;
-}): Promise<void> {
-  const { fetchMinaAccount, engineInstance, engineKey, sender, vaultAddress } =
-    args;
-
-  await fetchMinaAccount(engineKey, { force: true });
-  await fetchMinaAccount(sender, { force: true });
-  await fetchMinaAccount(PublicKey.fromBase58(vaultAddress), {
-    force: true,
-    tokenId: engineInstance.deriveTokenId(),
-  });
-}
-
-async function recreateTransaction<T extends VaultTransactionType>(args: {
+async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
   tx: string;
-  txArgs: VaultTransactionArgs[T];
+  txArgs: ZkusdEngineTransactionArgs[T];
   chain: MinaNetworkInterface;
   config: TransactionConfig<T>;
   oracleAggregationVk: VerificationKey;
   engineInstance: InstanceType<ZkUsdEngineType>;
   engineKey: PublicKey;
 }): Promise<Transaction<false, false>> {
-  const {
-    tx,
-    config,
-    oracleAggregationVk,
-    txArgs,
-    engineInstance,
-    engineKey,
-    chain,
-  } = args;
+  const { tx, config, oracleAggregationVk, txArgs, chain } = args;
 
   // Parse the transaction details
   const { serializedTx, signedData } = JSON.parse(tx);
@@ -256,14 +233,8 @@ async function recreateTransaction<T extends VaultTransactionType>(args: {
     );
   }
 
-  // Ensure the account states are up to date
-  await fetchLatestAccounts({
-    engineInstance: engineInstance,
-    engineKey: engineKey,
-    sender,
-    vaultAddress: (txArgs as CreateVaultArgs).vaultAddress,
-    fetchMinaAccount: chain.fetchMinaAccount,
-  });
+  // fetch all the required accounts
+  chain.forceFetchAllTxPartiesJson(signedData);
 
   // Build the transaction
   const txNew = await chain.transaction(
@@ -391,7 +362,7 @@ async function executeTransaction(
   transaction: string,
   executionTracker?: Partial<TxLifecycleTracker>
 ): Promise<ExecutedTx> {
-  console.log('Executing transaction');
+  debugLog('Executing transaction');
 
   // Identify the transaction config
   const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
@@ -462,7 +433,7 @@ async function proveTransaction(
   transaction: string,
   executionTracker: TxProvingTracker
 ): Promise<void> {
-  console.log('Executing transaction');
+  debugLog('Executing transaction');
 
   // Identify the transaction config
   const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
@@ -529,47 +500,47 @@ async function proveTransaction(
 }
 
 export function buildArgs(
-  task: VaultTransactionType,
+  task: ZkusdEngineTransactionType,
   argsJson: string
 ): TransactionArgs {
   // Parse the JSON into a plain object.
   const parsed = JSON.parse(argsJson);
 
   switch (task) {
-    case VaultTransactionType.CREATE_VAULT:
+    case ZkusdEngineTransactionType.CREATE_VAULT:
       return {
-        transactionType: VaultTransactionType.CREATE_VAULT,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.CREATE_VAULT],
+        transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.CREATE_VAULT],
       };
 
-    case VaultTransactionType.DEPOSIT_COLLATERAL:
+    case ZkusdEngineTransactionType.DEPOSIT_COLLATERAL:
       return {
-        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.DEPOSIT_COLLATERAL],
+        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.DEPOSIT_COLLATERAL],
       };
 
-    case VaultTransactionType.REDEEM_COLLATERAL:
+    case ZkusdEngineTransactionType.REDEEM_COLLATERAL:
       return {
-        transactionType: VaultTransactionType.REDEEM_COLLATERAL,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.REDEEM_COLLATERAL],
+        transactionType: ZkusdEngineTransactionType.REDEEM_COLLATERAL,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.REDEEM_COLLATERAL],
       };
 
-    case VaultTransactionType.MINT_ZKUSD:
+    case ZkusdEngineTransactionType.MINT_ZKUSD:
       return {
-        transactionType: VaultTransactionType.MINT_ZKUSD,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.MINT_ZKUSD],
+        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.MINT_ZKUSD],
       };
 
-    case VaultTransactionType.BURN_ZKUSD:
+    case ZkusdEngineTransactionType.BURN_ZKUSD:
       return {
-        transactionType: VaultTransactionType.BURN_ZKUSD,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.BURN_ZKUSD],
+        transactionType: ZkusdEngineTransactionType.BURN_ZKUSD,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.BURN_ZKUSD],
       };
 
-    case VaultTransactionType.LIQUIDATE:
+    case ZkusdEngineTransactionType.LIQUIDATE:
       return {
-        transactionType: VaultTransactionType.LIQUIDATE,
-        args: parsed as VaultTransactionArgs[VaultTransactionType.LIQUIDATE],
+        transactionType: ZkusdEngineTransactionType.LIQUIDATE,
+        args: parsed as ZkusdEngineTransactionArgs[ZkusdEngineTransactionType.LIQUIDATE],
       };
 
     default:
@@ -577,14 +548,14 @@ export function buildArgs(
   }
 }
 
-export type MinaPriceInputArgs<T> = T extends VaultTransactionType
+export type MinaPriceInputArgs<T> = T extends ZkusdEngineTransactionType
   ? MinaPriceInput
   : undefined;
 
-const zkUsdTransaction = async <T extends VaultTransactionType>(args: {
+const zkUsdTransaction = async <T extends ZkusdEngineTransactionType>(args: {
   kind: T;
   sender: PublicKey;
-  txArgs: VaultTransactionArgs[T];
+  txArgs: ZkusdEngineTransactionArgs[T];
   engine: InstanceType<ZkUsdEngineType>;
   accountsUpToDate: boolean; // just to inform the function user
   minaPriceInput: MinaPriceInput | undefined;

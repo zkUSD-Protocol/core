@@ -1,26 +1,28 @@
 import { TestAmounts, TestHelper } from '../../test-helper.js';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { PrivateKey } from 'o1js';
+import { Bool, Keypair, PrivateKey, PublicKey } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { IMinaNetworkInterface } from '../../../mina/network-interface.js';
 import { ITransactionExecutor } from '../../../transaction/executor.js';
 import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
 import { ExternalTransactionExecutor } from '../../../transaction/external-executor.js';
-import { VaultTransactionType } from '../../../system/transaction.js';
-// import { HttpClientProver } from '../../../provers/httpclientprover.js';
+import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
+import { HttpClientProver } from '../../../provers/httpclientprover.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
+import { ProtocolData } from '../../../system/engine.js';
 
 const printTx = !!process.env.DEBUG;
 
-describe('zkUSD Integration - Functional - Happy Path Test Suite (using external workers)', () => {
+describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', () => {
   let th: TestHelper<'local' | 'external'>;
   let mike: {
     mintedHandle: TransactionHandle;
     keys: KeyPair;
     vault: KeyPair;
   };
+  let resumed: TransactionHandle | undefined;
   let stop: () => void;
 
   let newman: KeyPair;
@@ -38,7 +40,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer(
         { prover: new HttpServerProver() },
-        // { prover: new HttpClientProver('http://localhost:3969') },
+        // { prover: new HttpClientProver('http://35.187.167.84:3969') },
         stopExecutor
       ),
       default: 'external', // use workers by default
@@ -51,6 +53,29 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     stop();
   });
 
+  const ensureProtocolResume = async () => {
+    const protocolDataPacked =
+      await th.engine.contract.protocolDataPacked.fetch();
+
+    const protocolData = ProtocolData.unpack(protocolDataPacked!);
+
+    const emergencyStopFlag = protocolData.emergencyStop;
+
+    if (emergencyStopFlag.toBoolean()) {
+      resumed = await th.tx(
+        th.deployer,
+        async () => {
+          await th.engine.contract.toggleEmergencyStop(Bool(false));
+        },
+        {
+          executor: 'local', // use local executor for tx not supported by workers
+          name: 'Resuming the protocol',
+          extraSigners: [th.networkKeys.protocolAdmin.privateKey],
+        }
+      );
+    }
+  };
+
   const makeMike = async () => {
     const mike = await th.mina.newAccount();
     const mikeVault = PrivateKey.randomKeypair();
@@ -59,7 +84,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     const mcv = await th.engineTx(
       mike,
       {
-        transactionType: VaultTransactionType.CREATE_VAULT,
+        transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
         args: {
           transactionId: `Mike creates a vault`,
           newAccounts: 2,
@@ -73,7 +98,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     const mdc = await th.engineTx(
       mike,
       {
-        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
+        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
         args: {
           transactionId: `Mike deposits collateral`,
           vaultAddress: mikeVault.publicKey.toBase58(),
@@ -90,7 +115,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     const mmz = await th.engineTx(
       mike,
       {
-        transactionType: VaultTransactionType.MINT_ZKUSD,
+        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
         args: {
           transactionId: `Mike mints zkusd`,
           vaultAddress: mikeVault.publicKey.toBase58(),
@@ -98,7 +123,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
           minaPriceProof,
         },
       },
-      { printTx, waitForIncluded: [mdc] }
+      { printTx, waitForIncluded: resumed ? [mdc, resumed] : [mdc] }
     );
     console.log('mike:');
     console.log(mike);
@@ -123,6 +148,23 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     assert.notStrictEqual(engineTokenAccount, undefined);
   });
 
+  it('should ensure protocol resumed without waiting', async () => {
+    await ensureProtocolResume();
+  });
+
+  it('should start protocol updates testing without waiting', async () => {
+    const current = th.engine.contract.getAdmin();
+    const old = th.networkKeys.protocolAdmin;
+
+    assert.ok(old.publicKey.equals(current), 'unknown current admin!');
+
+    // extraSigners: [th.networkKeys.protocolAdmin.privateKey],
+
+    // const newAdminTxHandle = th.engineTx(sender, args)
+
+    await ensureProtocolResume();
+  });
+
   it('should schedule making mike transactioncs without waiting', async () => {
     mike = await makeMike();
     assert(mike.mintedHandle, 'Mike minted handle should be defined');
@@ -137,7 +179,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     await th.includeEngineTx(
       newman,
       {
-        transactionType: VaultTransactionType.CREATE_VAULT,
+        transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
         args: {
           transactionId: `Newman creates a vault`,
           newAccounts: 2,
@@ -160,7 +202,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     await th.includeEngineTx(
       newman,
       {
-        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
+        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
         args: {
           transactionId: `Newman deposits collateral`,
           vaultAddress: newmanVault.publicKey.toBase58(),
@@ -188,7 +230,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     await th.includeEngineTx(
       newman,
       {
-        transactionType: VaultTransactionType.MINT_ZKUSD,
+        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
         args: {
           transactionId: `Newman mints zkusd`,
           vaultAddress: newmanVault.publicKey.toBase58(),
@@ -196,7 +238,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
           minaPriceProof,
         },
       },
-      { printTx }
+      { printTx, waitForIncluded: resumed ? [resumed] : [] }
     );
 
     const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
@@ -227,7 +269,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     await th.includeEngineTx(
       newman,
       {
-        transactionType: VaultTransactionType.BURN_ZKUSD,
+        transactionType: ZkusdEngineTransactionType.BURN_ZKUSD,
         args: {
           transactionId: `Newman burns zkusd`,
           vaultAddress: newmanVault.publicKey.toBase58(),
@@ -291,7 +333,7 @@ describe('zkUSD Integration - Functional - Happy Path Test Suite (using external
     await th.includeEngineTx(
       mike.keys,
       {
-        transactionType: VaultTransactionType.LIQUIDATE,
+        transactionType: ZkusdEngineTransactionType.LIQUIDATE,
         args: {
           transactionId: `Mike is liquidated by newman`,
           vaultAddress: mike.vault.publicKey.toBase58(),

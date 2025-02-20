@@ -50,7 +50,7 @@ import {
   ITransactionExecutor,
   TransactionArgs,
 } from '../transaction/executor.js';
-import { VaultTransactionType } from '../system/transaction.js';
+import { ZkusdEngineTransactionType } from '../system/transaction.js';
 import { ProtocolData } from '../system/engine.js';
 import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
@@ -496,6 +496,7 @@ export class TestHelper<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E;
     }
   ) {
     let minaPriceInput: MinaPriceInput | undefined;
@@ -510,19 +511,13 @@ export class TestHelper<E extends string> {
 
     let refreshAccounts: Account[] = [
       { publicKey: this.engine.contract.address }, // engine
-      // sender
-      { publicKey: senderKey },
-      // vault
-      {
+      { publicKey: senderKey }, // sender
+      ('vaultAddress' in args.args && { // vault (only included if vaultAddress exists)
         publicKey: PublicKey.fromBase58(args.args.vaultAddress),
         tokenId: this.engine.contract.deriveTokenId(),
-      },
-      // sender zkusd
-      {
-        publicKey: senderKey,
-        tokenId: this.engine.contract.deriveTokenId(),
-      },
-    ];
+      }) as Account,
+      { publicKey: senderKey, tokenId: this.engine.contract.deriveTokenId() }, // sender zkusd
+    ].filter(Boolean); // Removes `undefined` entries
 
     return this.txMgr.engineTx(
       sender,
@@ -539,10 +534,12 @@ export class TestHelper<E extends string> {
     options?: TransactionOptions & {
       name?: string;
       waitForIncluded?: (string | TransactionHandle)[];
+      executor?: E;
     }
   ) {
     const h = await this.engineTx(sender, args, options);
-    return await h.awaitIncluded();
+    await h.awaitIncluded();
+    return h;
   }
 
   async depositAgentCollateral(amount: UInt64, ...names: string[]) {
@@ -561,7 +558,7 @@ export class TestHelper<E extends string> {
       }
 
       const tx = await this.engineTx(agent.keys, {
-        transactionType: VaultTransactionType.DEPOSIT_COLLATERAL,
+        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
         args: {
           transactionId: `Depositing ${amount} collateral for ${name}`,
           vaultAddress: agent.vault!.publicKey.toBase58(),
@@ -594,7 +591,7 @@ export class TestHelper<E extends string> {
       const tx = await this.engineTx(
         agent.keys,
         {
-          transactionType: VaultTransactionType.MINT_ZKUSD,
+          transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
           args: {
             transactionId: `Minting ${amount} zkUSD for ${name}`,
             vaultAddress: agent.vault!.publicKey.toBase58(),
@@ -647,7 +644,7 @@ export class TestHelper<E extends string> {
       const tx = await this.engineTx(
         agent.keys,
         {
-          transactionType: VaultTransactionType.CREATE_VAULT,
+          transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
           args: {
             transactionId: `Create Vault for ${name}`,
             vaultAddress: vaultKeyPair.publicKey.toBase58(),

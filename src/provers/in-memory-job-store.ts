@@ -23,15 +23,15 @@ interface InMemoryStoreEntry<J> {
 export class InMemoryJobStore<J extends AnyJob> implements JobStore<J> {
   private jobs: Map<string, InMemoryStoreEntry<J>> = new Map();
   private mutex = new Mutex();
-  private readonly defaultTimeoutMs: number;
+  private readonly defaultTimeoutSec: number;
 
   /**
    * Creates an `InMemoryJobStore` instance.
    *
-   * @param defaultTimeoutMs - Default job timeout in milliseconds.
+   * @param defaultTimeoutSec - Default job timeout in seconds.
    */
-  constructor(defaultTimeoutMs: number) {
-    this.defaultTimeoutMs = defaultTimeoutMs;
+  constructor(defaultTimeoutSec: number) {
+    this.defaultTimeoutSec = defaultTimeoutSec;
   }
 
   /**
@@ -66,7 +66,7 @@ export class InMemoryJobStore<J extends AnyJob> implements JobStore<J> {
       for (const entry of this.jobs.values()) {
         if (entry.completed) continue;
 
-        const timeout = entry.job.assignmentTimeoutMs ?? this.defaultTimeoutMs;
+        const timeout = 1000 * (entry.job.assignmentTimeoutSec ?? this.defaultTimeoutSec);
 
         if (
           entry.assigned &&
@@ -74,6 +74,7 @@ export class InMemoryJobStore<J extends AnyJob> implements JobStore<J> {
           now - entry.assignedAt > timeout
         ) {
           // Job timed out; reset its assignment status
+          console.log(`Job ${entry.job.id} timed out. Reassigning...`); // (optional
           entry.assigned = false;
           entry.assignedAt = undefined;
         }

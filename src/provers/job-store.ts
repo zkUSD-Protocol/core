@@ -3,7 +3,7 @@
  */
 export interface AnyJob {
   id: string;
-  assignmentTimeoutMs?: number;
+  assignmentTimeoutSec?: number;
 }
 
 /**

@@ -35,7 +35,7 @@ interface ITransactionStatusScanner {
   awaitTransactionStatus(
     transactionHash: string,
     timeoutMs: number
-  ): Promise<Inclusion>;
+  ): Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }>;
 
   /**
    * Starts scanning the blockchain for new transactions.
@@ -90,7 +90,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
   private _mina: IMinaNetworkInterface;
   private _config: TransactionStatusScannerConfig | undefined;
   private _cache: Map<bigint, Map<string, Inclusion>> = new Map();
-  private _resolvers: Map<string, (status: Inclusion) => void> = new Map();
+  private _resolvers: Map<string, (args: { resolution: Inclusion, resolutionBlockHeight: bigint }) => void> = new Map();
   private _isScanning = false;
 
   private get config(): TransactionStatusScannerConfig {
@@ -140,7 +140,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
   public async awaitTransactionStatus(
     transactionHash: string,
     timeout: number
-  ): Promise<Inclusion> {
+  ): Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }> {
     logDebug(`Awaiting transaction ${transactionHash}, timeout: ${timeout}ms`);
 
     for (const [blockNum, txMap] of this._cache.entries()) {
@@ -149,11 +149,11 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         logDebug(
           `Transaction ${transactionHash} found in cache at block ${blockNum}`
         );
-        return cachedStatus;
+        return { resolutionBlockHeight: BigInt(blockNum), resolution: cachedStatus };
       }
     }
 
-    return new Promise<Inclusion>((resolve, reject) => {
+    return new Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }>((resolve, reject) => {
       const timeoutHandle = setTimeout(() => {
         this._resolvers.delete(transactionHash);
         reject(
@@ -163,10 +163,10 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         );
       }, timeout);
 
-      this._resolvers.set(transactionHash, (status) => {
+      this._resolvers.set(transactionHash, ({resolutionBlockHeight,  resolution}) => {
         clearTimeout(timeoutHandle);
         this._resolvers.delete(transactionHash);
-        resolve(status);
+        resolve({ resolutionBlockHeight, resolution });
       });
     });
   }
@@ -287,7 +287,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
       for (const [txHash, status] of txMap.entries()) {
         const resolver = this._resolvers.get(txHash);
         if (resolver) {
-          resolver(status);
+          resolver({resolution: status, resolutionBlockHeight: blockIndex});
           this._resolvers.delete(txHash);
         }
       }
