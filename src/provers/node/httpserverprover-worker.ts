@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { getNetworkKeys } from '../../config/keys.js';
+import { getContractKeys } from '../../config/keys.js';
 import { compileContracts } from '../../transaction/execution.js';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import { HttpServerProverWorkerConfig, startProvingLoop } from '../httpserverprover-worker-shared.js';
@@ -72,10 +72,10 @@ async function main(epmBaseUrl: string, chain: blockchain) {
   const chainInterface = await MinaNetworkInterface.initChain(chain);
 
   console.log('Compiling contracts for the transaction execution worker');
-  const keys = getNetworkKeys(chain);
+  const keys = getContractKeys(chain);
   const compilationResults = await compileContracts({
-    tokenPublicKey: keys.token.publicKey,
-    enginePublicKey: keys.engine.publicKey,
+    tokenPublicKey: keys.token,
+    enginePublicKey: keys.engine,
   });
 
   console.log(
@@ -88,7 +88,6 @@ async function main(epmBaseUrl: string, chain: blockchain) {
     epmBaseUrl,
     chainInterface,
     compilationResults,
-    keys,
     statusPostingIntervalMs: 2000,
   };
 

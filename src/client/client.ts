@@ -13,7 +13,9 @@ import { FungibleTokenContract } from '@minatokens/token';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine';
 import { verificationKeys } from '../config/verification-keys';
 import {
-  TransactionArgs, ZkusdEngineTransactionArgs, ZkusdEngineTransactionType,
+  TransactionArgs,
+  ZkusdEngineTransactionType,
+  ZkusdEngineTransactionArgs,
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
 

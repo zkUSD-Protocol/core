@@ -49,9 +49,6 @@ export {
   TxProvingTracker,
   compileContracts,
   compilationConfigIsEqual,
-  executeTransaction,
-  proveAndSendTx,
-  recreateTransaction,
   zkUsdTransaction,
   proveTransaction,
 };
@@ -73,24 +70,11 @@ type TxProvingTracker = {
     rejector: (error: { status: FailedBeforeSending }) => void;
   };
 };
-type TxLifecycleTracker = {
-  proving: {
-    resolver: (proofs: (string | null)[]) => void;
-    rejector: (error: { status: FailedBeforeSending }) => void;
-  };
-  sending: {
-    resolver: (result: { hash: string; status: 'Pending' }) => void;
-    rejector: (error: {
-      status: RejectedOnReceive | FailedBeforeSending;
-    }) => void;
-  };
-};
 
 interface ExecutorContext {
   workerId: string;
   chain: MinaNetworkInterface;
   args: TransactionArgs;
-  keys: NetworkKeyPairs;
   compilationResults: CompilationResults;
 }
 
@@ -212,7 +196,6 @@ async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
   config: TransactionConfig<T>;
   oracleAggregationVk: VerificationKey;
   engineInstance: InstanceType<ZkUsdEngineType>;
-  engineKey: PublicKey;
 }): Promise<Transaction<false, false>> {
   const { tx, config, oracleAggregationVk, txArgs, chain } = args;
 
@@ -274,159 +257,6 @@ type ExecutedTx_ =
 
 export type ExecutedTx = ExecutedTx_ & { txId: string };
 
-async function proveAndSendTx(
-  txId: string,
-  workerId: string,
-  tx: Transaction<false, false>,
-  executionTracker?: Partial<TxLifecycleTracker>
-): Promise<ExecutedTx> {
-  let provenTx;
-  try {
-    console.log(`${txId} - Proving ...`);
-    console.time(`${txId} - Proved.`);
-    provenTx = await tx.prove();
-    console.timeEnd(`${txId} - Proved.`);
-  } catch (err: unknown) {
-    executionTracker?.proving?.rejector({
-      status: mkStatusFailedBeforeSending(
-        txId,
-        `{proving the tx by worker: ${workerId}}`,
-        err
-      ),
-    });
-    return {
-      txId,
-      unprovenTx: tx,
-      txStatus: mkStatusFailedBeforeSending(
-        txId,
-        `{proving the tx by worker: ${workerId}}`,
-        err
-      ),
-    };
-  }
-  // proving was successful
-  executionTracker?.proving?.resolver(
-    provenTx.proofs.map((p) => (p ? JSON.stringify(p.toJSON()) : null))
-  );
-
-  let sentTx;
-  try {
-    console.log(`${txId} - Sending ...`);
-    sentTx = await tx.safeSend();
-    // unlock the nonce after sending
-    switch (sentTx.status) {
-      case 'pending': {
-        let txStatus: 'Pending' = 'Pending';
-        // sending was successful
-        console.log(`${txId} - Sending successful. Tx is pending inclusion`);
-        executionTracker?.sending?.resolver({
-          hash: sentTx.hash,
-          status: 'Pending',
-        });
-        return { txId, pendingTx: sentTx, txStatus };
-      }
-      case 'rejected': {
-        console.log(`${txId} - Sending not successful. ${sentTx.errors}`);
-        let txStatus: RejectedOnReceive = {
-          kind: 'RejectedOnReceive',
-          errors: ['error when the tx has been sent', ...sentTx.errors],
-        };
-        // inclusion rejected
-        executionTracker?.sending?.rejector({ status: txStatus });
-        return { txId, rejectedTx: sentTx as RejectedTransaction, txStatus };
-      }
-    }
-  } catch (err) {
-    // other sending error
-    executionTracker?.sending?.rejector({
-      status: mkStatusFailedBeforeSending(
-        txId,
-        `{sending the tx by worker: ${workerId}}`,
-        err
-      ),
-    });
-    return {
-      txId,
-      provenTx,
-      txStatus: mkStatusFailedBeforeSending(
-        txId,
-        `{sending the tx by worker: ${workerId}}`,
-        err
-      ),
-    };
-  }
-}
-
-async function executeTransaction(
-  context: ExecutorContext,
-  transaction: string,
-  executionTracker?: Partial<TxLifecycleTracker>
-): Promise<ExecutedTx> {
-  debugLog('Executing transaction');
-
-  // Identify the transaction config
-  const task = context.args.transactionType; // e.g. 'CREATE_VAULT', 'DEPOSIT', etc.
-  if (!context.compilationResults.transactionConfigs) {
-    // if proving rejector is defined then reject
-    executionTracker?.proving?.rejector({
-      status: mkStatusFailedBeforeSending(
-        'unknown',
-        'proving',
-        `Worker ${context.workerId} - transactionConfigs not initialized`
-      ),
-    });
-    throw new Error('transactionConfigs not initialized');
-  }
-
-  const config = context.compilationResults.transactionConfigs[
-    task
-  ] as TransactionConfig<typeof task>;
-  if (!config) {
-    executionTracker?.proving?.rejector({
-      status: mkStatusFailedBeforeSending(
-        'unknown',
-        'proving',
-        `Worker ${context.workerId} - invalid  task parameter`
-      ),
-    });
-    throw new Error(`Unknown task: ${task}`);
-  }
-
-  // Parse arguments from context.args
-  const vaultArgs = context.args.args;
-
-  // Recreate the transaction
-  let tx;
-  try {
-    tx = await recreateTransaction({
-      tx: transaction,
-      txArgs: vaultArgs,
-      chain: context.chain,
-      config: config,
-      oracleAggregationVk: context.compilationResults.oracleAggregationVk,
-      engineInstance: context.compilationResults.engineInstance,
-      engineKey: context.keys.engine.publicKey,
-    });
-  } catch (err) {
-    // if proving rejector is defined then reject
-    executionTracker?.proving?.rejector({
-      status: mkStatusFailedBeforeSending(
-        'unknown',
-        'proving',
-        `Worker ${context.workerId} - error recreating transaction: ${err}`
-      ),
-    });
-    throw new Error(`Error recreating transaction: ${err}`);
-  }
-
-  // prove and send
-  return proveAndSendTx(
-    vaultArgs.transactionId,
-    context.workerId,
-    tx,
-    executionTracker
-  );
-}
 
 async function proveTransaction(
   context: ExecutorContext,
@@ -476,7 +306,6 @@ async function proveTransaction(
       config: config,
       oracleAggregationVk: context.compilationResults.oracleAggregationVk,
       engineInstance: context.compilationResults.engineInstance,
-      engineKey: context.keys.engine.publicKey,
     });
   } catch (err) {
     // if proving rejector is defined then reject

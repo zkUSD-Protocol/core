@@ -43,7 +43,6 @@ self.addEventListener('message', async (event) => {
       epmBaseUrl,
       chainInterface,
       compilationResults,
-      keys,
       statusPostingIntervalMs: 2000
     };
 

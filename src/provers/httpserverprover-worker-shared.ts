@@ -20,7 +20,6 @@ export interface HttpServerProverWorkerConfig {
   chainInterface: MinaNetworkInterface;
   compilationResults: Awaited<ReturnType<typeof compileContracts>>;
   statusPostingIntervalMs: number;
-  keys: any; // Replace 'any' with the actual type from getNetworkKeys
 }
 
 const DEBUG = !!process.env.DEBUG;
@@ -51,7 +50,7 @@ const CurrentJob = {
  * This is the same logic for both Node and Web.
  */
 export async function startProvingLoop(mutex: Mutex, config: HttpServerProverWorkerConfig) {
-  const { workerId, epmBaseUrl, chainInterface, compilationResults, keys } =
+  const { workerId, epmBaseUrl, chainInterface, compilationResults } =
     config;
 
   await mutex.runExclusive(async () => {
@@ -72,7 +71,6 @@ export async function startProvingLoop(mutex: Mutex, config: HttpServerProverWor
           workerId,
           chain: chainInterface,
           args: job.payload,
-          keys,
           compilationResults,
         };
 
