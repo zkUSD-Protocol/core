@@ -66,7 +66,6 @@ const mkWorkerId = () => {
 function mkHandleRequest(
   chainInterface: MinaNetworkInterface,
   compiledContracts: CompilationResults,
-  keys: ReturnType<typeof getNetworkKeys>
 ) {
   const workerId = mkWorkerId();
   const mutex = new Mutex();
@@ -106,7 +105,6 @@ function mkHandleRequest(
           workerId,
           chain: chainInterface,
           args: payload,
-          keys,
           compilationResults: compiledContracts,
         };
 
@@ -148,8 +146,7 @@ const __filename = fileURLToPath(import.meta.url);
 export const server = (
   chainInterface: MinaNetworkInterface,
   compiledContracts: CompilationResults,
-  keys: ReturnType<typeof getNetworkKeys>
-) => createServer(mkHandleRequest(chainInterface, compiledContracts, keys));
+) => createServer(mkHandleRequest(chainInterface, compiledContracts));
 
 // Ensure top-level await is wrapped in an async function to ensure ES2021 module compat
 if (process.argv[1] === __filename) {
@@ -173,7 +170,7 @@ if (process.argv[1] === __filename) {
       enginePublicKey: keys.engine.publicKey,
     });
 
-    server(chainInterface, compilationResults, keys).listen(PORT, () => {
+    server(chainInterface, compilationResults).listen(PORT, () => {
       console.log(`Server listening on port ${PORT}`);
     });
   })();
