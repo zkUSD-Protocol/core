@@ -39,9 +39,9 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
     > = {
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver() },
-        // { prover: new HttpClientProver('http://35.187.167.84:3969') },
-        stopExecutor
+        { prover: new HttpServerProver() ,
+        // { prover: new HttpClientProver('http://35.187.167.84:3969') ,
+        stop: stopExecutor}
       ),
       default: 'external', // use workers by default
     };

@@ -9,6 +9,7 @@ import { FailedBeforeSending } from '../transaction/status.js';
 import { Mutex } from '../utils/mutex.js';
 import {
   TransactionProvingJob,
+  TransactionProvingWorkerStatus,
   TxProvingOutput,
 } from './itransactionprover.js';
 
@@ -18,6 +19,7 @@ export interface HttpServerProverWorkerConfig {
   epmBaseUrl: string;
   chainInterface: MinaNetworkInterface;
   compilationResults: Awaited<ReturnType<typeof compileContracts>>;
+  statusPostingIntervalMs: number;
   keys: any; // Replace 'any' with the actual type from getNetworkKeys
 }
 
@@ -28,6 +30,21 @@ const debugLog = (msg: string) => {
     console.debug(msg);
   }
 };
+
+const jobAssignmentMutex = new Mutex();
+
+const CurrentJob = {
+  _job: null as TransactionProvingJob | null,
+  set: (job: TransactionProvingJob) => {
+    CurrentJob._job = job;
+  },
+  unset: () => {
+    CurrentJob._job = null;
+  },
+  get: () => CurrentJob._job,
+}
+
+
 
 /**
  * Main loop to poll for new jobs and prove transactions.
@@ -47,7 +64,7 @@ export async function startProvingLoop(mutex: Mutex, config: HttpServerProverWor
           await sleep(2000);
           continue;
         }
-
+        CurrentJob.set(job);
         console.log(`Worker ${workerId} got job: ${job.id}`);
 
         // Build context for proving
@@ -70,12 +87,41 @@ export async function startProvingLoop(mutex: Mutex, config: HttpServerProverWor
           executionTracker
         );
       } catch (err) {
+        CurrentJob.unset()
         console.error('Error in proving loop:', err);
         await sleep(2000);
       }
     }
   });
 }
+
+export async function startStatusPostingLoop(config: HttpServerProverWorkerConfig) {
+  const { workerId, epmBaseUrl, statusPostingIntervalMs:interval } = config;
+
+  while (true) {
+    try {
+      await sleep(interval);
+      await postProvingStatus(epmBaseUrl, workerId);
+    } catch (err) {
+      console.error('Error in status posting loop:', err);
+    }
+  }
+
+}
+
+async function postProvingStatus(epmBaseUrl: string, workerId: string) {
+  try {
+    const jobId = CurrentJob.get()?.id;
+
+    const status: TransactionProvingWorkerStatus = jobId ? { provingJob: jobId, proving: 'true' as const } : { proving: 'false' as const };
+
+    await postBackResults(epmBaseUrl, `/workers/${workerId}/heartbeat`, { status });
+  } catch (e) {
+    console.error('Error posting proving status:', e);
+  }
+}
+
+
 
 /**
  * Creates a TxProvingTracker to POST results back to the manager.
@@ -92,6 +138,7 @@ function mkExecutionTracker(
           serializedProvenTransaction: serializedTx,
         };
         await postBackResults(epmBaseUrl, `/jobs/${jobId}/proved`, res);
+        CurrentJob.unset();
       },
       rejector: async (error: { status: FailedBeforeSending }) => {
         const res: TxProvingOutput = {
@@ -99,6 +146,7 @@ function mkExecutionTracker(
           errors: error.status.errors,
         };
         await postBackResults(epmBaseUrl, `/jobs/${jobId}/proved`, res);
+        CurrentJob.unset();
       },
     },
   };

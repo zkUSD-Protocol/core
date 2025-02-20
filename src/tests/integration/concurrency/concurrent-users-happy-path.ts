@@ -62,8 +62,8 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
     > = {
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver({ jobTimeoutSec: 2 * 60 }) },
-        stopExecutor
+        { prover: new HttpServerProver({ jobTimeoutSec: 2 * 60 })
+        ,stop: stopExecutor}
       ),
       default: 'external', // use workers by default
     };

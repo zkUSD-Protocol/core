@@ -51,6 +51,7 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
   let globalHandles: TransactionHandle[] = [];
 
   let stop: () => void;
+  let forcedStopTimeoutMs = 2000;
 
   before(async () => {
     const stopExecutor = new Promise<void>((resolve) => {
@@ -63,14 +64,15 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     > = {
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver({ jobTimeoutSec: 2 * 60 }) },
-        stopExecutor
+        { prover: new HttpServerProver({ jobTimeoutSec: 2 * 60 })
+        , stop: stopExecutor, forcedStopTimeoutMs}
       ),
       default: 'external', // use workers by default
     };
 
     th = await TestHelper.initLightnetChain({ txExecutorInitializers });
     th._txMgr.transactionOptions.statusChangeWaitingTimeoutMs = 20 * 60 * 1000; // 20 minutes
+    th._txMgr.transactionOptions.dependencyStatusPollTimeoutMs = 20 * 60 * 1000; // 20 minutes
 
     await th.deployTokenContracts();
     const engineTokenAccount = await th.mina.fetchMinaAccount(
@@ -310,7 +312,6 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     // set a time out of 5 minutes starting now
     const timeout = Date.now() + 5 * 60 * 1000;
     let done = 0;
-    let lastOutputLineCount = 0;
 
     while (Date.now() < timeout) {
       try {
@@ -325,33 +326,20 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
         // Transactions not yet final
         const notFinal = globalHandles.filter((handle) => !statusIsFinal(handle.txStatus));
 
-        // 1) Clear the previous output from last iteration
-        for (let i = 0; i < lastOutputLineCount; i++) {
-          process.stdout.write("\x1b[A\x1b[K"); // Move cursor up + clear line
-        }
-
-        // 2) Print new output and count lines as we go
-        let lineCount = 0;
-
         // A single line for the summary
         console.log(`Not yet final: ${notFinal.length}`);
-        lineCount++;
 
         // Print the first 5 in detail
-        notFinal.slice(0, 5).forEach((handle) => {
+        notFinal.slice(0, 5).forEach((handle, i) => {
           const jsonStatus = JSON.stringify(handle.txStatus, null, 2);
-          const lines = jsonStatus.split("\n").length;
-          // This console.log will occupy exactly `lines` lines on the screen
-          console.log(`${jsonStatus} - ${handle.txId}`);
-          lineCount += lines;
+          console.log(`${i}. - ${jsonStatus} - ${handle.txId}`);
         });
 
         // for every transaction that is awaiting other transactions print the dependent transactions
-        const awaitingOthers = notFinal.filter((handle) => statusIsOfKind(handle.txStatus, "AwaitingOtherTransactions"));
+        const awaitingOthers = notFinal.filter((handle) => statusIsOfKind(handle.txStatus, "AwaitingForOtherTx"));
         if(awaitingOthers.length > 0) {
           console.log(`Transactions awaiting other transactions: ${awaitingOthers.length}`);
         }
-        lineCount += 1;
         awaitingOthers.forEach((handle) => {
           assert.ok(statusIsOfKind(handle.txStatus, "AwaitingOtherTransactions"));
           const dependent: string[] = (handle.txStatus as AwaitingForOtherTx).txs
@@ -360,21 +348,12 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
           // now print
           dependentHandles.forEach((handle: TransactionHandle) => {
             const jsonStatus = JSON.stringify(handle.txStatus, null, 2);
-            const lines = jsonStatus.split("\n").length;
-            // This console.log will occupy exactly `lines` lines on the screen
             console.log(`${jsonStatus} - ${handle.txId}`);
-            lineCount += lines;
           });
 
           const jsonStatus = JSON.stringify(handle.txStatus, null, 2);
-          const lines = jsonStatus.split("\n").length;
-          // This console.log will occupy exactly `lines` lines on the screen
           console.log(`${jsonStatus} - ${handle.txId}`);
-          lineCount += lines;
         });
-
-        // Remember how many lines we just printed
-        lastOutputLineCount = lineCount;
       }
     }
 

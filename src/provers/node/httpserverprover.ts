@@ -2,11 +2,14 @@ import express, { Request, Response } from 'express';
 import { Mutex } from '../../utils/mutex.js';
 import {
   ITransactionProver,
+  TransactionProvingWorkerStatus,
   TxProvingInput,
   TxProvingOutput,
 } from '../itransactionprover.js';
 import { JobStore } from '../job-store.js';
 import { InMemoryJobStore } from '../in-memory-job-store.js';
+import { Server } from 'http';
+import net from 'net';
 
 export type TransactionExecutionJob = {
   id: string;
@@ -71,7 +74,7 @@ export class HttpServerProver implements ITransactionProver {
   private mutex = new Mutex(); // no concurrent job-store access
   private isShuttingDown = false; // when shutting down we don't restart workers
   private app = express();
-  private server: any; // store the HTTP server instance
+  private server: Server; // store the HTTP server instance
   private jobTrackers: Map<string, TxProvingTracker> = new Map();
 
   // Default job timeout (8 minutes)
@@ -80,6 +83,8 @@ export class HttpServerProver implements ITransactionProver {
   private jobStore: JobStore<TransactionExecutionJob>;
   private port: number;
   private childWorkers: ChildProcessWorker[];
+
+  private connections: Set<net.Socket> = new Set();
 
   /**
    * @param options - Object containing initialization parameters.
@@ -164,13 +169,25 @@ export class HttpServerProver implements ITransactionProver {
           resolve();
         })
         .on('error', reject);
+
+
+      this.server.on('connection', (conn) => {
+        this.connections.add(conn);
+
+        // Remove the connection from the set when it closes
+        conn.on('close', () => {
+          this.connections.delete(conn);
+        });
+      });
+
     });
+
   }
 
   /**
    * Shuts down the EPM by stopping all workers and closing the HTTP server.
    */
-  public async shutdown(): Promise<void> {
+  public async shutdown(forceTimeout?: number): Promise<void> {
     console.log('Shutting down HttpServerProver...');
     this.isShuttingDown = true; // Prevent worker restarts
 
@@ -183,11 +200,30 @@ export class HttpServerProver implements ITransactionProver {
 
     // Close Express server
     if (this.server) {
+      // Start closing the server (stops accepting new connections)
+      this.server.close((err) => {
+        if (err) {
+          console.error('Error closing server:', err);
+        } else {
+          console.log('Server has been closed gracefully.');
+        }
+      });
+
+      if (forceTimeout) {
+        // After `forceTimeout` ms, forcibly destroy any remaining open connections.
+        setTimeout(() => {
+          this.connections.forEach((conn) => {
+            // This will terminate the socket immediately, 
+            // even if the request/response was in progress.
+            conn.destroy();
+          });
+          console.log('All remaining connections have been forced closed.');
+        }, forceTimeout);
+      }
       await new Promise((resolve) => this.server.close(resolve));
     }
     console.log('HttpServerProver shut down.');
   }
-
   /**
    * Spawns an array of external processes and tracks them.
    *
@@ -233,8 +269,22 @@ export class HttpServerProver implements ITransactionProver {
    *   1. GET `/jobs/next`  - Retrieve the next available job
    *   2. POST `/jobs/:id/proved` - Receive proving result
    *   3. POST `/jobs/:id/sent`   - Receive sending result
+   *   4. POST `/worker/:workerid/hearbeat` - Receive worker heartbeat
    */
   private setupRoutes(): void {
+
+    /**
+       4) POST /worker/:workerid/hearbeat
+        - Worker sends a heartbeat to the server
+      */
+    this.app.post('/worker/:workerid/heartbeat', async (req: Request, res: Response) => {
+      const workerId = req.params.workerid;
+      const status = req.body.status as TransactionProvingWorkerStatus;
+
+      console.log(`Received heartbeat from worker ${workerId}:`, status);
+      res.json({ status: 'ok' });
+    });
+
     /**
      * 1) GET /jobs/next
      *    - Returns 204 if no job available

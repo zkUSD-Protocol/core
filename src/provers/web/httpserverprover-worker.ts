@@ -44,6 +44,7 @@ self.addEventListener('message', async (event) => {
       chainInterface,
       compilationResults,
       keys,
+      statusPostingIntervalMs: 2000
     };
 
     // 3) Start the shared loop

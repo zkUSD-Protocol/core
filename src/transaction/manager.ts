@@ -46,7 +46,7 @@ export interface DefaultTransactionOptions {
   }) => Promise<UInt64>;
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
-  dependencyStatusPollTimeout: number;
+  dependencyStatusPollTimeoutMs: number;
   statusChangeWaitingIntervalMs: number,
   statusChangeWaitingTimeoutMs: number,
   inclusionAwaitingTimeoutMs: number;
@@ -71,7 +71,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 300000,
+  dependencyStatusPollTimeoutMs: 300000,
   statusChangeWaitingIntervalMs: 1000,
   statusChangeWaitingTimeoutMs: 300000,
   inclusionAwaitingTimeoutMs: 300000,
@@ -612,7 +612,7 @@ export class TransactionManager<E extends string> {
                 until: (status) =>
                   status === 'Included' || statusIsFailed(status),
                 statusPollInterval: options?.dependencyStatusPollInterval,
-                timeout: options?.dependencyStatusPollTimeout,
+                timeout: options?.dependencyStatusPollTimeoutMs,
               });
               if (depStatus !== 'Included') {
                 throw {

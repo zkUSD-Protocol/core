@@ -52,11 +52,10 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
    * as a setup step to Mina network instances.
    */
   public static initializer(
-    args: { prover: ITransactionProver },
-    stop?: Promise<void>
+    args: { prover: ITransactionProver, stop?: Promise<void>, forcedStopTimeoutMs?: number}
   ) {
     return (mina: IMinaNetworkInterface) =>
-      ExternalTransactionExecutor.start(mina, args, stop);
+      ExternalTransactionExecutor.start(mina, args, args.stop, args.forcedStopTimeoutMs);
   }
 
   /**
@@ -65,7 +64,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
   public static async start(
     mina: IMinaNetworkInterface,
     args: { prover: ITransactionProver },
-    stop?: Promise<void>
+    stop?: Promise<void>,
+    stopForceTimeoutMs?: number
   ): Promise<ExternalTransactionExecutor> {
     if (mina.network.chainId === 'local') {
       throw new Error(
@@ -83,7 +83,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     // If a stop signal is provided, stop this executor when resolved
     if (stop) {
       stop
-        .then(() => executor.stop())
+        .then(() => executor.stop(stopForceTimeoutMs))
         .catch((err) => {
           console.error(
             'Error while stopping ExternalTransactionExecutor:',
@@ -98,9 +98,9 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
   /**
    * Gracefully stop scanning and shut down the worker manager (if any).
    */
-  public async stop(): Promise<void> {
+  public async stop(forceTimeoutMs?:number): Promise<void> {
     await this.inclusionScanner.stopScanning();
-    await this.prover.shutdown();
+    await this.prover.shutdown(forceTimeoutMs);
   }
 
   /**

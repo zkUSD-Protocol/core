@@ -144,6 +144,7 @@ export function statusIsFailed(
     'FailedBeforeSending',
     'Cancelled',
     'DroppedFromMempool',
+    'StuckInMempool',
     'DependencyRejectedFailedOrDropped',
   ];
   return statusIsOfKind(status, ...failureStates);

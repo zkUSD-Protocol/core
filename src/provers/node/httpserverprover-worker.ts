@@ -1,17 +1,39 @@
+#!/usr/bin/env node
+
 import { getNetworkKeys } from '../../config/keys.js';
 import { compileContracts } from '../../transaction/execution.js';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
-import { startProvingLoop } from '../httpserverprover-worker-shared.js';
+import { HttpServerProverWorkerConfig, startProvingLoop } from '../httpserverprover-worker-shared.js';
 import os from 'os';
 import { blockchain } from '../../types/utility.js';
+
 import { Mutex } from '../../utils/mutex.js';
 
-const mutex = new Mutex();
+// 1. Catch unhandled Promise rejections at the process level.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+  // Here you can decide if you want to forcibly restart the loop,
+  // or just let the main() function handle it via its own try/catch.
+  // For example:
+  sleep(500);
 
-/**
- * This script is invoked via Node (e.g., `node node-executor.js <managerUrl> <blockchain>`).
- * We handle process.argv, read chain, etc., then delegate to the shared code.
- */
+  if (!config) {
+    throw new Error('Config is not defined');
+  }
+  startProvingLoop(mutex, config);
+});
+
+// 2. Catch uncaught exceptions at the process level.
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception thrown:', err);
+  // Same choice: forcibly restart or let main() handle it
+  sleep(500);
+
+  if (!config) {
+    throw new Error('Config is not defined');
+  }
+  startProvingLoop(mutex, config);
+});
 
 // Check if this file is being run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -29,12 +51,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // 2) Initialize
   main(EPM_BASE_URL, CHAIN).catch((err) => {
     console.error('Fatal error in NodeExecutor:', err);
-    process.exit(1);
   });
 }
 
+const mutex = new Mutex();
+
+let config: HttpServerProverWorkerConfig | undefined;
+
 /**
- * Main function for Node environment.
+ * Main entry point that calls startProvingLoop(...).
+ * If startProvingLoop throws, we catch it here, wait 2s, and try again.
  */
 async function main(epmBaseUrl: string, chain: blockchain) {
 
@@ -57,22 +83,26 @@ async function main(epmBaseUrl: string, chain: blockchain) {
   );
 
   // 3) Create config object for the shared loop
-  const config = {
+  config = {
     workerId,
     epmBaseUrl,
     chainInterface,
     compilationResults,
     keys,
+    statusPostingIntervalMs: 2000,
   };
 
-  while (true) {
-    try {
-      // 4) Start the shared loop
-      await startProvingLoop(mutex, config);
-    } catch (err) {
-      console.error('Error in proving loop:', err);
-      await sleep(2000);
-    }
+  try {
+    // Start the infinite proving loop
+    await startProvingLoop(mutex, config);
+
+    // If startProvingLoop actually returns, we can handle that here
+    // (normally it won't, because it's a while(true) loop).
+  }
+  catch (err) {
+    console.error('[ERROR] startProvingLoop threw an error:', err);
+    await sleep(500);
+    await startProvingLoop(mutex, config);
   }
 }
 
