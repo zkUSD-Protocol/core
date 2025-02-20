@@ -17,7 +17,6 @@ export interface HttpServerProverWorkerConfig {
   epmBaseUrl: string;
   chainInterface: MinaNetworkInterface;
   compilationResults: Awaited<ReturnType<typeof compileContracts>>;
-  keys: any; // Replace 'any' with the actual type from getNetworkKeys
 }
 
 const DEBUG = !!process.env.DEBUG;
@@ -33,7 +32,7 @@ const debugLog = (msg: string) => {
  * This is the same logic for both Node and Web.
  */
 export async function startProvingLoop(config: HttpServerProverWorkerConfig) {
-  const { workerId, epmBaseUrl, chainInterface, compilationResults, keys } =
+  const { workerId, epmBaseUrl, chainInterface, compilationResults } =
     config;
 
   while (true) {
@@ -53,7 +52,6 @@ export async function startProvingLoop(config: HttpServerProverWorkerConfig) {
         workerId,
         chain: chainInterface,
         args: job.payload,
-        keys,
         compilationResults,
       };
 
