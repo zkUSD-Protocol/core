@@ -17,7 +17,6 @@ export interface HttpServerProverWorkerConfig {
   epmBaseUrl: string;
   chainInterface: MinaNetworkInterface;
   compilationResults: Awaited<ReturnType<typeof compileContracts>>;
-  keys: any; // Replace 'any' with the actual type from getNetworkKeys
 }
 
 const DEBUG = !!process.env.DEBUG;

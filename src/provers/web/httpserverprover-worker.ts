@@ -40,7 +40,6 @@ self.addEventListener('message', async (event) => {
       epmBaseUrl,
       chainInterface,
       compilationResults,
-      keys,
     };
 
     // 3) Start the shared loop
