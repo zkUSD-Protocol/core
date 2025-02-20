@@ -70,24 +70,11 @@ type TxProvingTracker = {
     rejector: (error: { status: FailedBeforeSending }) => void;
   };
 };
-type TxLifecycleTracker = {
-  proving: {
-    resolver: (proofs: (string | null)[]) => void;
-    rejector: (error: { status: FailedBeforeSending }) => void;
-  };
-  sending: {
-    resolver: (result: { hash: string; status: 'Pending' }) => void;
-    rejector: (error: {
-      status: RejectedOnReceive | FailedBeforeSending;
-    }) => void;
-  };
-};
 
 interface ExecutorContext {
   workerId: string;
   chain: MinaNetworkInterface;
   args: TransactionArgs;
-  keys: NetworkKeyPairs;
   compilationResults: CompilationResults;
 }
 
@@ -209,7 +196,6 @@ async function recreateTransaction<T extends ZkusdEngineTransactionType>(args: {
   config: TransactionConfig<T>;
   oracleAggregationVk: VerificationKey;
   engineInstance: InstanceType<ZkUsdEngineType>;
-  engineKey: PublicKey;
 }): Promise<Transaction<false, false>> {
   const { tx, config, oracleAggregationVk, txArgs, chain } = args;
 
@@ -320,7 +306,6 @@ async function proveTransaction(
       config: config,
       oracleAggregationVk: context.compilationResults.oracleAggregationVk,
       engineInstance: context.compilationResults.engineInstance,
-      engineKey: context.keys.engine.publicKey,
     });
   } catch (err) {
     // if proving rejector is defined then reject
