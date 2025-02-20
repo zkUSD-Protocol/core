@@ -12,6 +12,8 @@ import {
   TxProvingTracker,
 } from '../../transaction/execution.js';
 import { FailedBeforeSending } from '../../transaction/status.js';
+import { fetchMinaAccount } from '../../o1js-compat/zckw-fetch.js';
+import { Field, PublicKey } from 'o1js';
 
 type TxProvingRequest = {
   payload: TxProvingInput;

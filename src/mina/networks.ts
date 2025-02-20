@@ -2,7 +2,7 @@ import { blockchain } from '../types/utility.js';
 
 export type { MinaNetwork, blockchain };
 
-export { networks, Local, Lightnet, validPriceBlockCount };
+export { networks, Local, Lightnet, validPriceBlockCount, Devnet };
 interface MinaNetwork {
   mina: string[];
   archive: string[];
@@ -16,7 +16,7 @@ interface MinaNetwork {
 const validPriceBlockCount: Record<blockchain, number> = {
   local: 1,
   lightnet: 10,
-  devnet: 30, // TODO isn't it too high?
+  devnet: 5, // TODO isn't it too high?
   mainnet: 2,
   zeko: 2,
 };
@@ -35,4 +35,13 @@ const Lightnet: MinaNetwork = {
   name: 'Lightnet',
 };
 
-const networks: MinaNetwork[] = [Local, Lightnet];
+const Devnet: MinaNetwork = {
+  mina: ['https://api.minascan.io/node/devnet/v1/graphql'],
+  archive: ['https://api.minascan.io/archive/devnet/v1/graphql'],
+  explorerAccountUrl: 'https://minascan.io/devnet/account/',
+  explorerTransactionUrl: 'https://minascan.io/devnet/tx/',
+  chainId: 'devnet',
+  name: 'Devnet',
+};
+
+const networks: MinaNetwork[] = [Local, Lightnet, Devnet];

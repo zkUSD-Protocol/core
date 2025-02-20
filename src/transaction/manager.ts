@@ -68,9 +68,9 @@ export const defaultOptions: DefaultTransactionOptions = {
     return failedFee.add(new UInt64(0.01e9));
   },
   printAccountUpdates: false,
-  dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 300000,
-  awaitingTimeoutMs: 65000,
+  dependencyStatusPollInterval: 5000,
+  dependencyStatusPollTimeout: 600000,
+  awaitingTimeoutMs: 600000,
   memo: '',
   refreshAccounts: [],
 };
@@ -117,9 +117,7 @@ export interface TransactionHandle {
     timeout?: number;
   }): Promise<void>;
 
-  subscribeToLifecycleChange(
-    cb: (lifecycle: TxLifecycleStatus) => void
-  ): void;
+  subscribeToLifecycleChange(cb: (lifecycle: TxLifecycleStatus) => void): void;
 }
 
 export type TransactionStatusUpdateCallback = (statuses: {
@@ -154,11 +152,12 @@ export class TransactionInternal {
     status: TransactionStatus | 'unchanged',
     lifecyleStatus: TxLifecycleStatus | 'unchanged'
   ) {
+    console.log('Setting statuses', status, lifecyleStatus);
     this._statusUpdateCallbacks.forEach((cb) =>
       cb({ lifecycle: lifecyleStatus, status })
     );
     if (status !== 'unchanged') this._status = status;
-    if (lifecyleStatus !== 'unchanged'){
+    if (lifecyleStatus !== 'unchanged') {
       this._lifecycleStatus = lifecyleStatus;
       this._lifecycleUpdateCallbacks.forEach((cb) => cb(lifecyleStatus));
     }
@@ -553,6 +552,9 @@ export class TransactionManager<E extends string> {
       this.transactionStatusChanged.bind(this)
     );
     this.transactions.set(tx.getId(), tx);
+
+    console.log('Setting status to preparing at start');
+    tx.setStatuses('unchanged' as const, TxLifecycleStatus.PREPARING);
     // --
 
     //=== the transaction is included in the manager at this point
@@ -591,7 +593,6 @@ export class TransactionManager<E extends string> {
             return;
           })
         );
-        tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'kind' in error) {
           throw error;
@@ -619,6 +620,9 @@ export class TransactionManager<E extends string> {
           });
         }
 
+        console.log('Setting status to preparing');
+        tx.setStatuses('unchanged' as const, TxLifecycleStatus.PREPARING);
+
         const builtTx = await transactionBuild(
           this._o1jsMutex,
           this.mina,
@@ -626,6 +630,7 @@ export class TransactionManager<E extends string> {
           callback,
           buildOptions
         );
+
         return builtTx;
       } catch (error) {
         throw failed_before_sending('building the tx', error);

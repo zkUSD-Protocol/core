@@ -11,7 +11,11 @@ import {
   AggregateOraclePricesProof,
 } from './proofs/oracle-price-aggregation/index.js';
 import { Vault } from './system/vault.js';
-import { getNetworkKeys, NetworkKeyPairs } from './config/keys.js';
+import {
+  getNetworkKeys,
+  NetworkKeyPairs,
+  getContractKeys,
+} from './config/keys.js';
 import {
   VaultTransactionArgs,
   VaultTransactionType,
@@ -76,6 +80,7 @@ export {
   OracleWhitelist,
   MinaPriceInput,
   getNetworkKeys,
+  getContractKeys,
   NetworkKeyPairs,
   VaultTransactionType,
   VaultTransactionArgs,

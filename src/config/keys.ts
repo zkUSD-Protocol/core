@@ -2,6 +2,9 @@ import { PrivateKey, PublicKey } from 'o1js';
 import { blockchain } from '../mina/networks.js';
 import { KeyPair } from '../types/utility.js';
 import { OracleWhitelist } from '../system/oracle.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export interface NetworkKeyPairs {
   deployer?: KeyPair;
@@ -15,6 +18,11 @@ export interface NetworkKeyPairs {
     length: typeof OracleWhitelist.MAX_PARTICIPANTS;
   };
   agents?: Record<string, AgentKeys>;
+}
+
+export interface ContractKeys {
+  token: PublicKey;
+  engine: PublicKey;
 }
 
 export interface AgentKeys {
@@ -84,7 +92,9 @@ function loadDevnetKeys(): NetworkKeyPairs {
       },
       // Fill remaining oracle slots with empty objects containing only publicKey
       ...Array(OracleWhitelist.MAX_PARTICIPANTS - 3).fill({
-        publicKey: PrivateKey.random().toPublicKey(),
+        publicKey: PublicKey.fromBase58(
+          process.env.DEVNET_ORACLE_DUMMY_PUBLIC_KEY!
+        ),
       }),
     ] as [
       Partial<KeyPair> & Pick<KeyPair, 'publicKey'>,
@@ -315,6 +325,32 @@ export function getNetworkKeys(network: blockchain): NetworkKeyPairs {
       return lightnetKeys;
     case 'devnet':
       return loadDevnetKeys();
+    default:
+      throw new Error(`Network ${network} not supported`);
+  }
+}
+
+export function getContractKeys(network: blockchain): ContractKeys {
+  switch (network) {
+    case 'local':
+      return {
+        token: localKeys.token.publicKey,
+        engine: localKeys.engine.publicKey,
+      };
+    case 'lightnet':
+      return {
+        token: lightnetKeys.token.publicKey,
+        engine: lightnetKeys.engine.publicKey,
+      };
+    case 'devnet':
+      return {
+        token: PublicKey.fromBase58(
+          'B62qpc3XFBoXXN1XmKeb2YsquXgaoxPBdrDLLMC4oVBdjFjEMsDYQB7'
+        ),
+        engine: PublicKey.fromBase58(
+          'B62qqwWtv1M9YdgcV5Z5YcxbZxD2X9qPZVpV4GSQPu4PEPn4gfLUFFZ'
+        ),
+      };
     default:
       throw new Error(`Network ${network} not supported`);
   }
