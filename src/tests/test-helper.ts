@@ -400,7 +400,7 @@ export class TestHelper<E extends string> {
     if (['local', 'lightnet'].includes(this.mina.network.chainId)) {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
         const oracleName = 'oracle' + (i + 1);
-        this.oracles[oracleName] = this.networkKeys.oracles![i];
+        this.oracles[oracleName] = this.networkKeys.oracles![i] as KeyPair;
         this.whitelist.addresses[i] = this.oracles[oracleName].publicKey;
         this.whitelistedOracles.set(oracleName, i);
       }
@@ -799,14 +799,16 @@ export class TestHelper<E extends string> {
         `   • MINA: ${agentAccount?.balance.toBigInt() / BigInt(1e9)} MINA`
       );
       console.log(
-        `   • zkUSD: ${agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
+        `   • zkUSD: ${
+          agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
         } zkUSD`
       );
 
       console.log(`\n🏦 Vault Details:`);
       console.log(`   • Address: ${agent.vault!.publicKey.toBase58()}`);
       console.log(
-        `   • Collateral: ${vault.collateralAmount.toBigInt() / BigInt(1e9)
+        `   • Collateral: ${
+          vault.collateralAmount.toBigInt() / BigInt(1e9)
         } MINA`
       );
       console.log(
@@ -1018,7 +1020,7 @@ class PriceInputManager {
       for (const proof of proofs) {
         if (
           BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
-          blockH.toBigint() + minimalValidity &&
+            blockH.toBigint() + minimalValidity &&
           // and already valid!
           blockH.toBigint() >= BigInt(proof.blockHeight)
         ) {
