@@ -62,6 +62,7 @@ import {
 import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
 import { ZKUSDClient } from './client/client.js';
+import { KeyPair } from './types/utility.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -87,6 +88,7 @@ export {
   Vault,
   MinaNetworkInterface,
   blockchain,
+  KeyPair,
   fetchMinaAccount,
 };
 
