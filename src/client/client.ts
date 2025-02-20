@@ -14,8 +14,8 @@ import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { verificationKeys } from '../config/verification-keys.js';
 import {
   TransactionArgs,
-  ZkusdEngineTransactionArgs,
   ZkusdEngineTransactionType,
+  ZkusdEngineTransactionArgs,
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
 
