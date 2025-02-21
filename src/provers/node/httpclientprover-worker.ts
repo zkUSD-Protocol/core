@@ -11,11 +11,7 @@ import {
   TxProvingTracker,
 } from '../../transaction/execution.js';
 import { FailedBeforeSending } from '../../transaction/status.js';
-
-import { fetchMinaAccount } from '../../o1js-compat/zckw-fetch.js';
-import { Field, PublicKey } from 'o1js';
 import { getContractKeys } from '../../config/keys.js';
-
 
 type TxProvingRequest = {
   payload: TxProvingInput;
@@ -69,7 +65,7 @@ const mkWorkerId = () => {
  */
 function mkHandleRequest(
   chainInterface: MinaNetworkInterface,
-  compiledContracts: CompilationResults,
+  compiledContracts: CompilationResults
 ) {
   const workerId = mkWorkerId();
   const mutex = new Mutex();
@@ -149,7 +145,7 @@ const __filename = fileURLToPath(import.meta.url);
 // Create server instance
 export const server = (
   chainInterface: MinaNetworkInterface,
-  compiledContracts: CompilationResults,
+  compiledContracts: CompilationResults
 ) => createServer(mkHandleRequest(chainInterface, compiledContracts));
 
 // Ensure top-level await is wrapped in an async function to ensure ES2021 module compat
