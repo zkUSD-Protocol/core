@@ -1,17 +1,17 @@
 import { PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
-import { MinaPriceInput } from '../proofs/oracle-price-aggregation';
+import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';
 import { ExternalTransactionExecutor } from '../transaction/external-executor.js';
 import {
   TransactionHandle,
   TransactionManager,
   TransactionOptions,
-} from '../transaction/manager';
-import { blockchain } from '../types/utility';
+} from '../transaction/manager.js';
+import { blockchain } from '../types/utility.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { ZkUsdEngineContract } from '../contracts/zkusd-engine';
-import { verificationKeys } from '../config/verification-keys';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
+import { verificationKeys } from '../config/verification-keys.js';
 import {
   TransactionArgs,
   ZkusdEngineTransactionType,
@@ -221,8 +221,12 @@ export class ZKUSDClient {
     return vaultAccount;
   }
 
-  public getTokenId() {
-    return this.token.deriveTokenId();
+  public getTokenId(kind: 'token' | 'engine') {
+    if (kind === 'token') {
+      return this.token.deriveTokenId();
+    } else {
+      return this.engine.deriveTokenId();
+    }
   }
 
   /**

@@ -8,7 +8,12 @@ import {
   Account as MinaAccount,
   UInt64,
 } from 'o1js';
-import { MinaNetwork, Local, Lightnet as LightnetNetwork } from './networks.js';
+import {
+  MinaNetwork,
+  Local,
+  Lightnet as LightnetNetwork,
+  Devnet as DevnetNetwork,
+} from './networks.js';
 import { KeyPair, blockchain } from './../types/utility.js';
 import {
   INonceManager,
@@ -123,6 +128,42 @@ class LightnetChain {
   }
 }
 
+/**
+ * A simple helper for "devnet" mode.
+ * Similar to LightnetChain but for devnet.
+ */
+class DevnetChain {
+  kind: 'devnet' = 'devnet';
+  private _instance: MinaApi | undefined;
+  private _network: MinaNetwork = DevnetNetwork;
+
+  public get instance() {
+    if (this._instance) {
+      return this._instance;
+    }
+    throw new Error('Instance not ready. Call await devnetChain.init() first.');
+  }
+
+  async init(urls?: MinaNetwork): Promise<void> {
+    this._network = urls ?? DevnetNetwork;
+    this._instance = Mina.Network(this._network);
+  }
+
+  async newAccount(): Promise<KeyPair> {
+    throw new Error(
+      'newAccount not implemented for Devnet - please create accounts externally'
+    );
+  }
+
+  async moveChainForward(_: number = 1): Promise<void> {
+    throw new Error('moveChainForward not implemented for Devnet');
+  }
+
+  get network(): MinaNetwork {
+    return this._network;
+  }
+}
+
 interface IMinaNetworkInterface extends ZkusdMinaApi {
   get slotDuration(): UInt64;
   get nonceManager(): INonceManager;
@@ -153,7 +194,7 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   // The constructor is private to prevent direct instantiation.
   private constructor(
     private instance: MinaApi,
-    private backend: LocalBlockchain | LightnetChain,
+    private backend: LocalBlockchain | LightnetChain | DevnetChain,
     private _nonceManager: INonceManager,
     private _local?: LocalOnlyApi
   ) {}
@@ -178,6 +219,9 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   public get slotDuration(): UInt64 {
     if (this.network.chainId === 'lightnet') {
       return UInt64.from(20 * 1000);
+    }
+    if (this.network.chainId === 'devnet') {
+      return UInt64.from(180 * 1000);
     }
     throw new Error('slotDuration not implemented for this network');
   }
@@ -238,6 +282,8 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
       return await MinaNetworkInterface.initLocal();
     } else if (chain === 'lightnet') {
       return await MinaNetworkInterface.initLightnet();
+    } else if (chain === 'devnet') {
+      return await MinaNetworkInterface.initDevnet();
     } else {
       throw new Error(`Unsupported (yet) chain: ${chain}`);
     }
@@ -311,6 +357,45 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
 
     return networkInterface;
   }
+
+  /**
+   * Create and initialize an instance of MinaNetworkInterface with a DevnetChain backend.
+   * @returns A newly initialized MinaNetworkInterface instance (devnet backend).
+   */
+  public static async initDevnet(
+    urls?: MinaNetwork
+  ): Promise<MinaNetworkInterface> {
+    // Create and initialize the DevnetChain
+    const devnet = new DevnetChain();
+    await devnet.init(urls);
+
+    const nonceManager = new NonceManager({
+      fetchMinaAccount: async (publicKey, tokenId) => {
+        return networkInterface.fetchMinaAccount(publicKey, {
+          tokenId,
+          force: true,
+        });
+      },
+      queryGraphQL: async (q) => {
+        return networkInterface.queryGraphQL(q);
+      },
+    });
+
+    // Create the new network interface instance
+    const networkInterface: MinaNetworkInterface = new MinaNetworkInterface(
+      devnet.instance,
+      devnet,
+      nonceManager
+    );
+
+    Mina.setActiveInstance(networkInterface.instance);
+
+    // Dynamically copy all methods from devnet.instance to this
+    networkInterface.bindMethods();
+
+    return networkInterface;
+  }
+
   // ----------- queryGraphQL -----------
 
   async queryGraphQL<T extends GqlQuery<any, any>>(
