@@ -345,10 +345,10 @@ export function getContractKeys(network: blockchain): ContractKeys {
     case 'devnet':
       return {
         token: PublicKey.fromBase58(
-          'B62qpc3XFBoXXN1XmKeb2YsquXgaoxPBdrDLLMC4oVBdjFjEMsDYQB7'
+          'B62qqM9eV2WnqZA4LT1xpk8Ak48o32eKWMGZDnfm3ZKQMrgDWawatUS'
         ),
         engine: PublicKey.fromBase58(
-          'B62qqwWtv1M9YdgcV5Z5YcxbZxD2X9qPZVpV4GSQPu4PEPn4gfLUFFZ'
+          'B62qmTCzZuWMNjSvGhWhzyNR8eJM82zuSMhD7eTGUDsR9yMvWenx1Wc'
         ),
       };
     default:

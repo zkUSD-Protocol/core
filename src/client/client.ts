@@ -221,8 +221,12 @@ export class ZKUSDClient {
     return vaultAccount;
   }
 
-  public getTokenId() {
-    return this.token.deriveTokenId();
+  public getTokenId(kind: 'token' | 'engine') {
+    if (kind === 'token') {
+      return this.token.deriveTokenId();
+    } else {
+      return this.engine.deriveTokenId();
+    }
   }
 
   /**

@@ -151,7 +151,6 @@ export class TransactionInternal {
     status: TransactionStatus | 'unchanged',
     lifecyleStatus: TxLifecycleStatus | 'unchanged'
   ) {
-    console.log('Setting statuses', status, lifecyleStatus);
     this._statusUpdateCallbacks.forEach((cb) =>
       cb({ lifecycle: lifecyleStatus, status })
     );
