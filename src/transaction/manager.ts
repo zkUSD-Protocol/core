@@ -188,14 +188,16 @@ export class TransactionInternal {
     return undefined;
   }
 
-  public get resolutionBlockHeight() : bigint|undefined {
+  public get resolutionBlockHeight(): bigint | undefined {
     const s = this._lifecycle.waitingPromise;
     if (s?.state === 'fulfilled') {
-      if (statusIsChainResolved(this.status) && 'resolutionBlockHeight' in s.result) {
-        return s.result.resolutionBlockHeight;
-        } else{
+      if (statusIsChainResolved(this.status)) {
+        if ('resolutionBlockHeight' in s.result) {
+          return s.result.resolutionBlockHeight;
+        } else {
           console.error('resolutionBlockHeight not found in chain resolved awaited transaction')
           return undefined
+        }
       }
     }
     return undefined;
@@ -475,7 +477,7 @@ export class TransactionManager<E extends string> {
       executor = singleDefault(firstKey, firstValue as ITransactionExecutor);
     }
 
-    return new TransactionManager(minaInterface, executor,overrideOptions);
+    return new TransactionManager(minaInterface, executor, overrideOptions);
   }
 
   private transactions: Map<string, TransactionInternal> = new Map();
@@ -721,7 +723,7 @@ export class TransactionManager<E extends string> {
   ) {
     this.transactionExecutors = transactionExecutors;
     this._mina = networkInterface;
-    this.transactionOptions = { ...defaultOptions, ...overrideOption};
+    this.transactionOptions = { ...defaultOptions, ...overrideOption };
   }
 }
 

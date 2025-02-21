@@ -61,10 +61,10 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > = {
       local: async () => new LocalTransactionExecutor(),
-      external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver()
-        ,stop: stopExecutor}
-      ),
+      external: ExternalTransactionExecutor.initializer({
+        prover: new HttpServerProver(),
+        stop: stopExecutor,
+      }),
       default: 'external', // use workers by default
     };
 
