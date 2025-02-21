@@ -2,7 +2,6 @@ import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { MinaNetworkInterface } from '../../mina/network-interface.js';
 import { blockchain } from '../../mina/networks.js';
-import { getNetworkKeys } from '../../config/keys.js';
 import { Mutex } from '../../utils/mutex.js';
 import { TxProvingInput, TxProvingOutput } from '../itransactionprover.js';
 import {
@@ -12,8 +11,11 @@ import {
   TxProvingTracker,
 } from '../../transaction/execution.js';
 import { FailedBeforeSending } from '../../transaction/status.js';
+
 import { fetchMinaAccount } from '../../o1js-compat/zckw-fetch.js';
 import { Field, PublicKey } from 'o1js';
+import { getContractKeys } from '../../config/keys.js';
+
 
 type TxProvingRequest = {
   payload: TxProvingInput;
@@ -165,11 +167,11 @@ if (process.argv[1] === __filename) {
     );
     console.log('Compiling contracts');
 
-    const keys = getNetworkKeys(CHAIN as blockchain);
+    const keys = getContractKeys(CHAIN as blockchain);
 
     const compilationResults = await compileContracts({
-      tokenPublicKey: keys.token.publicKey,
-      enginePublicKey: keys.engine.publicKey,
+      tokenPublicKey: keys.token,
+      enginePublicKey: keys.engine,
     });
 
     server(chainInterface, compilationResults).listen(PORT, () => {
