@@ -18,7 +18,7 @@ import { TransactionProvingJob } from '../itransactionprover.js';
 const heartbeatLoopMutex = new Mutex();
 
 // 1. Catch unhandled Promise rejections at the process level.
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', async (reason, promise) => {
   console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
   // Here you can decide if you want to forcibly restart the loop,
   // or just let the main() function handle it via its own try/catch.
@@ -32,20 +32,12 @@ process.on('unhandledRejection', (reason, promise) => {
     throw new Error('JobContext is not defined');
   }
 
-  setTimeout(async () => {
-    if (!config) {
-      throw new Error('Config is not defined');
-    }
-    if (!jobContext) {
-      throw new Error('JobContext is not defined');
-    }
-    await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
-  });
+  await startActivityCommunicationLoop();
   startProvingLoop(mutex, config, jobContext);
 });
 
 // 2. Catch uncaught exceptions at the process level.
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', async (err) => {
   console.error('[FATAL] Uncaught Exception thrown:', err);
   // Same choice: forcibly restart or let main() handle it
   sleep(500);
@@ -57,15 +49,7 @@ process.on('uncaughtException', (err) => {
     throw new Error('JobContext is not defined');
   }
 
-  setTimeout(async () => {
-    if (!config) {
-      throw new Error('Config is not defined');
-    }
-    if (!jobContext) {
-      throw new Error('JobContext is not defined');
-    }
-    await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
-  });
+  await startActivityCommunicationLoop();
   startProvingLoop(mutex, config, jobContext);
 });
 
@@ -89,6 +73,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 const mutex = new Mutex();
+const COMMUNICATE_ACTIVITY = false; // unreliable using the same process as proving, TODO: try with a child process
 
 let config: HttpServerProverWorkerConfig | undefined;
 let jobContext: WorkerJobContext | undefined;
@@ -136,15 +121,7 @@ async function main(epmBaseUrl: string, chain: blockchain) {
   };
 
   try {
-    setTimeout(async () => {
-      if (!config) {
-        throw new Error('Config is not defined');
-      }
-      if (!jobContext) {
-        throw new Error('JobContext is not defined');
-      }
-      await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
-    });
+    await startActivityCommunicationLoop();
     // Start the infinite proving loop
     await startProvingLoop(mutex, config, jobContext);
 
@@ -154,17 +131,21 @@ async function main(epmBaseUrl: string, chain: blockchain) {
     console.error('[ERROR] startProvingLoop threw an error:', err);
     await sleep(500);
     await startProvingLoop(mutex, config, jobContext);
-
-    setTimeout(async () => {
-      if (!config) {
-        throw new Error('Config is not defined');
-      }
-      if (!jobContext) {
-        throw new Error('JobContext is not defined');
-      }
-      await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
-    });
+    await startActivityCommunicationLoop();
   }
+}
+
+async function startActivityCommunicationLoop() {
+  if (!COMMUNICATE_ACTIVITY) return;
+  setTimeout(async () => {
+    if (!config) {
+      throw new Error('Config is not defined');
+    }
+    if (!jobContext) {
+      throw new Error('JobContext is not defined');
+    }
+    await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
+  });
 }
 
 /**

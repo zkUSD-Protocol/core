@@ -82,7 +82,7 @@ export class HttpServerProver implements ITransactionProver {
   // Default job timeout (8 minutes)
   private static readonly _jobTimeouts: InMemoryJobStoreTimeouts = {
     maxTotalJobTimeSec: 120,
-    maxJobInactivitySec: 3,
+    maxJobInactivitySec: undefined, // disable
   };
 
   private jobStore: JobStore<TransactionExecutionJob>;

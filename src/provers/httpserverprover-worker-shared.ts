@@ -100,14 +100,14 @@ export async function startStatusPostingLoop(
   console.log('Starting status posting loop');
   const { workerId, epmBaseUrl, statusPostingIntervalMs: interval } = config;
 
-    while (true) {
-      try {
-        await sleep(interval);
-        await postProvingStatus(epmBaseUrl, workerId, workerJobContext);
-      } catch (err) {
-        console.error('Error in status posting loop:', err);
-      }
+  while (true) {
+    try {
+      await sleep(interval);
+      await postProvingStatus(epmBaseUrl, workerId, workerJobContext);
+    } catch (err) {
+      console.error('Error in status posting loop:', err);
     }
+  }
 }
 
 async function postProvingStatus(
@@ -184,7 +184,7 @@ async function fetchNextJob(
 async function postBackResults(epmBaseUrl: string, url: string, body: any) {
   await fetch(`${epmBaseUrl}${url}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Connection: 'close' },
     body: JSON.stringify(body),
   });
 }

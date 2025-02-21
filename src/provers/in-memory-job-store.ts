@@ -13,9 +13,30 @@ interface InMemoryStoreEntry<J> {
   result?: unknown;
 }
 
+/**
+ * These settings define the conditions under which a job will be considered
+ * inactive or exceed its allowed execution time, causing it to be requeued.
+ */
 export type InMemoryJobStoreTimeouts = {
-  maxTotalJobTimeSec: number; // if worker takes too much time it will be put back in the queue  maxTotalJobTimeSec: number;
-  maxJobInactivitySec: number; // if worker does not mark as being proven in time, it will be put back in the queue
+  /**
+   * The maximum total execution time allowed for a job (in seconds).
+   * If a worker takes longer than this duration to complete a job,
+   * the job will be placed back in the queue for reassignment.
+   */
+  maxTotalJobTimeSec: number;
+
+  /**
+   * The maximum allowed inactivity time for a job (in seconds).
+   * This is only applicable when the `COMMUNICATE_ACTIVITY` setting
+   * is enabled for workers.
+   *
+   * If a worker fails to periodically indicate its progress within
+   * this timeframe, the job will be considered inactive and will be
+   * placed back in the queue.
+   *
+   * Optional: If not specified, inactivity tracking is not enforced.
+   */
+  maxJobInactivitySec?: number;
 };
 
 /**
@@ -111,6 +132,7 @@ export class InMemoryJobStore<J extends AnyJob> implements JobStore<J> {
         // imtermediate timeout if the worker does not mark as being proven in time
         // if it was never marked as being proven, it will have a few secs more
         else if (
+          this.timeouts.maxJobInactivitySec !== undefined &&
           entry.assigned &&
           entry.assignedAt !== undefined &&
           entry.lastMarkedAsBeingProven === undefined &&
@@ -123,6 +145,7 @@ export class InMemoryJobStore<J extends AnyJob> implements JobStore<J> {
           );
           timeOut = true;
         } else if (
+          this.timeouts.maxJobInactivitySec !== undefined &&
           entry.assigned &&
           entry.lastMarkedAsBeingProven !== undefined &&
           now - entry.lastMarkedAsBeingProven >

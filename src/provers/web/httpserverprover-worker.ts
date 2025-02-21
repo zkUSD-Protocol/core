@@ -58,12 +58,12 @@ self.addEventListener('message', async (event) => {
       epmBaseUrl,
       chainInterface,
       compilationResults,
-      statusPostingIntervalMs: 2000
+      statusPostingIntervalMs: 2000,
     };
 
     // 3) Start the shared loop
     setTimeout(async () => {
-      await startStatusPostingLoop(config, jobContext, mutex)
+      await startStatusPostingLoop(config, jobContext, mutex);
     });
 
     await startProvingLoop(mutex, config, jobContext);
