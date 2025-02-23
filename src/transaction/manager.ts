@@ -64,11 +64,11 @@ export const defaultOptions: DefaultTransactionOptions = {
     return failedFee.add(new UInt64(0.01e9));
   },
   printAccountUpdates: false,
-  dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeout: 300000,
-  statusChangeWaitingIntervalMs: 1000,
-  statusChangeWaitingTimeoutMs: 300000,
-  inclusionAwaitingTimeoutMs: 300000,
+  dependencyStatusPollInterval: 3000,
+  dependencyStatusPollTimeout: 900000,
+  statusChangeWaitingIntervalMs: 3000,
+  statusChangeWaitingTimeoutMs: 900000,
+  inclusionAwaitingTimeoutMs: 900000,
   memo: '',
   refreshAccounts: [],
 };
