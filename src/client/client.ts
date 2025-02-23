@@ -91,6 +91,11 @@ export class ZKUSDClient {
 
     const newAccounts = zkusdTokenAccount ? 1 : 2;
 
+    options = {
+      ...options,
+      memo: 'Vault creation',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.CREATE_VAULT,
       {
@@ -114,6 +119,11 @@ export class ZKUSDClient {
     amount: UInt64,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'Collateral deposit',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
       { sender, vaultAddress, amount },
@@ -131,6 +141,11 @@ export class ZKUSDClient {
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'Collateral redemption',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.REDEEM_COLLATERAL,
       { sender, vaultAddress, amount, minaPriceInput },
@@ -148,6 +163,11 @@ export class ZKUSDClient {
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'zkUSD mint',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.MINT_ZKUSD,
       { sender, vaultAddress, amount, minaPriceInput },
@@ -164,6 +184,11 @@ export class ZKUSDClient {
     amount: UInt64,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'zkUSD burn',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.BURN_ZKUSD,
       { sender, vaultAddress, amount },
@@ -180,6 +205,11 @@ export class ZKUSDClient {
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'Vault liquidation',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.LIQUIDATE,
       { sender, vaultAddress, minaPriceInput },

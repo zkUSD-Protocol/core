@@ -1,8 +1,12 @@
 {
-  "name": "zkusd",
+  "name": "@zkusd/core",
   "version": "0.0.1",
-  "description": "",
-  "author": "zkusd",
+  "description": "Core functionality for zkusd",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "author": "zkusd-protocol",
   "license": "Apache-2.0",
   "keywords": [
     "mina-zkapp",
