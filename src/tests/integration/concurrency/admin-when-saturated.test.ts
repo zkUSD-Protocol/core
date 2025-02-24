@@ -17,15 +17,10 @@ import {
   statusIsFinal,
   statusIsOfKind,
 } from '../../../transaction/status.js';
+import { DEBUG, debugLog } from '../../../utils/debug.js';
 
-const DEBUG = !!process.env.DEBUG;
 const printTx = DEBUG && true;
 
-const debugLog = (message?: any, ...optionalParams: any[]) => {
-  if (DEBUG) {
-    console.debug(message, ...optionalParams);
-  }
-};
 
 type User = {
   keys: KeyPair;

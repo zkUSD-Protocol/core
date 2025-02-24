@@ -6,6 +6,7 @@ import {
   TxProvingTracker,
 } from '../transaction/execution.js';
 import { FailedBeforeSending } from '../transaction/status.js';
+import { debugLog } from '../utils/debug.js';
 import { Mutex } from '../utils/mutex.js';
 import {
   TransactionProvingJob,
@@ -21,14 +22,6 @@ export interface HttpServerProverWorkerConfig {
   compilationResults: Awaited<ReturnType<typeof compileContracts>>;
   statusPostingIntervalMs: number;
 }
-
-const DEBUG = !!process.env.DEBUG;
-
-const debugLog = (msg: string) => {
-  if (DEBUG) {
-    console.debug(msg);
-  }
-};
 
 // make interface based on _CurrentJob
 export interface WorkerJobContext {

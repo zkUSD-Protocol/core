@@ -23,8 +23,8 @@ import { ZkUsdEngine } from '../system/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
 import { Account, isKeyPair, printTxAccountUpdates } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
+import { DEBUG } from '../utils/debug.js';
 
-const DEBUG = !!process.env.DEBUG;
 const MUTEX_DEBUG = DEBUG && false; // set to true to debug mutex
 
 /**
@@ -162,6 +162,14 @@ export class TransactionInternal {
   }
 
   private _lifecycle: Partial<TransactionLifecycle> = {};
+
+  public get lifeCyclePromises(): Partial<TransactionLifecycle> {
+    return {
+      provingPromise: this._lifecycle.provingPromise,
+      sendingPromise: this._lifecycle.sendingPromise,
+      waitingPromise: this._lifecycle.waitingPromise,
+    };
+  }
 
   /**
    * Retrieves the most up-to-date transaction state from whichever promise has been fulfilled.
@@ -513,6 +521,38 @@ export class TransactionManager<E extends string> {
     return await this.tx(sender, callback, options, args);
   }
 
+  public async timeOutAll() {
+    let promises: Promise<any>[] = [];
+
+    for (const tx of this.transactions.values()) {
+      promises.push(tx.lifeCyclePromises.waitingPromise?.promise ?? Promise.resolve());
+      promises.push(tx.lifeCyclePromises.provingPromise?.promise ?? Promise.resolve());
+      promises.push(tx.lifeCyclePromises.sendingPromise?.promise ?? Promise.resolve());
+    }
+
+    try {
+      await Promise.race([
+        new Promise((_, reject) =>
+          setTimeout(() => {
+            reject(new Error("timeout"));
+          }, 1000)
+        ),
+        Promise.all(promises),
+      ]);
+    } catch (error) {
+      console.error("Error in timeOutAll:", error);
+    } finally {
+      // Force cleanup to ensure test runner can exit
+      this.cleanUpResources();
+    }
+  }
+
+  // Cleanup function to ensure no dangling resources
+  private cleanUpResources() {
+
+  }
+
+
   // this will create a new transaction
   // and schedule it for proving signing and sending
   // it will also await for the dependencies to be included or failed
@@ -632,9 +672,9 @@ export class TransactionManager<E extends string> {
             typeof error === 'object' && error !== null && 'kind' in error
               ? error
               : failed_before_sending(
-                  'awaiting for the tx dependencies',
-                  error
-                );
+                'awaiting for the tx dependencies',
+                error
+              );
           tx.setStatuses(status as TransactionStatus, TxLifecycleStatus.FAILED);
           throw status;
         }

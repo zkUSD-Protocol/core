@@ -6,7 +6,7 @@ import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { IMinaNetworkInterface } from '../../../mina/network-interface.js';
 import { ITransactionExecutor } from '../../../transaction/executor.js';
 import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
-import { ExternalTransactionExecutor } from '../../../transaction/external-executor.js';
+import { ExternalTransactionExecutor, sentTxs } from '../../../transaction/external-executor.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
@@ -24,7 +24,7 @@ function debugLog(message?: any, ...args: any[]) {
 const LARGE_FEE = 3e8; // 0.2 MINA
 
 // Test config
-const TX_IN_BATCH = 25;
+const TX_IN_BATCH = 50;
 const MINIMAL_SATURATION = 20;
 const INITIAL_COLLATERAL_DEPOSIT = UInt64.from(500e9); // 500 MINA
 const MINA_PRICE_START = TestAmounts.PRICE_1_USD;
@@ -123,6 +123,7 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
   after(async () => {
     // Signal the external worker to stop, if any
     if (stop) stop();
+    await th.txMgr.timeOutAll();
   });
 
   //
@@ -292,20 +293,18 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     return handles;
   }
 
-  async function createPayments(start: number, count: number,batch:number) {
+  async function createPayments(start: number, count: number) {
     debugLog(
       `Scheduling payments from users [${start}..${start + count - 1}]...`
     );
     const handles: TransactionHandle[] = [];
+    const batch0Handles: TransactionHandle[] = [];
     const waitForIncluded = [];
-    while(!users[0].mintZkusdHandle || !users[1].mintZkusdHandle) {
+    while (!users[0].mintZkusdHandle || !users[1].mintZkusdHandle) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-
-    if (users[0].mintZkusdHandle)
-      waitForIncluded.push(users[0].mintZkusdHandle);
-    if (users[1].mintZkusdHandle)
-      waitForIncluded.push(users[1].mintZkusdHandle);
+    waitForIncluded.push(users[0].mintZkusdHandle);
+    waitForIncluded.push(users[1].mintZkusdHandle);
     for (let i = start; i < start + count; i++) {
       const fromUser = users[i];
       const toUser = users[i - 1] ?? users[start + count - 1]; // just to avoid i-1 < 2 scenario
@@ -315,7 +314,7 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
           {
             transactionType: ZkusdEngineTransactionType.TRANSFER,
             args: {
-              transactionId: `User ${i} sends a tiny payment to user ${i - 1} #${batch}`,
+              transactionId: `User ${i} sends a tiny payment to user ${i - 1}`,
               from: fromUser.keys.publicKey.toBase58(),
               to: toUser.keys.publicKey.toBase58(),
               amount: '1000000000',
@@ -323,10 +322,11 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
           },
           {
             printTx: true,
-            startingFee: UInt64.from(1e8), // 0.05 MINA
+            startingFee: UInt64.from(5e7), // 0.05 MINA
             waitForIncluded,
           }
         );
+        batch0Handles[i] = paymentHandle;
         handles.push(paymentHandle);
       } catch (err) {
         console.error(`Error creating payment from user index ${i}`, err);
@@ -376,15 +376,15 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
   });
 
   it('Should schedule payments to saturate the network', async () => {
+    let k = false;
     try {
       // 1. We only want to schedule concurrency among the remaining users
       //    so from index 2 to TX_IN_BATCH.
 
-      for (let i = 0; i < 2; i++) {
         const startIndex = 2;
         const count = TX_IN_BATCH; // i.e., up to user[24] if TX_IN_BATCH=25
 
-        const handles = await createPayments(startIndex, count - 2,i);
+        const handles = await createPayments(startIndex, count - 2);
         paymentHandles = handles;
         assert.ok(handles.length > 0, 'No payment handles created.');
         globalHandles.push(...handles);
@@ -392,16 +392,16 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
         debugLog(
           `Scheduled ${handles.length} payment transactions for saturation.`
         );
-      }
+      k = true;
     } catch (err) {
-      assert.fail(`Scheduling payments failed: ${JSON.stringify(err)}`);
+      if (!k) assert.fail(`Scheduling payments failed: ${JSON.stringify(err)}`);
     }
   });
 
   it('Should await final conditions (saturation + minted) and then liquidate', async () => {
     // We want at least MINIMAL_SATURATION globalHandles at 'Included' status,
     // plus user0 & user1 minted TX included.
-    while(!user0MintedHandle || !user1MintedHandle) {
+    while (!user0MintedHandle || !user1MintedHandle) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 

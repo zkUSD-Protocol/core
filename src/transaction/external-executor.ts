@@ -36,6 +36,9 @@ import { SignerZkappCommand } from '../o1js-compat/zkappcommand.js';
 import { Transaction } from 'o1js';
 import { browserWalletSigner } from '../signers/browserwallet-signer.js';
 import { isKeyPair } from '../mina/utils.js';
+import { debugLog } from '../utils/debug.js';
+
+export let sentTxs: any[] = []
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving
@@ -99,6 +102,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
    * Gracefully stop scanning and shut down the worker manager (if any).
    */
   public async stop(forceTimeoutMs?: number): Promise<void> {
+    debugLog('Stopping ExternalTransactionExecutor...');
     await this.inclusionScanner.stopScanning();
     await this.prover.shutdown(forceTimeoutMs);
   }
@@ -137,7 +141,6 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       );
     }
     const txArgs = tx.args as TransactionArgs;
-    console.log('Executing transaction:', txArgs.args.transactionId);
 
     // Helpers for standardizing success/error shapes
     const wrapNoErrors = <T>(value: T & { status?: TransactionStatus }) => ({
@@ -161,10 +164,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     let signedTxGlobal: Signed<SignerZkappCommand>;
 
     const signingPromise = new TrackedPromise<TxProvingInput>(async () => {
-      console.log('buildTx pre', txArgs.args.transactionId);
       const builtTx = await tx.buildTx;
       builtTxGlobal = builtTx;
-      console.log('builtTx post', txArgs.args.transactionId);
 
       try {
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
@@ -191,6 +192,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         ).signedTx;
 
         signedTxGlobal = signedTx;
+
         const ret: TxProvingInput = {
           txId: tx.getId(),
           transaction: {
@@ -235,7 +237,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           return wrapError({ status });
         } else {
           tx.setStatuses('unchanged' as const, TxLifecycleStatus.SCHEDULED);
-          console.log(`${tx.getId()} - Proved.`);
+          debugLog(`${tx.getId()} - Proved.`);
           return wrapNoErrors({
             serializedProvenTransaction: output.serializedProvenTransaction,
           });
@@ -265,7 +267,6 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     const sendingPromise = new TrackedPromise<SentTransaction>(async () => {
       try {
         const proveResult = await provingPromise;
-        console.log('prove results present', tx.getId())
 
         if (proveResult.isLocal) {
           throw new Error('isLocal should be false in external executor');
@@ -279,8 +280,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           );
 
           // Send the transaction
-          console.log('sending', tx.getId())
           const sendResult = await readyToSendTx.safeSend();
+          sentTxs.push({id: tx.getId(), nonce: nonceLock.nonce});
           // unlock the nonce before returning
           await nonceLock.unlock();
 

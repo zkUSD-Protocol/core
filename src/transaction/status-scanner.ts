@@ -5,22 +5,12 @@ import {
 } from '../mina/graphql.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { RejectedOnInclusion } from './status.js';
+import { debugLog } from '../utils/debug.js';
 
 export {
   ITransactionStatusScanner,
   TransactionStatusScanner,
   TransactionStatusScannerConfig,
-};
-
-const DEBUG = !!process.env.DEBUG;
-
-/**
- * Logs debug messages if `DEBUG` is enabled.
- * Otherwise, it does nothing.
- * @param {...any} args - The arguments to log
- */
-const logDebug = (...args: any[]) => {
-  if (DEBUG) console.debug(...args);
 };
 
 type Inclusion = 'Included' | RejectedOnInclusion;
@@ -93,6 +83,8 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
   private _resolvers: Map<string, (args: { resolution: Inclusion, resolutionBlockHeight: bigint }) => void> = new Map();
   private _isScanning = false;
 
+  private _transactionStatusPromisesRejectors: Map<string, () => void> = new Map();
+
   private get config(): TransactionStatusScannerConfig {
     if (!this._config) {
       throw new Error('Config not loaded call startScanning first');
@@ -129,6 +121,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
    */
   public async stopScanning(): Promise<void> {
     this._isScanning = false;
+    this._transactionStatusPromisesRejectors.forEach((rejector) => rejector());
   }
 
   /**
@@ -141,35 +134,47 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
     transactionHash: string,
     timeout: number
   ): Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }> {
-    logDebug(`Awaiting transaction ${transactionHash}, timeout: ${timeout}ms`);
+    debugLog(`Awaiting transaction ${transactionHash}, timeout: ${timeout}ms`);
 
     for (const [blockNum, txMap] of this._cache.entries()) {
       if (txMap.has(transactionHash)) {
         const cachedStatus = txMap.get(transactionHash)!;
-        logDebug(
+        debugLog(
           `Transaction ${transactionHash} found in cache at block ${blockNum}`
         );
         return { resolutionBlockHeight: BigInt(blockNum), resolution: cachedStatus };
       }
     }
 
-    return new Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }>((resolve, reject) => {
-      const timeoutHandle = setTimeout(() => {
-        this._resolvers.delete(transactionHash);
-        reject(
-          Object.assign(
+    const newRandomId = Math.random().toString(36);
+
+    const p = new Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }>((resolve, reject) => {
+      const rejector = () => reject(
+        Object.assign(
           new Error(
             `Transaction ${transactionHash} not found before awaiting timeout`
-          ), { timeout: true })
-        );
+          ), { timeout: true }));
+
+      this._transactionStatusPromisesRejectors.set(newRandomId, rejector);
+
+      const timeoutHandle = setTimeout(() => {
+        this._resolvers.delete(transactionHash);
+        if (this._transactionStatusPromisesRejectors.has(newRandomId)) {
+          this._transactionStatusPromisesRejectors.delete(newRandomId);
+        }
+        rejector()
       }, timeout);
 
-      this._resolvers.set(transactionHash, ({resolutionBlockHeight,  resolution}) => {
+      this._resolvers.set(transactionHash, ({ resolutionBlockHeight, resolution }) => {
         clearTimeout(timeoutHandle);
         this._resolvers.delete(transactionHash);
+        if (this._transactionStatusPromisesRejectors.has(newRandomId)) {
+          this._transactionStatusPromisesRejectors.delete(newRandomId);
+        }
         resolve({ resolutionBlockHeight, resolution });
       });
     });
+    return p;
   }
 
   /**
@@ -182,7 +187,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
     const result = new Map<string, Inclusion>();
 
     if (!resp?.bestChain?.length) {
-      logDebug('Warning: bestChain is missing or empty');
+      debugLog('Warning: bestChain is missing or empty');
       return result;
     }
 
@@ -288,7 +293,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
       for (const [txHash, status] of txMap.entries()) {
         const resolver = this._resolvers.get(txHash);
         if (resolver) {
-          resolver({resolution: status, resolutionBlockHeight: blockIndex});
+          resolver({ resolution: status, resolutionBlockHeight: blockIndex });
           this._resolvers.delete(txHash);
         }
       }

@@ -131,7 +131,14 @@ export class HttpServerProver implements ITransactionProver {
   public async proveTransaction(
     input: TxProvingInput
   ): Promise<TxProvingOutput> {
-    const txId = input.txId;
+    // const txId = input.txId;
+
+    let jobId = sanitizeForRoute(input.txId);
+
+    // check if job already exists
+    if (this.jobTrackers.has(jobId)) {
+      jobId = `${jobId}-${Date.now()}`;
+    }
 
     let resolver: (arg: TxProvingOutput) => void;
     let rejector: (err: unknown) => void;
@@ -146,19 +153,19 @@ export class HttpServerProver implements ITransactionProver {
       await this.mutex.runExclusive(async () => {
         // Store the transaction job in the job store
         await this.jobStore.addJob({
-          id: txId,
+          id: jobId,
           typ: 'transaction',
           payload: input,
         });
 
         // Register lifecycle tracking for this job
-        this.jobTrackers.set(txId, { proving: { resolver, rejector } });
+        this.jobTrackers.set(jobId, { proving: { resolver, rejector } });
       });
 
-      console.debug(`Scheduled transaction job "${txId}" successfully.`);
+      console.debug(`Scheduled transaction job "${jobId}" successfully.`);
       return ret;
     } catch (err) {
-      console.error(`Failed to schedule tx execution for job ${txId}:`, err);
+      console.error(`Failed to schedule tx execution for job ${jobId}:`, err);
       throw err; // Propagate the error to ensure proper handling upstream
     }
   }
@@ -361,4 +368,15 @@ export class HttpServerProver implements ITransactionProver {
       }
     });
   }
+}
+
+function sanitizeForRoute(input: string): string {
+  return input
+    .normalize("NFD") // Normalize Unicode characters
+    .replace(/[\u0300-\u036f]/g, "") // Remove diacritics (accents)
+    .replace(/[^a-zA-Z0-9\s_-]/g, "") // Remove non-alphanumeric except space, underscore, and hyphen
+    .trim() // Trim leading/trailing spaces
+    .replace(/[\s_]+/g, "-") // Replace spaces and underscores with hyphens
+    .replace(/^-+|-+$/g, "") // Remove leading/trailing hyphens
+    .toLowerCase(); // Convert to lowercase
 }
