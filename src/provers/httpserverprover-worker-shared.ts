@@ -145,6 +145,7 @@ function mkExecutionTracker(
           success: true,
           serializedProvenTransaction: serializedTx,
         };
+        console.log('postback results for: ', jobId, 'succes',res.success)
         await postBackResults(epmBaseUrl, `/job/${jobId}/proved`, res);
         workerJobContext.unset();
       },
@@ -153,6 +154,7 @@ function mkExecutionTracker(
           success: false,
           errors: error.status.errors,
         };
+        console.log('postback results for: ', jobId, 'succes',res.success)
         await postBackResults(epmBaseUrl, `/job/${jobId}/proved`, res);
         workerJobContext.unset();
       },
@@ -182,6 +184,7 @@ async function fetchNextJob(
  * POST results back to the manager.
  */
 async function postBackResults(epmBaseUrl: string, url: string, body: any) {
+  // debug log
   await fetch(`${epmBaseUrl}${url}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Connection: 'close' },

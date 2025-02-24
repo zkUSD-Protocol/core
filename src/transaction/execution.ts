@@ -19,11 +19,10 @@ import {
 } from '../system/transaction.js';
 
 import { MinaNetworkInterface } from '../mina/network-interface.js';
-import { NetworkKeyPairs } from '../config/keys.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
 import {
   TransactionConfig,
-  mkVaultTransactionConfigs,
+  mkZkusdTransactionConfigs,
 } from '../system/transaction-config.js';
 import {
   AggregateOraclePrices,
@@ -152,7 +151,7 @@ async function compileContracts(
   const tokenInstance = new FungibleToken(config.tokenPublicKey);
 
   // 7. Generate transaction configurations
-  const transactionConfigs = mkVaultTransactionConfigs(engineInstance);
+  const transactionConfigs = mkZkusdTransactionConfigs(engineInstance);
 
   console.timeEnd('Compiling contracts');
 
@@ -396,7 +395,7 @@ const zkUsdTransaction = async <T extends ZkusdEngineTransactionType>(args: {
   }
 
   const callback = async () => {
-    const config = mkVaultTransactionConfigs(engine)[kind];
+    const config = mkZkusdTransactionConfigs(engine)[kind];
     if (config.requiresNewAccounts) {
       if (!('newAccounts' in txArgs)) {
         throw new Error('New accounts are required');

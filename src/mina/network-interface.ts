@@ -419,6 +419,7 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   async forceFetchAllTxPartiesJson(tx: SignerZkappCommand): Promise<void> {
     let requests: Promise<any>[] = [];
     extractAllTxPartiesJson(tx).forEach(({ publicKey, tokenId }) => {
+      console.log('fetching', publicKey.toBase58(), tokenId?.toString())
       requests.push(this.fetchMinaAccount(publicKey, { tokenId, force: true }));
     });
     await Promise.all(requests);
@@ -448,16 +449,16 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     }
   ): Promise<
     | {
-        account: MinaAccount;
-        error: undefined;
-      }
+      account: MinaAccount;
+      error: undefined;
+    }
     | {
-        account: undefined;
-        error: {
-          statusCode: number;
-          statusText: string;
-        };
-      }
+      account: undefined;
+      error: {
+        statusCode: number;
+        statusText: string;
+      };
+    }
   > {
     return await fetchAccount(
       accountInfo,

@@ -346,6 +346,9 @@ export class HttpServerProver implements ITransactionProver {
         await this.mutex.runExclusive(async () => {
           await this.jobStore.markJobAsCompleted(jobId, provingResult);
         });
+        console.log('tracker present', !!tracker.proving.resolver);
+        console.log('passing results ok proving. Success: ', provingResult.success);
+
         tracker.proving.resolver(provingResult);
         return res.json({ status: 'ok' });
       } catch (err) {

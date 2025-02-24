@@ -673,6 +673,7 @@ export class TransactionManager<E extends string> {
           return builtTx;
         } catch (error) {
           const status = failed_before_sending('building the tx', error);
+          console.error('Transaction build failed', error);
           tx.setStatuses(status, TxLifecycleStatus.FAILED);
           throw status;
         }

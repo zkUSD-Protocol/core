@@ -157,9 +157,10 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
       const timeoutHandle = setTimeout(() => {
         this._resolvers.delete(transactionHash);
         reject(
+          Object.assign(
           new Error(
             `Transaction ${transactionHash} not found before awaiting timeout`
-          )
+          ), { timeout: true })
         );
       }, timeout);
 
