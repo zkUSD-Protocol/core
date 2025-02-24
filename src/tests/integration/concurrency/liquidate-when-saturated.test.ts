@@ -6,7 +6,10 @@ import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { IMinaNetworkInterface } from '../../../mina/network-interface.js';
 import { ITransactionExecutor } from '../../../transaction/executor.js';
 import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
-import { ExternalTransactionExecutor, sentTxs } from '../../../transaction/external-executor.js';
+import {
+  ExternalTransactionExecutor,
+  sentTxs,
+} from '../../../transaction/external-executor.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
@@ -381,17 +384,17 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
       // 1. We only want to schedule concurrency among the remaining users
       //    so from index 2 to TX_IN_BATCH.
 
-        const startIndex = 2;
-        const count = TX_IN_BATCH; // i.e., up to user[24] if TX_IN_BATCH=25
+      const startIndex = 2;
+      const count = TX_IN_BATCH; // i.e., up to user[24] if TX_IN_BATCH=25
 
-        const handles = await createPayments(startIndex, count - 2);
-        paymentHandles = handles;
-        assert.ok(handles.length > 0, 'No payment handles created.');
-        globalHandles.push(...handles);
+      const handles = await createPayments(startIndex, count - 2);
+      paymentHandles = handles;
+      assert.ok(handles.length > 0, 'No payment handles created.');
+      globalHandles.push(...handles);
 
-        debugLog(
-          `Scheduled ${handles.length} payment transactions for saturation.`
-        );
+      debugLog(
+        `Scheduled ${handles.length} payment transactions for saturation.`
+      );
       k = true;
     } catch (err) {
       if (!k) assert.fail(`Scheduling payments failed: ${JSON.stringify(err)}`);
@@ -434,12 +437,14 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
       );
 
       debugLog(
-        `Still waiting... included count = ${globalHandles.filter((h) => h.txStatus === 'Included').length
+        `Still waiting... included count = ${
+          globalHandles.filter((h) => h.txStatus === 'Included').length
         }, mintIncluded = ${liquidationActorsMinted()}`
       );
       paymentHandles.forEach((handle) => {
-
-        debugLog(`Payment ${handle.txId} status: ${JSON.stringify(handle.txStatus)}`);
+        debugLog(
+          `Payment ${handle.txId} status: ${JSON.stringify(handle.txStatus)}`
+        );
       });
     }
 

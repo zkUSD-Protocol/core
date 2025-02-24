@@ -41,8 +41,8 @@ export interface DefaultTransactionOptions {
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
   dependencyStatusPollTimeoutMs: number;
-  statusChangeWaitingIntervalMs: number,
-  statusChangeWaitingTimeoutMs: number,
+  statusChangeWaitingIntervalMs: number;
+  statusChangeWaitingTimeoutMs: number;
   inclusionAwaitingTimeoutMs: number;
   memo: string;
   refreshAccounts: Account[];
@@ -525,22 +525,28 @@ export class TransactionManager<E extends string> {
     let promises: Promise<any>[] = [];
 
     for (const tx of this.transactions.values()) {
-      promises.push(tx.lifeCyclePromises.waitingPromise?.promise ?? Promise.resolve());
-      promises.push(tx.lifeCyclePromises.provingPromise?.promise ?? Promise.resolve());
-      promises.push(tx.lifeCyclePromises.sendingPromise?.promise ?? Promise.resolve());
+      promises.push(
+        tx.lifeCyclePromises.waitingPromise?.promise ?? Promise.resolve()
+      );
+      promises.push(
+        tx.lifeCyclePromises.provingPromise?.promise ?? Promise.resolve()
+      );
+      promises.push(
+        tx.lifeCyclePromises.sendingPromise?.promise ?? Promise.resolve()
+      );
     }
 
     try {
       await Promise.race([
         new Promise((_, reject) =>
           setTimeout(() => {
-            reject(new Error("timeout"));
+            reject(new Error('timeout'));
           }, 1000)
         ),
         Promise.all(promises),
       ]);
     } catch (error) {
-      console.error("Error in timeOutAll:", error);
+      console.error('Error in timeOutAll:', error);
     } finally {
       // Force cleanup to ensure test runner can exit
       this.cleanUpResources();
@@ -548,10 +554,7 @@ export class TransactionManager<E extends string> {
   }
 
   // Cleanup function to ensure no dangling resources
-  private cleanUpResources() {
-
-  }
-
+  private cleanUpResources() {}
 
   // this will create a new transaction
   // and schedule it for proving signing and sending
@@ -672,9 +675,9 @@ export class TransactionManager<E extends string> {
             typeof error === 'object' && error !== null && 'kind' in error
               ? error
               : failed_before_sending(
-                'awaiting for the tx dependencies',
-                error
-              );
+                  'awaiting for the tx dependencies',
+                  error
+                );
           tx.setStatuses(status as TransactionStatus, TxLifecycleStatus.FAILED);
           throw status;
         }

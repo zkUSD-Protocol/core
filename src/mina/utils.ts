@@ -5,7 +5,13 @@ import {
 } from '../o1js-compat/zkappcommand.js';
 import { KeyPair } from '../types/utility.js';
 
-export { Account, extractAllTxParties, extractAllTxPartiesJson, isKeyPair, printTxAccountUpdates };
+export {
+  Account,
+  extractAllTxParties,
+  extractAllTxPartiesJson,
+  isKeyPair,
+  printTxAccountUpdates,
+};
 
 type Account = { publicKey: PublicKey; tokenId?: Field };
 
@@ -58,37 +64,36 @@ function extractAllTxPartiesJson(
   return parties;
 }
 
-function printTxAccountUpdates(tx: Transaction<false,false>){
-  const auCount: { publicKey: PublicKey; tokenId: Field; count: number }[] =
-      [];
-    let proofAuthorizationCount = 0;
-    for (const au of tx.transaction.accountUpdates) {
-      const { publicKey, tokenId, authorizationKind } = au.body;
-      if (au.authorization.proof) {
-        proofAuthorizationCount++;
-        if (authorizationKind.isProved.toBoolean() === false)
-          console.error('Proof authorization exists but isProved is false');
-      } else if (authorizationKind.isProved.toBoolean() === true)
-        console.error('isProved is true but no proof authorization');
-      const index = auCount.findIndex(
-        (item) =>
-          item.publicKey.equals(publicKey).toBoolean() &&
-          item.tokenId.equals(tokenId).toBoolean()
-      );
-      if (index === -1) auCount.push({ publicKey, tokenId, count: 1 });
-      else auCount[index].count++;
-    }
-    console.log(
-      `Account updates for tx: ${auCount.length}, proof authorizations: ${proofAuthorizationCount}`
+function printTxAccountUpdates(tx: Transaction<false, false>) {
+  const auCount: { publicKey: PublicKey; tokenId: Field; count: number }[] = [];
+  let proofAuthorizationCount = 0;
+  for (const au of tx.transaction.accountUpdates) {
+    const { publicKey, tokenId, authorizationKind } = au.body;
+    if (au.authorization.proof) {
+      proofAuthorizationCount++;
+      if (authorizationKind.isProved.toBoolean() === false)
+        console.error('Proof authorization exists but isProved is false');
+    } else if (authorizationKind.isProved.toBoolean() === true)
+      console.error('isProved is true but no proof authorization');
+    const index = auCount.findIndex(
+      (item) =>
+        item.publicKey.equals(publicKey).toBoolean() &&
+        item.tokenId.equals(tokenId).toBoolean()
     );
-    for (const au of auCount) {
-      if (au.count > 1) {
-        console.log(
-          `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
-            au.count
-          }`
-        );
-      }
+    if (index === -1) auCount.push({ publicKey, tokenId, count: 1 });
+    else auCount[index].count++;
+  }
+  console.log(
+    `Account updates for tx: ${auCount.length}, proof authorizations: ${proofAuthorizationCount}`
+  );
+  for (const au of auCount) {
+    if (au.count > 1) {
+      console.log(
+        `DUPLICATE AU: ${au.publicKey.toBase58()} tokenId: ${au.tokenId.toString()} count: ${
+          au.count
+        }`
+      );
     }
-    console.log(tx.transaction.accountUpdates);
+  }
+  console.log(tx.transaction.accountUpdates);
 }

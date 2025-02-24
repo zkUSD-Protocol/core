@@ -512,7 +512,8 @@ export class TestHelper<E extends string> {
     let refreshAccounts: Account[] = [
       { publicKey: this.engine.contract.address }, // engine
       { publicKey: senderKey }, // sender
-      ('vaultAddress' in args.args && { // vault (only included if vaultAddress exists)
+      ('vaultAddress' in args.args && {
+        // vault (only included if vaultAddress exists)
         publicKey: PublicKey.fromBase58(args.args.vaultAddress),
         tokenId: this.engine.contract.deriveTokenId(),
       }) as Account,
@@ -617,7 +618,8 @@ export class TestHelper<E extends string> {
 
   async hasVault(vaultPubkey: PublicKey) {
     const vaultAccount = await this.mina.fetchMinaAccount(vaultPubkey, {
-      tokenId: this.engine.contract.deriveTokenId(), force: true
+      tokenId: this.engine.contract.deriveTokenId(),
+      force: true,
     });
     return !!vaultAccount;
   }
@@ -633,7 +635,7 @@ export class TestHelper<E extends string> {
 
       const vaultKey = agent.vault.publicKey;
 
-      if(await this.hasVault(vaultKey)){
+      if (await this.hasVault(vaultKey)) {
         continue;
       }
 

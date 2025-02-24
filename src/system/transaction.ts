@@ -23,7 +23,8 @@ export interface BaseZkusdEngineTransactionArgs {
   transactionId: string;
 }
 
-export interface BaseVaultTransactionArgs extends BaseZkusdEngineTransactionArgs {
+export interface BaseVaultTransactionArgs
+  extends BaseZkusdEngineTransactionArgs {
   vaultAddress: string;
 }
 
@@ -51,7 +52,8 @@ export interface UpdateAdminArgs extends BaseZkusdEngineTransactionArgs {
   newAdmin: string;
 }
 
-export interface ToggleEmergencyStopArgs extends BaseZkusdEngineTransactionArgs {
+export interface ToggleEmergencyStopArgs
+  extends BaseZkusdEngineTransactionArgs {
   shouldStop: boolean;
 }
 
@@ -59,7 +61,8 @@ export interface OracleWhitelistArgs extends BaseZkusdEngineTransactionArgs {
   oracleWhitelist: SizedArray<string, typeof OracleWhitelist.MAX_PARTICIPANTS>;
 }
 
-export interface UpdateValidPriceBlockCountArgs extends BaseZkusdEngineTransactionArgs {
+export interface UpdateValidPriceBlockCountArgs
+  extends BaseZkusdEngineTransactionArgs {
   newValidPriceBlockCount: number;
 }
 

@@ -38,7 +38,7 @@ import { browserWalletSigner } from '../signers/browserwallet-signer.js';
 import { isKeyPair } from '../mina/utils.js';
 import { debugLog } from '../utils/debug.js';
 
-export let sentTxs: any[] = []
+export let sentTxs: any[] = [];
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving
@@ -54,11 +54,18 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
    * Provides an initializer function that can be passed
    * as a setup step to Mina network instances.
    */
-  public static initializer(
-    args: { prover: ITransactionProver, stop?: Promise<void>, forcedStopTimeoutMs?: number }
-  ) {
+  public static initializer(args: {
+    prover: ITransactionProver;
+    stop?: Promise<void>;
+    forcedStopTimeoutMs?: number;
+  }) {
     return (mina: IMinaNetworkInterface) =>
-      ExternalTransactionExecutor.start(mina, args, args.stop, args.forcedStopTimeoutMs);
+      ExternalTransactionExecutor.start(
+        mina,
+        args,
+        args.stop,
+        args.forcedStopTimeoutMs
+      );
   }
 
   /**
@@ -127,7 +134,10 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
   private async awaitTx(
     hash: string,
     timeoutMs: number
-  ): Promise<{ resolutionBlockHeight: bigint, resolution: 'Included' | RejectedOnInclusion }> {
+  ): Promise<{
+    resolutionBlockHeight: bigint;
+    resolution: 'Included' | RejectedOnInclusion;
+  }> {
     return this.inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
   }
 
@@ -172,23 +182,23 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         const signedTx = (
           isKeyPair(tx.keys.sender)
             ? await this.minaSigner({
-              fee: config.startingFee,
-              nonce: nonceLock.nonce,
-              tx: builtTx,
-              keys: {
-                sender: tx.keys.sender,
-                extraSigners: tx.keys.extraSigners,
-              },
-            })
+                fee: config.startingFee,
+                nonce: nonceLock.nonce,
+                tx: builtTx,
+                keys: {
+                  sender: tx.keys.sender,
+                  extraSigners: tx.keys.extraSigners,
+                },
+              })
             : await this.browserWallerSigner({
-              fee: config.startingFee,
-              nonce: nonceLock.nonce,
-              tx: builtTx,
-              keys: {
-                sender: tx.keys.sender,
-                extraSigners: tx.keys.extraSigners,
-              },
-            })
+                fee: config.startingFee,
+                nonce: nonceLock.nonce,
+                tx: builtTx,
+                keys: {
+                  sender: tx.keys.sender,
+                  extraSigners: tx.keys.extraSigners,
+                },
+              })
         ).signedTx;
 
         signedTxGlobal = signedTx;
@@ -247,8 +257,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         const errors = Array.isArray(error)
           ? error.map((e) => (e instanceof Error ? e.message : String(e)))
           : error instanceof Error
-            ? [error.message]
-            : [String(error)];
+          ? [error.message]
+          : [String(error)];
 
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
@@ -281,7 +291,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
 
           // Send the transaction
           const sendResult = await readyToSendTx.safeSend();
-          sentTxs.push({id: tx.getId(), nonce: nonceLock.nonce});
+          sentTxs.push({ id: tx.getId(), nonce: nonceLock.nonce });
           // unlock the nonce before returning
           await nonceLock.unlock();
 
@@ -318,7 +328,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       } catch (error) {
         console.error(`Sending tx ${tx.getId()} failed:`, error);
         await nonceLock.unlock();
-        const stringError = error instanceof Error ? error.message : JSON.stringify(error);
+        const stringError =
+          error instanceof Error ? error.message : JSON.stringify(error);
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
           errors: ['Exceptional failure', stringError],
@@ -334,7 +345,12 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       try {
         sentTx = await sendingPromise;
       } catch (error) {
-        const status: TransactionStatus = isTransactionStatus(error) ? error : { kind: 'FailedBeforeSending', errors: [JSON.stringify(error)] } as TransactionStatus;
+        const status: TransactionStatus = isTransactionStatus(error)
+          ? error
+          : ({
+              kind: 'FailedBeforeSending',
+              errors: [JSON.stringify(error)],
+            } as TransactionStatus);
         return wrapNoErrors({ status });
       }
 
@@ -352,26 +368,33 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             'unchanged' as const,
             TxLifecycleStatus.AWAITING_INCLUSION
           );
-          const { resolution: inclusionStatus, resolutionBlockHeight } = await this.awaitTx(
-            sentTx.hash,
-            config.inclusionAwaitingTimeoutMs
-          );
+          const { resolution: inclusionStatus, resolutionBlockHeight } =
+            await this.awaitTx(sentTx.hash, config.inclusionAwaitingTimeoutMs);
 
           if (inclusionStatus === 'Included') {
             tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
             return wrapNoErrors({ status: 'Included', resolutionBlockHeight });
           } else {
             tx.setStatuses(inclusionStatus, TxLifecycleStatus.FAILED);
-            return wrapNoErrors({ status: inclusionStatus, resolutionBlockHeight });
+            return wrapNoErrors({
+              status: inclusionStatus,
+              resolutionBlockHeight,
+            });
           }
         } catch (e: unknown) {
           // If we fail to get a final status, assume it's stuck
-          console.error(`Awaiting for ${tx.getId()} failed:`, JSON.stringify(e));
+          console.error(
+            `Awaiting for ${tx.getId()} failed:`,
+            JSON.stringify(e)
+          );
           if (e && typeof e == 'object' && 'timeout' in e) {
             tx.setStatuses('StuckInMempool', TxLifecycleStatus.FAILED);
             return wrapNoErrors({ status: 'StuckInMempool' });
           }
-          tx.setStatuses({ kind: 'RejectedOnReceive', errors: [JSON.stringify(e)] }, TxLifecycleStatus.FAILED);
+          tx.setStatuses(
+            { kind: 'RejectedOnReceive', errors: [JSON.stringify(e)] },
+            TxLifecycleStatus.FAILED
+          );
           return wrapNoErrors({ status: 'StuckInMempool' });
         }
       } else if ('errors' in sentTx) {

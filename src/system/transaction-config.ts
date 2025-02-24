@@ -127,14 +127,18 @@ function mkZkusdTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
     [ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT]: {
       method: ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT,
       buildTx: async (args) => {
-        await engine.updateValidPriceBlockCount(UInt32.from(args.newValidPriceBlockCount));
+        await engine.updateValidPriceBlockCount(
+          UInt32.from(args.newValidPriceBlockCount)
+        );
       },
     },
     [ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST]: {
       method: ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST,
       buildTx: async (args) => {
         const whitelist: OracleWhitelist = new OracleWhitelist({
-          addresses: args.oracleWhitelist.map((addr) => PublicKey.fromBase58(addr)),
+          addresses: args.oracleWhitelist.map((addr) =>
+            PublicKey.fromBase58(addr)
+          ),
         });
         await engine.updateOracleWhitelist(whitelist);
       },
@@ -148,9 +152,11 @@ function mkZkusdTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
     [ZkusdEngineTransactionType.TRANSFER]: {
       method: ZkusdEngineTransactionType.TRANSFER,
       buildTx: async (args) => {
-        AccountUpdate.createSigned(PublicKey.fromBase58(args.from)).send(
-          {to: PublicKey.fromBase58(args.to), amount: BigInt(args.amount)});
+        AccountUpdate.createSigned(PublicKey.fromBase58(args.from)).send({
+          to: PublicKey.fromBase58(args.to),
+          amount: BigInt(args.amount),
+        });
       },
-    }
+    },
   };
 }

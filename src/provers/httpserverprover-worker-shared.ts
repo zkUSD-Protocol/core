@@ -138,7 +138,7 @@ function mkExecutionTracker(
           success: true,
           serializedProvenTransaction: serializedTx,
         };
-        console.log('postback results for: ', jobId, 'succes',res.success)
+        console.log('postback results for: ', jobId, 'succes', res.success);
         await postBackResults(epmBaseUrl, `/job/${jobId}/proved`, res);
         workerJobContext.unset();
       },
@@ -147,7 +147,7 @@ function mkExecutionTracker(
           success: false,
           errors: error.status.errors,
         };
-        console.log('postback results for: ', jobId, 'succes',res.success)
+        console.log('postback results for: ', jobId, 'succes', res.success);
         await postBackResults(epmBaseUrl, `/job/${jobId}/proved`, res);
         workerJobContext.unset();
       },

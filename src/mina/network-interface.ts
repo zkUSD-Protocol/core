@@ -448,16 +448,16 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     }
   ): Promise<
     | {
-      account: MinaAccount;
-      error: undefined;
-    }
+        account: MinaAccount;
+        error: undefined;
+      }
     | {
-      account: undefined;
-      error: {
-        statusCode: number;
-        statusText: string;
-      };
-    }
+        account: undefined;
+        error: {
+          statusCode: number;
+          statusText: string;
+        };
+      }
   > {
     return await fetchAccount(
       accountInfo,

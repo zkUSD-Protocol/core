@@ -248,7 +248,6 @@ type ExecutedTx_ =
 
 export type ExecutedTx = ExecutedTx_ & { txId: string };
 
-
 async function proveTransaction(
   context: ExecutorContext,
   transaction: string,

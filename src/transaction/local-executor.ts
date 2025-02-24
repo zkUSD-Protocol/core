@@ -137,7 +137,8 @@ export class LocalTransactionExecutor implements ITransactionExecutor {
           TxLifecycleStatus.AWAITING_INCLUSION
         );
         const awaitedTx = await sentTx.safeWait();
-        const resolutionBlockHeight = config.mina.getNetworkState().blockchainLength;
+        const resolutionBlockHeight =
+          config.mina.getNetworkState().blockchainLength;
         if (awaitedTx.status === 'included') {
           tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
           // make sure that the local state matches the state after tx

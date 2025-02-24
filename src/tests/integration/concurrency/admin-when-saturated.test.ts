@@ -21,7 +21,6 @@ import { DEBUG, debugLog } from '../../../utils/debug.js';
 
 const printTx = DEBUG && true;
 
-
 type User = {
   keys: KeyPair;
   vault: KeyPair;

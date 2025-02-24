@@ -4,7 +4,6 @@ import {
   TxProvingOutput,
 } from './itransactionprover.js';
 
-
 type TxProvingRequest = {
   payload: TxProvingInput;
 };

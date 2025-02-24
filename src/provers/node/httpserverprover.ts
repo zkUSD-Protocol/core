@@ -354,7 +354,10 @@ export class HttpServerProver implements ITransactionProver {
           await this.jobStore.markJobAsCompleted(jobId, provingResult);
         });
         console.log('tracker present', !!tracker.proving.resolver);
-        console.log('passing results ok proving. Success: ', provingResult.success);
+        console.log(
+          'passing results ok proving. Success: ',
+          provingResult.success
+        );
 
         tracker.proving.resolver(provingResult);
         return res.json({ status: 'ok' });
@@ -372,11 +375,11 @@ export class HttpServerProver implements ITransactionProver {
 
 function sanitizeForRoute(input: string): string {
   return input
-    .normalize("NFD") // Normalize Unicode characters
-    .replace(/[\u0300-\u036f]/g, "") // Remove diacritics (accents)
-    .replace(/[^a-zA-Z0-9\s_-]/g, "") // Remove non-alphanumeric except space, underscore, and hyphen
+    .normalize('NFD') // Normalize Unicode characters
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics (accents)
+    .replace(/[^a-zA-Z0-9\s_-]/g, '') // Remove non-alphanumeric except space, underscore, and hyphen
     .trim() // Trim leading/trailing spaces
-    .replace(/[\s_]+/g, "-") // Replace spaces and underscores with hyphens
-    .replace(/^-+|-+$/g, "") // Remove leading/trailing hyphens
+    .replace(/[\s_]+/g, '-') // Replace spaces and underscores with hyphens
+    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
     .toLowerCase(); // Convert to lowercase
 }

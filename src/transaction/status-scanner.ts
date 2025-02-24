@@ -25,7 +25,7 @@ interface ITransactionStatusScanner {
   awaitTransactionStatus(
     transactionHash: string,
     timeoutMs: number
-  ): Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }>;
+  ): Promise<{ resolutionBlockHeight: bigint; resolution: Inclusion }>;
 
   /**
    * Starts scanning the blockchain for new transactions.
@@ -80,10 +80,14 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
   private _mina: IMinaNetworkInterface;
   private _config: TransactionStatusScannerConfig | undefined;
   private _cache: Map<bigint, Map<string, Inclusion>> = new Map();
-  private _resolvers: Map<string, (args: { resolution: Inclusion, resolutionBlockHeight: bigint }) => void> = new Map();
+  private _resolvers: Map<
+    string,
+    (args: { resolution: Inclusion; resolutionBlockHeight: bigint }) => void
+  > = new Map();
   private _isScanning = false;
 
-  private _transactionStatusPromisesRejectors: Map<string, () => void> = new Map();
+  private _transactionStatusPromisesRejectors: Map<string, () => void> =
+    new Map();
 
   private get config(): TransactionStatusScannerConfig {
     if (!this._config) {
@@ -133,7 +137,7 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
   public async awaitTransactionStatus(
     transactionHash: string,
     timeout: number
-  ): Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }> {
+  ): Promise<{ resolutionBlockHeight: bigint; resolution: Inclusion }> {
     debugLog(`Awaiting transaction ${transactionHash}, timeout: ${timeout}ms`);
 
     for (const [blockNum, txMap] of this._cache.entries()) {
@@ -142,18 +146,28 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         debugLog(
           `Transaction ${transactionHash} found in cache at block ${blockNum}`
         );
-        return { resolutionBlockHeight: BigInt(blockNum), resolution: cachedStatus };
+        return {
+          resolutionBlockHeight: BigInt(blockNum),
+          resolution: cachedStatus,
+        };
       }
     }
 
     const newRandomId = Math.random().toString(36);
 
-    const p = new Promise<{ resolutionBlockHeight: bigint, resolution: Inclusion }>((resolve, reject) => {
-      const rejector = () => reject(
-        Object.assign(
-          new Error(
-            `Transaction ${transactionHash} not found before awaiting timeout`
-          ), { timeout: true }));
+    const p = new Promise<{
+      resolutionBlockHeight: bigint;
+      resolution: Inclusion;
+    }>((resolve, reject) => {
+      const rejector = () =>
+        reject(
+          Object.assign(
+            new Error(
+              `Transaction ${transactionHash} not found before awaiting timeout`
+            ),
+            { timeout: true }
+          )
+        );
 
       this._transactionStatusPromisesRejectors.set(newRandomId, rejector);
 
@@ -162,17 +176,20 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         if (this._transactionStatusPromisesRejectors.has(newRandomId)) {
           this._transactionStatusPromisesRejectors.delete(newRandomId);
         }
-        rejector()
+        rejector();
       }, timeout);
 
-      this._resolvers.set(transactionHash, ({ resolutionBlockHeight, resolution }) => {
-        clearTimeout(timeoutHandle);
-        this._resolvers.delete(transactionHash);
-        if (this._transactionStatusPromisesRejectors.has(newRandomId)) {
-          this._transactionStatusPromisesRejectors.delete(newRandomId);
+      this._resolvers.set(
+        transactionHash,
+        ({ resolutionBlockHeight, resolution }) => {
+          clearTimeout(timeoutHandle);
+          this._resolvers.delete(transactionHash);
+          if (this._transactionStatusPromisesRejectors.has(newRandomId)) {
+            this._transactionStatusPromisesRejectors.delete(newRandomId);
+          }
+          resolve({ resolutionBlockHeight, resolution });
         }
-        resolve({ resolutionBlockHeight, resolution });
-      });
+      );
     });
     return p;
   }
