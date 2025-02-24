@@ -1,10 +1,4 @@
-import {
-  PrivateKey,
-  PublicKey,
-  Transaction,
-  UInt32,
-  UInt64,
-} from 'o1js';
+import { PrivateKey, PublicKey, Transaction, UInt32, UInt64 } from 'o1js';
 import { KeyPair, WithDefault, singleDefault } from '../types/utility.js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
@@ -70,11 +64,11 @@ export const defaultOptions: DefaultTransactionOptions = {
     return failedFee.add(new UInt64(0.01e9));
   },
   printAccountUpdates: false,
-  dependencyStatusPollInterval: 2000,
-  dependencyStatusPollTimeoutMs: 300000,
-  statusChangeWaitingIntervalMs: 1000,
-  statusChangeWaitingTimeoutMs: 300000,
-  inclusionAwaitingTimeoutMs: 300000,
+  dependencyStatusPollInterval: 3000,
+  dependencyStatusPollTimeoutMs: 900000,
+  statusChangeWaitingIntervalMs: 3000,
+  statusChangeWaitingTimeoutMs: 900000,
+  inclusionAwaitingTimeoutMs: 900000,
   memo: '',
   refreshAccounts: [],
 };
@@ -191,18 +185,20 @@ export class TransactionInternal {
   public get resolutionBlockHeight(): bigint | undefined {
     const s = this._lifecycle.waitingPromise;
     if (s?.state === 'fulfilled') {
-      if (statusIsChainResolved(this.status)) {
-        if ('resolutionBlockHeight' in s.result) {
-          return s.result.resolutionBlockHeight;
-        } else {
-          console.error('resolutionBlockHeight not found in chain resolved awaited transaction')
-          return undefined
-        }
+      if (
+        statusIsChainResolved(this.status) &&
+        'resolutionBlockHeight' in s.result
+      ) {
+        return s.result.resolutionBlockHeight;
+      } else {
+        console.error(
+          'resolutionBlockHeight not found in chain resolved awaited transaction'
+        );
+        return undefined;
       }
     }
     return undefined;
   }
-
 
   /**
    * Returns the transaction hash if available.
@@ -303,9 +299,11 @@ export class TransactionInternal {
     timeout?: number;
   }): Promise<TransactionStatus> {
     let { until } = args;
-    const timeout = args.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
+    const timeout =
+      args.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
     const statusPollInterval =
-      args.statusPollInterval ?? this._defaultOptions.statusChangeWaitingIntervalMs;
+      args.statusPollInterval ??
+      this._defaultOptions.statusChangeWaitingIntervalMs;
 
     let currentStatus = this.status;
     const startTime = Date.now();
@@ -328,8 +326,10 @@ export class TransactionInternal {
     timeout?: number;
   }): Promise<void> {
     const statusPollInterval =
-      args?.statusPollInterval ?? this._defaultOptions.statusChangeWaitingIntervalMs;
-    const timeout = args?.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
+      args?.statusPollInterval ??
+      this._defaultOptions.statusChangeWaitingIntervalMs;
+    const timeout =
+      args?.timeout ?? this._defaultOptions.statusChangeWaitingTimeoutMs;
 
     const status: TransactionStatus = await this.awaitStatusChange({
       until: (status) => !statusShouldBeWaitedFor(status),
@@ -628,11 +628,13 @@ export class TransactionManager<E extends string> {
           );
           tx.setStatuses('Scheduled', TxLifecycleStatus.PREPARING);
         } catch (error) {
-
-          const status = (typeof error === 'object' && error !== null && 'kind' in error) ? error : failed_before_sending(
-            'awaiting for the tx dependencies',
-            error
-          );
+          const status =
+            typeof error === 'object' && error !== null && 'kind' in error
+              ? error
+              : failed_before_sending(
+                  'awaiting for the tx dependencies',
+                  error
+                );
           tx.setStatuses(status as TransactionStatus, TxLifecycleStatus.FAILED);
           throw status;
         }
@@ -651,7 +653,6 @@ export class TransactionManager<E extends string> {
       };
 
       const builtTxPromise = new TrackedPromise(async () => {
-
         await depsAwaitingPromise;
 
         try {
@@ -704,7 +705,8 @@ export class TransactionManager<E extends string> {
       const lifecycle = await txExecutor.executeTransaction(preparedTx, {
         o1jsMutex: this._o1jsMutex,
         mina: this.mina,
-        startingFee: options?.startingFee ?? this.transactionOptions.startingFee,
+        startingFee:
+          options?.startingFee ?? this.transactionOptions.startingFee,
         printTx: options?.printTx,
         inclusionAwaitingTimeoutMs:
           options?.inclusionAwaitingTimeoutMs ??

@@ -1,17 +1,17 @@
 import { PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
-import { MinaPriceInput } from '../proofs/oracle-price-aggregation';
+import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';
 import { ExternalTransactionExecutor } from '../transaction/external-executor.js';
 import {
   TransactionHandle,
   TransactionManager,
   TransactionOptions,
-} from '../transaction/manager';
-import { blockchain } from '../types/utility';
+} from '../transaction/manager.js';
+import { blockchain } from '../types/utility.js';
 import { FungibleTokenContract } from '@minatokens/token';
-import { ZkUsdEngineContract } from '../contracts/zkusd-engine';
-import { verificationKeys } from '../config/verification-keys';
+import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
+import { verificationKeys } from '../config/verification-keys.js';
 import {
   TransactionArgs,
   ZkusdEngineTransactionType,
@@ -91,6 +91,11 @@ export class ZKUSDClient {
 
     const newAccounts = zkusdTokenAccount ? 1 : 2;
 
+    options = {
+      ...options,
+      memo: 'Vault creation',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.CREATE_VAULT,
       {
@@ -114,6 +119,11 @@ export class ZKUSDClient {
     amount: UInt64,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'Collateral deposit',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
       { sender, vaultAddress, amount },
@@ -131,6 +141,11 @@ export class ZKUSDClient {
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'Collateral redemption',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.REDEEM_COLLATERAL,
       { sender, vaultAddress, amount, minaPriceInput },
@@ -148,6 +163,11 @@ export class ZKUSDClient {
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'zkUSD mint',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.MINT_ZKUSD,
       { sender, vaultAddress, amount, minaPriceInput },
@@ -164,6 +184,11 @@ export class ZKUSDClient {
     amount: UInt64,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'zkUSD burn',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.BURN_ZKUSD,
       { sender, vaultAddress, amount },
@@ -180,6 +205,11 @@ export class ZKUSDClient {
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
+    options = {
+      ...options,
+      memo: 'Vault liquidation',
+    };
+
     return this.executeTransaction(
       ZkusdEngineTransactionType.LIQUIDATE,
       { sender, vaultAddress, minaPriceInput },
@@ -221,8 +251,12 @@ export class ZKUSDClient {
     return vaultAccount;
   }
 
-  public getTokenId() {
-    return this.token.deriveTokenId();
+  public getTokenId(kind: 'token' | 'engine') {
+    if (kind === 'token') {
+      return this.token.deriveTokenId();
+    } else {
+      return this.engine.deriveTokenId();
+    }
   }
 
   /**

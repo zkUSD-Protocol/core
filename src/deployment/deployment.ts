@@ -124,10 +124,12 @@ export class DeploymentService {
 
     // Create protocol admin account if it doesn't exist
     const protocolAdminAccount = await this._mina.fetchMinaAccount(
-      this._networkKeys.protocolAdmin.publicKey
+      this._networkKeys.protocolAdmin.publicKey,
+      { force: true }
     );
 
     if (!protocolAdminAccount) {
+      console.log('Protocol Admin account doesnt exist - creating....');
       const txHandle = await this._txMgr.tx(
         this._deployer,
         async () => {
@@ -147,10 +149,12 @@ export class DeploymentService {
 
     // Deploy token and engine contracts if they don't exist
     const tokenAccount = await this._mina.fetchMinaAccount(
-      this._networkKeys.token.publicKey
+      this._networkKeys.token.publicKey,
+      { force: true }
     );
 
     if (!tokenAccount) {
+      console.log('Contracts dont exist - deploying....');
       const txHandle = await this._txMgr.tx(
         this._deployer,
         async () => {
@@ -195,10 +199,11 @@ export class DeploymentService {
 
     const engineTokenAccount = await this._mina.fetchMinaAccount(
       this._networkKeys.engine.publicKey,
-      { tokenId: this._engine.contract.deriveTokenId() }
+      { tokenId: this._engine.contract.deriveTokenId(), force: true }
     );
 
     if (!engineTokenAccount) {
+      console.log('Initializing Engine contract....');
       const txHandle = await this._txMgr.tx(
         this._deployer,
         async () => {

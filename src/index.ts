@@ -11,7 +11,11 @@ import {
   AggregateOraclePricesProof,
 } from './proofs/oracle-price-aggregation/index.js';
 import { Vault } from './system/vault.js';
-import { getNetworkKeys, NetworkKeyPairs } from './config/keys.js';
+import {
+  getNetworkKeys,
+  NetworkKeyPairs,
+  getContractKeys,
+} from './config/keys.js';
 import {
   ZkusdEngineTransactionArgs,
   ZkusdEngineTransactionType,
@@ -57,6 +61,7 @@ import {
 import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
 import { ZKUSDClient } from './client/client.js';
+import { KeyPair } from './types/utility.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -75,12 +80,14 @@ export {
   OracleWhitelist,
   MinaPriceInput,
   getNetworkKeys,
+  getContractKeys,
   NetworkKeyPairs,
   ZkusdEngineTransactionArgs,
   ZkusdEngineTransactionType,
   Vault,
   MinaNetworkInterface,
   blockchain,
+  KeyPair,
   fetchMinaAccount,
 };
 
