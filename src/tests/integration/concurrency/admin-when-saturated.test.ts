@@ -117,6 +117,7 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
 
   after(async () => {
     stop();
+    await th.txMgr.shutdown();
   });
 
   // first saturate the pool with 50 transactions

@@ -42,7 +42,7 @@ export class TrackedPromiseError extends Error {
     id: string | undefined,
     creationTimestamp: number,
     settleTimestamp: number | undefined,
-    message: string,
+    message: any,
     cause?: unknown
   ) {
     // Convert numeric timestamps to human-readable ISO strings
@@ -72,6 +72,70 @@ export class TrackedPromiseError extends Error {
     }
   }
 }
+
+/**
+ * Represents a signal that instructs a TrackedPromise to settle at specific "abort sites."
+ *
+ * Possible variants:
+ * - `{ resolveWith: T }`: forces the promise to resolve with the given value.
+ * - `{ rejectWith: any }`: forces the promise to reject with the given error or reason.
+ * - `{ settleFast: 'settleFast' }`: a meta-signal that defers the final settle decision
+ *   to a secondary (suggested) signal if present, or defaults to rejecting with
+ *   a generic "Aborted" error.
+ */
+export type SettleSignal<T> =
+  { resolveWith: T } |
+  { rejectWith: any } |
+  { settleFast: 'settleFast' };
+
+/**
+ * An interface for cooperative abort handling. Provides methods for:
+ * - Checking if an abort signal is present.
+ * - Marking an "abort site," where the calling code can either resolve or reject
+ *   early based on the signal.
+ */
+export interface AbortApi<T> {
+  /**
+   * Returns the current abort signal, if one is set.
+   * User code may check this at certain points (abort sites) to decide
+   * whether to terminate or continue.
+   */
+  pollAbortSignal: () => SettleSignal<T> | undefined;
+
+  /**
+   * Declares an abort site and optionally provides a suggested abort signal.
+   * If an abort signal is active, this method returns an object or throws an error
+   * to prematurely settle the promise.
+   *
+   * @param suggestedSignal - A secondary signal that may override or complement
+   *   the existing abort signal if `settleFast` is used.
+   * @returns An object with `resolveWith` if the promise should resolve immediately,
+   *   or `undefined` if no abort action is necessary. If the signal forces rejection,
+   *   this method throws a `TrackedPromiseError`.
+   */
+  markAbortSite: (suggestedSignal?: SettleSignal<T>) => { resolveWith: T } | undefined;
+
+};
+
+export function convertToNonResolvable<T>(a: AbortApi<T>) : AbortApi<any> {
+  const pollAbortSignal: () => SettleSignal<any> | undefined = a.pollAbortSignal;
+  const markAbortSite: (suggestedSignal?: SettleSignal<any>) => undefined = (sig) => {
+    a.markAbortSite(sig);
+  }
+  return { pollAbortSignal, markAbortSite };
+}
+
+export function convertToNonResolvableUnsafe<T>(a: AbortApi<T>) : AbortApi<any> {
+  const pollAbortSignal: () => SettleSignal<any> | undefined = a.pollAbortSignal;
+  const markAbortSite: (suggestedSignal?: SettleSignal<any>) => undefined = (sig) => {
+    const result = a.markAbortSite(sig);
+    if (result !== undefined) {
+      throw new Error('Cannot manual resolve, abort api was converted to non-resolvable');
+    }
+  }
+  return { pollAbortSignal, markAbortSite };
+}
+
 
 /**
  * A wrapper class that tracks the state of an underlying Promise
@@ -105,17 +169,32 @@ export class TrackedPromise<T> {
    */
   private _settleTimestamp?: number;
 
+
+  /**
+   * Holds the currently active abort signal, if any. When present,
+   * the promise may be aborted at the nearest "abort site."
+   */
+  private _abortSignal: SettleSignal<T> | undefined;
+
   /**
    * Creates a new TrackedPromise instance.
    *
    * @param promise - A function returning a Promise to wrap.
    * @param id - (optional) A string identifying this TrackedPromise.
    */
-  constructor(promise: () => Promise<T>, id?: string) {
+  constructor(promise: (args: { abortApi: AbortApi<T> }) => Promise<T>, id?: string) {
     this._id = id;
     this._creationTimestamp = Date.now();
 
-    this._internalPromise = promise()
+    const self = this;
+    const abortApi: AbortApi<T> = {
+      pollAbortSignal: () => self._abortSignal,
+      markAbortSite: (suggestedSignal?: SettleSignal<T>) => {
+        return self.handleAbortSite(suggestedSignal)();
+      }
+    }
+
+    this._internalPromise = promise({ abortApi })
       .then((value) => {
         this._currentState = 'fulfilled';
         this._resultValue = value;
@@ -266,13 +345,76 @@ export class TrackedPromise<T> {
   }
 
   /**
+   * Assigns or updates the active abort signal for this TrackedPromise.
+   * Future calls to `abortApi.markAbortSite()` can then trigger an early
+   * settle (resolve or reject) if the signal demands it.
+   *
+   * @param signal - The new abort signal, or undefined to remove it.
+   */
+  public setAbortSignal(signal?: SettleSignal<T> | undefined) {
+    this._abortSignal = signal;
+  }
+
+  /**
+   * Internal helper that returns a function to handle an abort signal
+   * at a specific "abort site."
+   *
+   * - If `_abortSignal` is unset, returns a no-op function.
+   * - If `_abortSignal` is a `{ resolveWith: ... }`, returns a function
+   *   that resolves immediately with that value.
+   * - If `_abortSignal` is a `{ rejectWith: ... }`, throws a tracked error.
+   * - If `_abortSignal` is `{ settleFast: 'settleFast' }`, it attempts
+   *   to use `suggestedSignal` to decide how to settle. If none is provided,
+   *   it defaults to a rejection.
+   *
+   * @param suggestedSignal - An optional secondary signal used only in
+   *   the `settleFast` case.
+   * @returns A function that either resolves, throws, or does nothing,
+   *   depending on the current `_abortSignal`.
+   */
+  private handleAbortSite(suggestedSignal?: SettleSignal<T>): (() => ({ resolveWith: T } | undefined)) {
+    const signal = this._abortSignal;
+    if (signal === undefined) {
+      return () => undefined;
+    } else if ('resolveWith' in signal) {
+      return () => { return { resolveWith: signal.resolveWith } };
+    } else if ('rejectWith' in signal) {
+      return () => { throw this.createError(signal.rejectWith); };
+    } else if ('settleFast' in signal) {
+      if (suggestedSignal !== undefined && 'resolveWith' in suggestedSignal) {
+        return () => { return { resolveWith: suggestedSignal.resolveWith } }
+      } else if (suggestedSignal !== undefined && 'rejectWith' in suggestedSignal) {
+        return () => { throw this.createError(suggestedSignal.rejectWith); };
+      } else {
+        return () => { throw this.createError('Aborted'); };
+      }
+    } else {
+      throw new Error('Invalid abort signal');
+    }
+  }
+
+  public thenTracked<U>(
+    nextComputation: (parentValue: T, extra: { abortApi: AbortApi<U> }) => Promise<U>,
+    childId?: string
+  ): TrackedPromise<U> {
+    const self = this;
+    return new TrackedPromise<U>(async ({ abortApi }) => {
+      // Wait for the parent to settle
+      await self._internalPromise;
+
+      // Call the child computation with the transformed value
+      return nextComputation(self.result, { abortApi });
+    }, childId);
+  }
+
+  /**
    * Creates a new TrackedPromiseError containing details about this promise,
    * along with the provided message. The original error (if any) is included as `cause`.
    *
    * @param message - A descriptive error message.
    * @returns A TrackedPromiseError with details from this TrackedPromise.
    */
-  public createError(message: string): TrackedPromiseError {
+  public createError(message: any): TrackedPromiseError {
     return new TrackedPromiseError(
       this._id,
       this._creationTimestamp,

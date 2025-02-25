@@ -135,7 +135,7 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
   after(async () => {
     // Signal the external worker to stop, if any
     if (stop) stop();
-    await th.txMgr.timeOutAll();
+    await th.txMgr.shutdown();
   });
 
   //

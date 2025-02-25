@@ -29,6 +29,7 @@ export type {
   SentTransaction,
   TransactionExecutionConfig,
   TransactionLifecycle,
+  FullTransactionLifecycle,
   TransactionState,
   TransactionArgs,
 };
@@ -79,6 +80,8 @@ type TransactionLifecycle = {
   sendingPromise: TrackedPromise<SentTransaction>;
   waitingPromise: TrackedPromise<AwaitedTransaction>;
 };
+
+type FullTransactionLifecycle = {depsAwaitingPromise: TrackedPromise<unknown>} & TransactionLifecycle;
 
 /** Configuration options for executing a transaction. */
 interface TransactionExecutionConfig {
