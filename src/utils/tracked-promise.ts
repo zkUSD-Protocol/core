@@ -115,6 +115,9 @@ export interface AbortApi<T> {
    */
   markAbortSite: (suggestedSignal?: SettleSignal<T>) => { resolveWith: T } | undefined;
 
+  // this will be triggered by setting the abort signal unless its resolveWith
+  installRejector: (rejector: (reason: any) => void) => void;
+
 };
 
 export function convertToNonResolvable<T>(a: AbortApi<T>) : AbortApi<any> {
@@ -122,20 +125,9 @@ export function convertToNonResolvable<T>(a: AbortApi<T>) : AbortApi<any> {
   const markAbortSite: (suggestedSignal?: SettleSignal<any>) => undefined = (sig) => {
     a.markAbortSite(sig);
   }
-  return { pollAbortSignal, markAbortSite };
+  const installRejector: (rejector: (reason: any) => void) => void = a.installRejector;
+  return { pollAbortSignal, markAbortSite, installRejector };
 }
-
-export function convertToNonResolvableUnsafe<T>(a: AbortApi<T>) : AbortApi<any> {
-  const pollAbortSignal: () => SettleSignal<any> | undefined = a.pollAbortSignal;
-  const markAbortSite: (suggestedSignal?: SettleSignal<any>) => undefined = (sig) => {
-    const result = a.markAbortSite(sig);
-    if (result !== undefined) {
-      throw new Error('Cannot manual resolve, abort api was converted to non-resolvable');
-    }
-  }
-  return { pollAbortSignal, markAbortSite };
-}
-
 
 /**
  * A wrapper class that tracks the state of an underlying Promise
@@ -176,6 +168,12 @@ export class TrackedPromise<T> {
    */
   private _abortSignal: SettleSignal<T> | undefined;
 
+
+  // /**
+  //  */
+  private _rejectors: ((reason: any) => void)[] = [];
+
+
   /**
    * Creates a new TrackedPromise instance.
    *
@@ -191,6 +189,9 @@ export class TrackedPromise<T> {
       pollAbortSignal: () => self._abortSignal,
       markAbortSite: (suggestedSignal?: SettleSignal<T>) => {
         return self.handleAbortSite(suggestedSignal)();
+      },
+      installRejector: (rejector: (reason: any) => void) => {
+        this._rejectors.push(rejector);
       }
     }
 
@@ -351,8 +352,16 @@ export class TrackedPromise<T> {
    *
    * @param signal - The new abort signal, or undefined to remove it.
    */
-  public setAbortSignal(signal?: SettleSignal<T> | undefined) {
+  public setAbortSignal(signal?: SettleSignal<T> | undefined, msg?: string) {
     this._abortSignal = signal;
+    if (signal === undefined) {
+      return;
+    }
+    if ('rejectWith' in signal || 'settleFast' in signal) {
+      for (const rejector of this._rejectors) {
+        rejector(msg ?? 'Rejected via an abort signal.');
+      }
+    }
   }
 
   /**

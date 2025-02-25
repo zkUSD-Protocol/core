@@ -16,7 +16,7 @@ import {
   TxLifecycleStatus,
   isTransactionStatus,
 } from './status.js';
-import { TrackedPromise } from '../utils/tracked-promise.js';
+import { AbortApi, TrackedPromise } from '../utils/tracked-promise.js';
 import {
   ITransactionProver,
   TxProvingInput,
@@ -37,8 +37,6 @@ import { Transaction } from 'o1js';
 import { browserWalletSigner } from '../signers/browserwallet-signer.js';
 import { isKeyPair } from '../mina/utils.js';
 import { debugLog } from '../utils/debug.js';
-
-export let sentTxs: any[] = [];
 
 /**
  * An implementation of ITransactionExecutor that delegates transaction proving
@@ -133,12 +131,13 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
    */
   private async awaitTx(
     hash: string,
-    timeoutMs: number
+    timeoutMs: number,
+    abortApi?: AbortApi<any>
   ): Promise<{
     resolutionBlockHeight: bigint;
     resolution: 'Included' | RejectedOnInclusion;
   }> {
-    return this.inclusionScanner.awaitTransactionStatus(hash, timeoutMs);
+    return this.inclusionScanner.awaitTransactionStatus(hash, timeoutMs, abortApi);
   }
 
   public async executeTransaction(
@@ -291,7 +290,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
 
           // Send the transaction
           const sendResult = await readyToSendTx.safeSend();
-          sentTxs.push({ id: tx.getId(), nonce: nonceLock.nonce });
+
           // unlock the nonce before returning
           await nonceLock.unlock();
 
@@ -340,7 +339,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     }, `Sending tx: ${tx.getId()}`);
 
     // ---- Waiting Promise (chain inclusion) ----
-    const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
+    const waitingPromise = new TrackedPromise<AwaitedTransaction>(async ({abortApi}) => {
       let sentTx;
       try {
         sentTx = await sendingPromise;
@@ -369,7 +368,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             TxLifecycleStatus.AWAITING_INCLUSION
           );
           const { resolution: inclusionStatus, resolutionBlockHeight } =
-            await this.awaitTx(sentTx.hash, config.inclusionAwaitingTimeoutMs);
+            await this.awaitTx(sentTx.hash, config.inclusionAwaitingTimeoutMs, abortApi);
 
           if (inclusionStatus === 'Included') {
             tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);

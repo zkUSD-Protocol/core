@@ -6,6 +6,7 @@ import {
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { RejectedOnInclusion } from './status.js';
 import { debugLog } from '../utils/debug.js';
+import { AbortApi } from '../utils/tracked-promise.js';
 
 export {
   ITransactionStatusScanner,
@@ -24,7 +25,8 @@ interface ITransactionStatusScanner {
    */
   awaitTransactionStatus(
     transactionHash: string,
-    timeoutMs: number
+    timeoutMs: number,
+    abortApi?: AbortApi<any>
   ): Promise<{ resolutionBlockHeight: bigint; resolution: Inclusion }>;
 
   /**
@@ -150,7 +152,8 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
    */
   public async awaitTransactionStatus(
     transactionHash: string,
-    timeout: number
+    timeout: number,
+    abortApi?: AbortApi<any>
   ): Promise<{ resolutionBlockHeight: bigint; resolution: Inclusion }> {
     debugLog(`Awaiting transaction ${transactionHash}, timeout: ${timeout}ms`);
 
@@ -173,7 +176,8 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
       resolutionBlockHeight: bigint;
       resolution: Inclusion;
     }>((resolve, reject) => {
-      const rejector = (timeout: boolean) =>
+      const rejector = (timeout: boolean) => {
+        clearTimeout(timeoutHandle);
         reject(
           Object.assign(
             new Error(
@@ -182,8 +186,9 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
             { timeout }
           )
         );
+      }
 
-      this._transactionStatusPromisesRejectors.set(newRandomId, () => rejector(false));
+      abortApi?.installRejector(() => {rejector(false)});
 
       const timeoutHandle = setTimeout(() => {
         this._resolvers.delete(transactionHash);
@@ -192,6 +197,9 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         }
         rejector(true);
       }, timeout);
+
+
+      this._transactionStatusPromisesRejectors.set(newRandomId, () => rejector(false));
 
       this._resolvers.set(
         transactionHash,
