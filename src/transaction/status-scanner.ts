@@ -40,7 +40,12 @@ interface ITransactionStatusScanner {
 
 type TransactionStatusScannerConfig = {
   /**
-   * The expected block production time in seconds.
+   * Auxiliary interval to use when block is not yet there after the expected time.
+   */
+  newBlockPollIntervalMs: bigint;
+
+  /**
+   * The expected block production time in milliseconds.
    */
   blockTimeMs: bigint;
 
@@ -61,7 +66,7 @@ type TransactionStatusScannerConfig = {
 
 const mkConfig = async (mina: IMinaNetworkInterface) => {
   return {
-    blockTimeMs: mina.slotDuration.toBigInt(),
+    blockTimeMs: BigInt(Number(mina.slotDuration) * 0.9),
     getBlockchainLength: async () => {
       const latestBlock = await fetchLastBlock(mina.network.mina[0]);
       return latestBlock.blockchainLength.toBigint();
@@ -69,6 +74,7 @@ const mkConfig = async (mina: IMinaNetworkInterface) => {
     queryTransactionStatuses: async (lastBlocks: number) => {
       return mina.queryGraphQL(mkTransactionStatusesQuery({ lastBlocks }));
     },
+    newBlockPollIntervalMs: 2000n,
   };
 };
 
@@ -78,6 +84,7 @@ const mkConfig = async (mina: IMinaNetworkInterface) => {
  */
 class TransactionStatusScanner implements ITransactionStatusScanner {
   private _mina: IMinaNetworkInterface;
+  private _overlayConfig: Partial<TransactionStatusScannerConfig> | undefined;
   private _config: TransactionStatusScannerConfig | undefined;
   private _cache: Map<bigint, Map<string, Inclusion>> = new Map();
   private _resolvers: Map<
@@ -93,11 +100,14 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
     if (!this._config) {
       throw new Error('Config not loaded call startScanning first');
     }
-    return this._config;
+    // If an overlay config is provided, merge it with the default config
+    const resulting = Object.assign({}, this._config, this._overlayConfig);
+    return resulting;
   }
 
-  constructor(mina: IMinaNetworkInterface) {
+  constructor(mina: IMinaNetworkInterface, config?: Partial<TransactionStatusScannerConfig>) {
     this._mina = mina;
+    this._overlayConfig = config;
   }
 
   /**
@@ -125,7 +135,11 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
    */
   public async stopScanning(): Promise<void> {
     this._isScanning = false;
+    try{
     this._transactionStatusPromisesRejectors.forEach((rejector) => rejector());
+    } catch (err) {
+      debugLog(`(visibility) Stopping scanner silenced: ${err}`);
+    }
   }
 
   /**
@@ -159,24 +173,24 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
       resolutionBlockHeight: bigint;
       resolution: Inclusion;
     }>((resolve, reject) => {
-      const rejector = () =>
+      const rejector = (timeout: boolean) =>
         reject(
           Object.assign(
             new Error(
               `Transaction ${transactionHash} not found before awaiting timeout`
             ),
-            { timeout: true }
+            { timeout }
           )
         );
 
-      this._transactionStatusPromisesRejectors.set(newRandomId, rejector);
+      this._transactionStatusPromisesRejectors.set(newRandomId, () => rejector(false));
 
       const timeoutHandle = setTimeout(() => {
         this._resolvers.delete(transactionHash);
         if (this._transactionStatusPromisesRejectors.has(newRandomId)) {
           this._transactionStatusPromisesRejectors.delete(newRandomId);
         }
-        rejector();
+        rejector(true);
       }, timeout);
 
       this._resolvers.set(
@@ -280,10 +294,12 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
           Number(lastBlocks)
         );
         this.processNewBlocks(response, fromBlock);
+        setTimeout(() => this.doScan(), Number(this.config.blockTimeMs));
       }
-
+      else{
+        setTimeout(() => this.doScan(), Number(this.config.newBlockPollIntervalMs));
+      }
       this.keepLastXBlocks(100);
-      setTimeout(() => this.doScan(), Number(this.config.blockTimeMs));
     } catch (err) {
       this._isScanning = false;
       throw err;

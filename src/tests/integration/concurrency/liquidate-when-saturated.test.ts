@@ -15,6 +15,15 @@ import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 
+// ----------------------------------------------------------
+// This test suite is designed to test the following scenario:
+// 1. Create 2 users, create vaults, deposit collateral, and mint zkUSD.
+// 2. Send multiple payments to saturate the network.
+// 3. Liquidate one of the users.
+// 4. Ensure liquidation is successful and completes within 2 blocks.
+// ----------------------------------------------------------
+
+
 //
 // ------------------- Constants & Config -------------------
 //

@@ -13,6 +13,7 @@ import {
 } from '../in-memory-job-store.js';
 import { Server } from 'http';
 import net from 'net';
+import { debugLog } from '../../utils/debug.js';
 
 export type TransactionExecutionJob = {
   id: string;
@@ -27,14 +28,6 @@ type TxProvingTracker = {
     rejector: (error: unknown) => void;
   };
 };
-
-// const DEBUG = !!process.env.DEBUG;
-
-// const debugLog = (msg: string) => {
-//   if (DEBUG) {
-//     console.debug(msg);
-//   }
-// };
 
 /**
  * Represents an abstract external prover “worker”.
@@ -177,7 +170,7 @@ export class HttpServerProver implements ITransactionProver {
     return new Promise((resolve, reject) => {
       this.server = this.app
         .listen(this.port, () => {
-          console.log(`EPM server listening on port ${this.port}`);
+          debugLog(`EPM server listening on port ${this.port}`);
           resolve();
         })
         .on('error', reject);
@@ -197,12 +190,12 @@ export class HttpServerProver implements ITransactionProver {
    * Shuts down the EPM by stopping all workers and closing the HTTP server.
    */
   public async shutdown(forceTimeout?: number): Promise<void> {
-    console.log('Shutting down HttpServerProver...');
+    debugLog('Shutting down HttpServerProver...');
     this.isShuttingDown = true; // Prevent worker restarts
 
     // Stop worker processes
     this.childWorkers.forEach((worker) => {
-      console.log(`Stopping worker process ${worker.workerId}`);
+      debugLog(`Stopping worker process ${worker.workerId}`);
       worker.stop();
     });
     this.childWorkers = [];
@@ -214,7 +207,7 @@ export class HttpServerProver implements ITransactionProver {
         if (err) {
           console.error('Error closing server:', err);
         } else {
-          console.log('Server has been closed gracefully.');
+          debugLog('Server has been closed gracefully.');
         }
       });
 
@@ -226,12 +219,12 @@ export class HttpServerProver implements ITransactionProver {
             // even if the request/response was in progress.
             conn.destroy();
           });
-          console.log('All remaining connections have been forced closed.');
+          debugLog('All remaining connections have been forced closed.');
         }, forceTimeout);
       }
       await new Promise((resolve) => this.server.close(resolve));
     }
-    console.log('HttpServerProver shut down.');
+    debugLog('HttpServerProver shut down.');
   }
   /**
    * Spawns an array of external processes and tracks them.
@@ -266,7 +259,7 @@ export class HttpServerProver implements ITransactionProver {
         `Worker #${index} exited with code=${code} signal=${signal}`
       );
       if (!this.isShuttingDown) {
-        console.log(`Restarting worker #${index}...`);
+        debugLog(`Restarting worker #${index}...`);
         worker.spawn(epmUrl, index);
       }
     });
@@ -290,13 +283,13 @@ export class HttpServerProver implements ITransactionProver {
       async (req: Request, res: Response) => {
         const workerId = req.params.workerid;
         const status = req.body.status as TransactionProvingWorkerStatus;
-        console.log('received a heartbeat from worker', workerId, status);
+        debugLog('received a heartbeat from worker', workerId, status);
 
         if (status.proving) {
           await this.jobStore.markJobAsBeingProven(status.provingJobId);
         }
 
-        console.log(`Received heartbeat from worker ${workerId}:`, status);
+        debugLog(`Received heartbeat from worker ${workerId}:`, status);
         return res.json({ status: 'ok' });
       }
     );
@@ -353,12 +346,6 @@ export class HttpServerProver implements ITransactionProver {
         await this.mutex.runExclusive(async () => {
           await this.jobStore.markJobAsCompleted(jobId, provingResult);
         });
-        console.log('tracker present', !!tracker.proving.resolver);
-        console.log(
-          'passing results ok proving. Success: ',
-          provingResult.success
-        );
-
         tracker.proving.resolver(provingResult);
         return res.json({ status: 'ok' });
       } catch (err) {

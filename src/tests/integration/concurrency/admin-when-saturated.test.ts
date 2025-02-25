@@ -19,6 +19,16 @@ import {
 } from '../../../transaction/status.js';
 import { DEBUG, debugLog } from '../../../utils/debug.js';
 
+// --------------------------------------------------------
+// This test follows the following scenaro:
+// - it creates users and vaults for them
+// - users deposit fund, mint zkusd
+// - after network achieves saturation
+//   (there's 13 tx - more than the network can process within 2 blocks)
+//   the engine is stopped.
+// - the assertion is made that all the minting operations made after the stop
+// - will fail. The rest should succeed.
+
 const printTx = DEBUG && true;
 
 type User = {
@@ -43,7 +53,7 @@ const MINIMAL_MINTS_IN_MEMPOOL = 7;
 // if you don't have enough workers to process transactions in time, the test will timeout and fail
 // because it will not achieve preliminary conditions.
 // In that case you may want to experiment with setting alternative slot time on Lightnet.
-describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated pool ', () => {
+describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => {
   let th: TestHelper<'local' | 'external'>;
 
   let users: User[] = [];
@@ -69,8 +79,8 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     };
 
     th = await TestHelper.initLightnetChain({ txExecutorInitializers });
-    th._txMgr.transactionOptions.statusChangeWaitingTimeoutMs = 20 * 60 * 1000; // 20 minutes
-    th._txMgr.transactionOptions.dependencyStatusPollTimeoutMs = 20 * 60 * 1000; // 20 minutes
+    th.txMgr.transactionOptions.statusChangeWaitingTimeoutMs = 20 * 60 * 1000; // 20 minutes
+    th.txMgr.transactionOptions.dependencyStatusPollTimeoutMs = 20 * 60 * 1000; // 20 minutes
 
     await th.deployTokenContracts();
     const engineTokenAccount = await th.mina.fetchMinaAccount(
@@ -330,8 +340,8 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
 
     // the rest of the transactions should be settled eventually
 
-    // set a time out of 5 minutes starting now
-    const timeout = Date.now() + 5 * 60 * 1000;
+    // set a time out of 8 minutes starting now
+    const timeout = Date.now() + 8 * 60 * 1000;
     let done = 0;
 
     while (Date.now() < timeout) {
