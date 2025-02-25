@@ -8,7 +8,6 @@ import { ITransactionExecutor } from '../../../transaction/executor.js';
 import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
 import {
   ExternalTransactionExecutor,
-  sentTxs,
 } from '../../../transaction/external-executor.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 import { PrivateKey, UInt64 } from 'o1js';
@@ -450,11 +449,6 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
           globalHandles.filter((h) => h.txStatus === 'Included').length
         }, mintIncluded = ${liquidationActorsMinted()}`
       );
-      paymentHandles.forEach((handle) => {
-        debugLog(
-          `Payment ${handle.txId} status: ${JSON.stringify(handle.txStatus)}`
-        );
-      });
     }
 
     // At this point, we know the network is "saturated" and both relevant mints are included.
@@ -510,3 +504,4 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     );
   });
 });
+
