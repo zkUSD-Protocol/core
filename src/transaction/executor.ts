@@ -20,6 +20,7 @@ import {
   TxLifecycleStatus,
 } from './status.js';
 import { TransactionArgs } from '../system/transaction.js';
+import { ITransactionLifecycleApi } from './lifecycle.js';
 
 export type {
   AwaitedTransaction,
@@ -102,6 +103,7 @@ interface PreparedTransaction {
     publicKey: string | PublicKey,
     tokenId?: Field
   ) => Promise<NonceLock>;
+  updateLifecycle: ITransactionLifecycleApi,
   setStatuses: (
     status: TransactionStatus | 'unchanged',
     lifecycleStatus: TxLifecycleStatus | 'unchanged'

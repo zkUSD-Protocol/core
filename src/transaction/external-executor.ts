@@ -14,7 +14,6 @@ import {
   RejectedOnReceive,
   TransactionStatus,
   TxLifecycleStatus,
-  isTransactionStatus,
 } from './status.js';
 import { TrackedPromise } from '../utils/tracked-promise.js';
 import {
@@ -37,6 +36,7 @@ import { Transaction } from 'o1js';
 import { browserWalletSigner } from '../signers/browserwallet-signer.js';
 import { isKeyPair } from '../mina/utils.js';
 import { debugLog } from '../utils/debug.js';
+import { TransactionPhase } from './lifecycle.js';
 
 export let sentTxs: any[] = [];
 
@@ -151,6 +151,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       );
     }
     const txArgs = tx.args as TransactionArgs;
+    const updateLifecycle = tx.updateLifecycle;
 
     // Helpers for standardizing success/error shapes
     const wrapNoErrors = <T>(value: T & { status?: TransactionStatus }) => ({
@@ -178,27 +179,28 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
       builtTxGlobal = builtTx;
 
       try {
+        updateLifecycle.setPhase(TransactionPhase.SIGNING);
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.SIGNING);
         const signedTx = (
           isKeyPair(tx.keys.sender)
             ? await this.minaSigner({
-                fee: config.startingFee,
-                nonce: nonceLock.nonce,
-                tx: builtTx,
-                keys: {
-                  sender: tx.keys.sender,
-                  extraSigners: tx.keys.extraSigners,
-                },
-              })
+              fee: config.startingFee,
+              nonce: nonceLock.nonce,
+              tx: builtTx,
+              keys: {
+                sender: tx.keys.sender,
+                extraSigners: tx.keys.extraSigners,
+              },
+            })
             : await this.browserWallerSigner({
-                fee: config.startingFee,
-                nonce: nonceLock.nonce,
-                tx: builtTx,
-                keys: {
-                  sender: tx.keys.sender,
-                  extraSigners: tx.keys.extraSigners,
-                },
-              })
+              fee: config.startingFee,
+              nonce: nonceLock.nonce,
+              tx: builtTx,
+              keys: {
+                sender: tx.keys.sender,
+                extraSigners: tx.keys.extraSigners,
+              },
+            })
         ).signedTx;
 
         signedTxGlobal = signedTx;
@@ -211,6 +213,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           },
           ...txArgs,
         };
+        updateLifecycle.success();
         return ret;
       } catch (error) {
         const status: FailedBeforeSending = {
@@ -222,6 +225,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
         };
         await nonceLock.unlock();
         tx.setStatuses(status, TxLifecycleStatus.FAILED);
+        updateLifecycle.addErrors(error);
         throw error;
       }
     });
@@ -230,6 +234,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     const provingPromise = new TrackedPromise<ProvenTransaction>(async () => {
       const input = await signingPromise;
       try {
+        updateLifecycle.setPhase(TransactionPhase.PROVING);
         tx.setStatuses('unchanged' as const, TxLifecycleStatus.PROVING);
         const output = await this.prover.proveTransaction(input);
         if (output.success === false) {
@@ -244,27 +249,29 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             );
           }
           await nonceLock.unlock();
+          updateLifecycle.addErrors(output.errors);
           return wrapError({ status });
         } else {
           tx.setStatuses('unchanged' as const, TxLifecycleStatus.SCHEDULED);
           debugLog(`${tx.getId()} - Proved.`);
+          updateLifecycle.success();
           return wrapNoErrors({
             serializedProvenTransaction: output.serializedProvenTransaction,
           });
         }
       } catch (error) {
-        console.error(`Proving tx ${tx.getId()} failed:`, error);
         const errors = Array.isArray(error)
           ? error.map((e) => (e instanceof Error ? e.message : String(e)))
           : error instanceof Error
-          ? [error.message]
-          : [String(error)];
+            ? [error.message]
+            : [String(error)];
 
         const status: FailedBeforeSending = {
           kind: 'FailedBeforeSending',
           errors,
         };
         tx.setStatuses(status, TxLifecycleStatus.FAILED);
+        updateLifecycle.exception(error);
         console.error(
           `${tx.getId()} - Proving failed: ${JSON.stringify(status)}`
         );
@@ -276,9 +283,13 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
     // ---- Sending Promise ----
     const sendingPromise = new TrackedPromise<SentTransaction>(async () => {
       try {
+        updateLifecycle.setPhase(TransactionPhase.SENDING);
         const proveResult = await provingPromise;
 
         if (proveResult.isLocal) {
+          updateLifecycle.exception(
+            'isLocal should be false in external executor'
+          );
           throw new Error('isLocal should be false in external executor');
         }
 
@@ -306,6 +317,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
               );
             }
             tx.setStatuses(status, TxLifecycleStatus.FAILED);
+            updateLifecycle.addErrors("RejectedOnReceive", sendResult.errors);
             return wrapError({ status });
           } else {
             if (config?.printTx) {
@@ -314,6 +326,8 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
               );
             }
             tx.setStatuses('Pending', TxLifecycleStatus.PENDING);
+            updateLifecycle.success();
+            updateLifecycle.setPhase(TransactionPhase.PENDING_INCLUSION);
             return wrapNoErrors({ hash: sendResult.hash });
           }
         } else {
@@ -323,6 +337,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             kind: 'FailedBeforeSending',
             errors: ['Proving failed', ...proveResult.errors],
           };
+          updateLifecycle.exception(proveResult.errors);
           return wrapError({ status });
         }
       } catch (error) {
@@ -334,6 +349,7 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           kind: 'FailedBeforeSending',
           errors: ['Exceptional failure', stringError],
         };
+        updateLifecycle.exception(['Exceptional failure', stringError]);
         tx.setStatuses(status, TxLifecycleStatus.FAILED);
         throw error;
       }
@@ -341,20 +357,12 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
 
     // ---- Waiting Promise (chain inclusion) ----
     const waitingPromise = new TrackedPromise<AwaitedTransaction>(async () => {
-      let sentTx;
-      try {
-        sentTx = await sendingPromise;
-      } catch (error) {
-        const status: TransactionStatus = isTransactionStatus(error)
-          ? error
-          : ({
-              kind: 'FailedBeforeSending',
-              errors: [JSON.stringify(error)],
-            } as TransactionStatus);
-        return wrapNoErrors({ status });
-      }
+      let sentTx = await sendingPromise;
 
       if (sentTx.isLocal) {
+        updateLifecycle.exception(
+          'isLocal should be false in external executor'
+        );
         throw new Error('isLocal should be false in external executor');
       }
 
@@ -368,14 +376,17 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
             'unchanged' as const,
             TxLifecycleStatus.AWAITING_INCLUSION
           );
+          updateLifecycle.setPhase(TransactionPhase.PENDING_INCLUSION);
           const { resolution: inclusionStatus, resolutionBlockHeight } =
             await this.awaitTx(sentTx.hash, config.inclusionAwaitingTimeoutMs);
 
           if (inclusionStatus === 'Included') {
             tx.setStatuses('Included', TxLifecycleStatus.SUCCESS);
+            updateLifecycle.success();
             return wrapNoErrors({ status: 'Included', resolutionBlockHeight });
           } else {
             tx.setStatuses(inclusionStatus, TxLifecycleStatus.FAILED);
+            updateLifecycle.addErrors("RejectedOnInclusion", inclusionStatus);
             return wrapNoErrors({
               status: inclusionStatus,
               resolutionBlockHeight,
@@ -389,20 +400,27 @@ export class ExternalTransactionExecutor implements ITransactionExecutor {
           );
           if (e && typeof e == 'object' && 'timeout' in e) {
             tx.setStatuses('StuckInMempool', TxLifecycleStatus.FAILED);
+            updateLifecycle.addErrors("TimeoutAwaitingInclusion", e);
+            return wrapNoErrors({ status: 'StuckInMempool' });
+          } else {
+            tx.setStatuses(
+              { kind: 'RejectedOnReceive', errors: [JSON.stringify(e)] },
+              TxLifecycleStatus.FAILED
+            );
+            updateLifecycle.addErrors("RejectedOnReceive", JSON.stringify(e));
             return wrapNoErrors({ status: 'StuckInMempool' });
           }
-          tx.setStatuses(
-            { kind: 'RejectedOnReceive', errors: [JSON.stringify(e)] },
-            TxLifecycleStatus.FAILED
-          );
-          return wrapNoErrors({ status: 'StuckInMempool' });
         }
       } else if ('errors' in sentTx) {
         // Rejected on sending
+        updateLifecycle.addErrors("RejectedOnReceive", JSON.stringify(sentTx.errors));
         return wrapNoErrors({
           status: { kind: 'RejectedOnReceive', errors: sentTx.errors },
         });
       } else {
+        updateLifecycle.exception(
+          'Unknown transaction shape after sending.'
+        );
         throw new Error('Unknown transaction shape after sending.');
       }
     }, `Waiting tx: ${tx.getId()}`);
