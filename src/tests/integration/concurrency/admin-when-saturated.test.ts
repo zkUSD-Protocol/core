@@ -10,6 +10,7 @@ import assert from 'node:assert';
 import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
+import whyIsNodeRunning  from 'why-is-node-running';
 import {
   TxLifecycleStatus,
   statusIsChainResolved,
@@ -117,6 +118,8 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
 
   after(async () => {
     stop();
+    await th.txMgr.shutdown();
+    setImmediate(() => whyIsNodeRunning());
   });
 
   // first saturate the pool with 50 transactions

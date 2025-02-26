@@ -259,7 +259,7 @@ export class TestHelper<E extends string> {
       (singleDefault(
         'local',
         async () => new LocalTransactionExecutor()
-      ) as unknown as WithDefault<
+      ) as WithDefault<
         E | 'local',
         (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
       >);
@@ -385,9 +385,10 @@ export class TestHelper<E extends string> {
     console.log('Lightnet Setup Complete');
   }
 
-  async deployTokenContracts() {
+  async deployTokenContracts(args?:{force?:boolean}) {
+    const force = args?.force ?? false;
     this._deploymentService = await DeploymentService.create(this.txMgr);
-    const deployedContracts = await this._deploymentService.deploy();
+    const deployedContracts = await this._deploymentService.deploy(force);
 
     if (this.mina.network.chainId === 'local') {
       this.txMgr.mina.local?.setBlockchainLength(UInt32.from(1000));

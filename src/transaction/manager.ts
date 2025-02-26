@@ -1,6 +1,6 @@
 import { PrivateKey, PublicKey, Transaction, UInt32, UInt64} from 'o1js';
 import { KeyPair, WithDefault, singleDefault } from '../types/utility.js';
-import { TrackedPromise } from '../utils/tracked-promise.js';
+import { AbortApi, TrackedPromise, convertToNonResolvable } from '../utils/tracked-promise.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { Mutex } from '../utils/mutex.js';
 import {
@@ -12,10 +12,10 @@ import {
   statusShouldBeWaitedFor,
 } from './status.js';
 import {
+  FullTransactionLifecycle,
   ITransactionExecutor,
   PreparedTransaction,
   TransactionArgs,
-  TransactionLifecycle,
   TransactionState,
 } from './executor.js';
 import { zkUsdTransaction } from './execution.js';
@@ -112,11 +112,13 @@ export interface TransactionHandle {
     until: (status: TransactionStatus) => boolean;
     statusPollInterval?: number;
     timeout?: number;
+    abortApi?: AbortApi<TransactionStatus>
   }): Promise<TransactionStatus>;
 
   awaitIncluded(args?: {
     statusPollInterval?: number;
     timeout?: number;
+    abortApi?: AbortApi<TransactionStatus>
   }): Promise<void>;
 
   subscribeToLifecycleChange(cb: (lifecycle: TxLifecycleStatus) => void): void;
@@ -187,10 +189,11 @@ export class TransactionInternal {
     }
   }
 
-  private _lifecyclePromises: Partial<TransactionLifecycle> = {};
+  private _lifecyclePromises: Partial<FullTransactionLifecycle> = {};
 
-  public get lifeCyclePromises(): Partial<TransactionLifecycle> {
+  public get lifeCyclePromises(): Partial<FullTransactionLifecycle> {
     return {
+      depsAwaitingPromise: this._lifecyclePromises.depsAwaitingPromise,
       provingPromise: this._lifecyclePromises.provingPromise,
       sendingPromise: this._lifecyclePromises.sendingPromise,
       waitingPromise: this._lifecyclePromises.waitingPromise,
@@ -320,7 +323,8 @@ export class TransactionInternal {
   /**
    * Installs the promises for proving, sending, and waiting on this transaction.
    */
-  public installLifecycle(txLifecycle: TransactionLifecycle): void {
+
+  public installLifecycle(txLifecycle: FullTransactionLifecycle): void {
     this._lifecyclePromises = txLifecycle;
   }
 
@@ -331,6 +335,7 @@ export class TransactionInternal {
     until: (status: TransactionStatus) => boolean;
     statusPollInterval?: number;
     timeout?: number;
+    abortApi?: AbortApi<TransactionStatus>
   }): Promise<TransactionStatus> {
     let { until } = args;
     const timeout =
@@ -350,14 +355,15 @@ export class TransactionInternal {
       }
       await new Promise((resolve) => setTimeout(resolve, statusPollInterval));
       currentStatus = this.status;
+      args.abortApi?.markAbortSite()
     }
-
     return currentStatus;
   }
 
   public async awaitIncluded(args?: {
     statusPollInterval?: number;
     timeout?: number;
+    abortApi?: AbortApi<TransactionStatus>
   }): Promise<void> {
     const statusPollInterval =
       args?.statusPollInterval ??
@@ -369,6 +375,7 @@ export class TransactionInternal {
       until: (status) => !statusShouldBeWaitedFor(status),
       statusPollInterval,
       timeout,
+      abortApi: args?.abortApi
     });
     if (status !== 'Included') {
       throw new Error(
@@ -469,6 +476,11 @@ export class TransactionManager<E extends string> {
     string,
     (txs: TransactionHandle[]) => void
   > = new Map();
+  private _shuttingDown: boolean = false;
+
+  public get shuttingDown(): boolean {
+    return this._shuttingDown;
+  }
 
   private transactionStatusChanged() {
     this.statusSubscribers.forEach((cb) => cb(this.transactionHandles));
@@ -565,34 +577,30 @@ export class TransactionManager<E extends string> {
     return await this.tx(sender, callback, options, args);
   }
 
-  public async timeOutAll() {
-    let promises: Promise<any>[] = [];
-
-    for (const tx of this.transactions.values()) {
-      promises.push(
-        tx.lifeCyclePromises.waitingPromise?.promise ?? Promise.resolve()
-      );
-      promises.push(
-        tx.lifeCyclePromises.provingPromise?.promise ?? Promise.resolve()
-      );
-      promises.push(
-        tx.lifeCyclePromises.sendingPromise?.promise ?? Promise.resolve()
-      );
-    }
-
+  public async shutdown() {
     try {
-      await Promise.race([
-        new Promise((_, reject) =>
-          setTimeout(() => {
-            reject(new Error('timeout'));
-          }, 1000)
-        ),
-        Promise.all(promises),
-      ]);
+      let promises: TrackedPromise<any>[] = [];
+
+      for (const tx of this.transactions.values()) {
+        if (tx.lifeCyclePromises?.sendingPromise) {
+          promises.push(tx.lifeCyclePromises.sendingPromise);
+        }
+        if (tx.lifeCyclePromises?.provingPromise) {
+          promises.push(tx.lifeCyclePromises.provingPromise);
+        }
+        if (tx.lifeCyclePromises?.waitingPromise) {
+          promises.push(tx.lifeCyclePromises.waitingPromise);
+        }
+        if (tx.lifeCyclePromises?.depsAwaitingPromise) {
+          promises.push(tx.lifeCyclePromises.depsAwaitingPromise);
+        }
+      }
+      promises.forEach((p) => p.setAbortSignal());
     } catch (error) {
       console.error('Error in timeOutAll:', error);
     } finally {
       // Force cleanup to ensure test runner can exit
+      this._shuttingDown = true;
       this.cleanUpResources();
     }
   }
@@ -686,7 +694,7 @@ export class TransactionManager<E extends string> {
       };
 
       // schedule waiting for dependencies to be included
-      const depsAwaitingPromise = new TrackedPromise(async () => {
+      const depsAwaitingPromise = new TrackedPromise(async ({ abortApi }) => {
         try {
           if (tx.dependencies.length !== 0) {
             updateLifecycle.setPhase(TransactionPhase.AWAITING_FOR_OTHER_TXS);
@@ -705,6 +713,7 @@ export class TransactionManager<E extends string> {
                   status === 'Included' || statusIsFailed(status),
                 statusPollInterval: options?.dependencyStatusPollInterval,
                 timeout: options?.dependencyStatusPollTimeoutMs,
+                abortApi: convertToNonResolvable(abortApi)
               });
               if (depStatus !== 'Included') {
                 throw {
@@ -723,9 +732,9 @@ export class TransactionManager<E extends string> {
             typeof error === 'object' && error !== null && 'kind' in error
               ? error
               : failed_before_sending(
-                  'awaiting for the tx dependencies',
-                  error
-                );
+                'awaiting for the tx dependencies',
+                error
+              );
           tx.setStatuses(status as TransactionStatus, TxLifecycleStatus.FAILED);
           updateLifecycle.addErrors(error)
           throw status;
@@ -817,7 +826,9 @@ export class TransactionManager<E extends string> {
           this.transactionOptions.inclusionAwaitingTimeoutMs,
       });
 
-      tx.installLifecycle(lifecycle);
+      const fullLifecycle: FullTransactionLifecycle = Object.assign({}, lifecycle, { depsAwaitingPromise })
+
+      tx.installLifecycle(fullLifecycle);
       return tx.handle;
     });
   }

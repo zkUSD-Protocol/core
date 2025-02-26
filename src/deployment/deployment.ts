@@ -119,7 +119,7 @@ export class DeploymentService {
    *
    * @returns Object containing references to deployed contracts and verification keys
    */
-  async deploy(): Promise<DeployedContracts> {
+  async deploy(force:boolean=false): Promise<DeployedContracts> {
     console.log(`Deploying Contracts on ${this._mina.network.chainId}`);
 
     // Create protocol admin account if it doesn't exist
@@ -153,12 +153,13 @@ export class DeploymentService {
       { force: true }
     );
 
-    if (!tokenAccount) {
-      console.log('Contracts dont exist - deploying....');
+    if (!tokenAccount || force) {
+      if(!force) console.log('Contracts dont exist - deploying....');
+      else console.log('Forcing contracts deployment....');
       const txHandle = await this._txMgr.tx(
         this._deployer,
         async () => {
-          AccountUpdate.fundNewAccount(this._deployer.publicKey, 3);
+          if(!tokenAccount) AccountUpdate.fundNewAccount(this._deployer.publicKey, 3);
           await this._token.contract.deploy({
             symbol: 'zkUSD',
             src: 'https://github.com/zkcloudworker/minatokens-lib/blob/main/packages/token/src/FungibleTokenContract.ts',
@@ -202,12 +203,12 @@ export class DeploymentService {
       { tokenId: this._engine.contract.deriveTokenId(), force: true }
     );
 
-    if (!engineTokenAccount) {
+    if (!engineTokenAccount || force) {
       console.log('Initializing Engine contract....');
       const txHandle = await this._txMgr.tx(
         this._deployer,
         async () => {
-          AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
+          if(!engineTokenAccount) AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
           await this._engine.contract.initialize();
         },
         {

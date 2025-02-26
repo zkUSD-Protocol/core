@@ -88,7 +88,6 @@ export async function startProvingLoop(
 export async function startStatusPostingLoop(
   config: HttpServerProverWorkerConfig,
   workerJobContext: WorkerJobContext,
-  mutex: Mutex
 ) {
   console.log('Starting status posting loop');
   const { workerId, epmBaseUrl, statusPostingIntervalMs: interval } = config;
@@ -138,7 +137,6 @@ function mkExecutionTracker(
           success: true,
           serializedProvenTransaction: serializedTx,
         };
-        console.log('postback results for: ', jobId, 'succes', res.success);
         await postBackResults(epmBaseUrl, `/job/${jobId}/proved`, res);
         workerJobContext.unset();
       },
