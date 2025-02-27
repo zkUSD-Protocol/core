@@ -20,6 +20,7 @@ import {
   TxLifecycleStatus,
 } from './status.js';
 import { TransactionArgs } from '../system/transaction.js';
+import { ITransactionLifecycleApi } from './lifecycle.js';
 
 export type {
   AwaitedTransaction,
@@ -29,6 +30,7 @@ export type {
   SentTransaction,
   TransactionExecutionConfig,
   TransactionLifecycle,
+  FullTransactionLifecycle,
   TransactionState,
   TransactionArgs,
 };
@@ -80,6 +82,8 @@ type TransactionLifecycle = {
   waitingPromise: TrackedPromise<AwaitedTransaction>;
 };
 
+type FullTransactionLifecycle = {depsAwaitingPromise: TrackedPromise<unknown>} & TransactionLifecycle;
+
 /** Configuration options for executing a transaction. */
 interface TransactionExecutionConfig {
   o1jsMutex: Mutex;
@@ -102,6 +106,7 @@ interface PreparedTransaction {
     publicKey: string | PublicKey,
     tokenId?: Field
   ) => Promise<NonceLock>;
+  updateLifecycle: ITransactionLifecycleApi,
   setStatuses: (
     status: TransactionStatus | 'unchanged',
     lifecycleStatus: TxLifecycleStatus | 'unchanged'
