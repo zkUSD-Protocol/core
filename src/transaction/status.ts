@@ -13,6 +13,21 @@ export function statusIsRejectedTransaction(
   return tx.status === 'rejected';
 }
 
+export type TransactionStatusKind =
+  | 'Scheduled'
+  | 'AwaitingForOtherTx'
+  | 'Pending'
+  | 'ScheduledForCancellation'
+  | 'RetryingWithHigherFee'
+  | 'RejectedOnInclusion'
+  | 'RejectedOnReceive'
+  | 'FailedBeforeSending'
+  | 'Cancelled'
+  | 'DroppedFromMempool'
+  | 'StuckInMempool'
+  | 'DependencyRejectedFailedOrDropped'
+  | 'Included';
+
 /**
  * Indicates that a transaction is waiting for other transactions to be included first.
  */
@@ -166,13 +181,11 @@ export function mkStatusFailedBeforeSending(
 ): FailedBeforeSending {
   const errorMessage = error instanceof Error ? error.message : String(error);
   const err = `${txId} - error during ${phase}: ${errorMessage}`;
-  return { kind: 'FailedBeforeSending', errors: [err] };
+  return { kind: 'FailedBeforeSending', errors: [err] } as FailedBeforeSending;
 }
 
-export function isTransactionStatus(value: any): value is TransactionStatus {
-  try {
-    const kind = 'kind' in value ? value.kind : String(value);
-
+export function isTransactionStatusKind(kind:string): kind is TransactionStatusKind {
+  try{
     const statuses: string[] = [
       'Scheduled',
       'AwaitingForOtherTx',
@@ -188,8 +201,16 @@ export function isTransactionStatus(value: any): value is TransactionStatus {
       'DependencyRejectedFailedOrDropped',
       'Included',
     ];
-
     return statuses.includes(kind);
+  } catch (e) {
+    return false;
+  }
+}
+
+export function isTransactionStatus(value: any): value is TransactionStatus {
+  try {
+    const kind = 'kind' in value ? value.kind : String(value);
+    return isTransactionStatusKind(kind);
   } catch (e) {
     return false;
   }
@@ -217,3 +238,5 @@ export enum TxLifecycleStatus {
   FAILED = 'FAILED', // Transaction failed (various reasons)
   CANCELLED = 'CANCELLED', // Transaction was cancelled
 }
+
+// ------------ new stuff -  to be used as a basis for the new status.ts ------------
