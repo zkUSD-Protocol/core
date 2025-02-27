@@ -1,5 +1,11 @@
 # @zkusd/core
 
+## 0.0.3
+
+### Patch Changes
+
+- New status for transactions
+
 ## 0.0.2
 
 ### Patch Changes

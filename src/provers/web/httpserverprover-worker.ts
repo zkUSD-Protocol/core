@@ -63,7 +63,7 @@ self.addEventListener('message', async (event) => {
 
     // 3) Start the shared loop
     setTimeout(async () => {
-      await startStatusPostingLoop(config, jobContext, mutex);
+      await startStatusPostingLoop(config, jobContext);
     });
 
     await startProvingLoop(mutex, config, jobContext);

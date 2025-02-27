@@ -62,6 +62,11 @@ import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
 import { ZKUSDClient } from './client/client.js';
 import { KeyPair } from './types/utility.js';
+import {
+  TransactionStatusNew,
+  TransactionPhase,
+  TransactionPhaseStatus,
+} from './transaction/lifecycle.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -121,6 +126,9 @@ export {
   compileContracts,
   Mutex,
   HttpClientProver,
+  TransactionStatusNew,
+  TransactionPhase,
+  TransactionPhaseStatus,
 };
 
 //export transaction prover types

@@ -144,7 +144,7 @@ async function startActivityCommunicationLoop() {
     if (!jobContext) {
       throw new Error('JobContext is not defined');
     }
-    await startStatusPostingLoop(config, jobContext, heartbeatLoopMutex);
+    await startStatusPostingLoop(config, jobContext);
   });
 }
 
