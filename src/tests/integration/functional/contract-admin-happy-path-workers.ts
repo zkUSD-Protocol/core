@@ -33,10 +33,10 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > = {
       local: async () => new LocalTransactionExecutor(),
-      external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver() },
-        stopExecutor
-      ),
+      external: ExternalTransactionExecutor.initializer({
+        prover: new HttpServerProver(),
+        stop: stopExecutor,
+      }),
       default: 'external', // use workers by default
     };
 
@@ -58,12 +58,11 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
     assert.notStrictEqual(engineTokenAccount, undefined);
   });
 
-
   it('Can toggle stop protocol and back', async () => {
     // determine the current protocol state
 
-    await fetchAccount({publicKey: th.engine.contract.address });
-    const stopped = th.engine.contract.isEmergencyStopped().toBoolean()
+    await fetchAccount({ publicKey: th.engine.contract.address });
+    const stopped = th.engine.contract.isEmergencyStopped().toBoolean();
 
     if (stopped) {
       debugLog('Protocol is stopped, resuming first...');
@@ -92,7 +91,7 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
           shouldStop: true,
         },
       },
-        { printTx, extraSigners: [th.networkKeys.protocolAdmin.privateKey] }
+      { printTx, extraSigners: [th.networkKeys.protocolAdmin.privateKey] }
     );
 
     debugLog('Protocol resuming...');
@@ -105,7 +104,7 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path - Contract Admi
           shouldStop: false,
         },
       },
-        { printTx, extraSigners: [th.networkKeys.protocolAdmin.privateKey] }
+      { printTx, extraSigners: [th.networkKeys.protocolAdmin.privateKey] }
     );
   });
 });

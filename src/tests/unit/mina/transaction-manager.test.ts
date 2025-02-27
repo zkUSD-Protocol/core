@@ -114,12 +114,13 @@ describe('Local tests of TransactionManager', async () => {
 
     console.log(JSON.stringify(tx2Handle.txStatus, null, 2));
 
-    console.log(statusIsOfKind(tx2Handle.txStatus, 'DependencyRejectedFailedOrDropped'))
+    console.log(
+      statusIsOfKind(tx2Handle.txStatus, 'DependencyRejectedFailedOrDropped')
+    );
 
     assert.ok(
       statusIsOfKind(tx2Handle.txStatus, 'DependencyRejectedFailedOrDropped')
     );
-
   });
 
   it('execute multiple txs from different accounts simultanously', async () => {

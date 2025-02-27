@@ -2,11 +2,18 @@ import express, { Request, Response } from 'express';
 import { Mutex } from '../../utils/mutex.js';
 import {
   ITransactionProver,
+  TransactionProvingWorkerStatus,
   TxProvingInput,
   TxProvingOutput,
 } from '../itransactionprover.js';
 import { JobStore } from '../job-store.js';
-import { InMemoryJobStore } from '../in-memory-job-store.js';
+import {
+  InMemoryJobStore,
+  InMemoryJobStoreTimeouts,
+} from '../in-memory-job-store.js';
+import { Server } from 'http';
+import net from 'net';
+import { debugLog } from '../../utils/debug.js';
 
 export type TransactionExecutionJob = {
   id: string;
@@ -21,15 +28,6 @@ type TxProvingTracker = {
     rejector: (error: unknown) => void;
   };
 };
-
-// const DEBUG = !!process.env.DEBUG;
-
-// const debugLog = (msg: string) => {
-//   if (DEBUG) {
-//     console.debug(msg);
-//   }
-// };
-
 
 /**
  * Represents an abstract external prover “worker”.
@@ -71,26 +69,31 @@ export class HttpServerProver implements ITransactionProver {
   private mutex = new Mutex(); // no concurrent job-store access
   private isShuttingDown = false; // when shutting down we don't restart workers
   private app = express();
-  private server: any; // store the HTTP server instance
+  private server: Server; // store the HTTP server instance
   private jobTrackers: Map<string, TxProvingTracker> = new Map();
 
   // Default job timeout (8 minutes)
-  private static readonly _jobTimeoutSec: number = 8 * 60;
+  private static readonly _jobTimeouts: InMemoryJobStoreTimeouts = {
+    maxTotalJobTimeSec: 120,
+    maxJobInactivitySec: undefined, // disable
+  };
 
   private jobStore: JobStore<TransactionExecutionJob>;
   private port: number;
   private childWorkers: ChildProcessWorker[];
 
+  private connections: Set<net.Socket> = new Set();
+
   /**
    * @param options - Object containing initialization parameters.
    */
   public constructor({
-    jobTimeoutSec = HttpServerProver._jobTimeoutSec,
-    jobStore = new InMemoryJobStore(jobTimeoutSec),
+    jobTimeouts = HttpServerProver._jobTimeouts,
+    jobStore = new InMemoryJobStore({ timeouts: jobTimeouts }),
     port = 4646,
     childWorkers = [],
   }: {
-    jobTimeoutSec?: number;
+    jobTimeouts?: InMemoryJobStoreTimeouts;
     jobStore?: JobStore<TransactionExecutionJob>;
     port?: number;
     childWorkers?: ChildProcessWorker[];
@@ -121,7 +124,14 @@ export class HttpServerProver implements ITransactionProver {
   public async proveTransaction(
     input: TxProvingInput
   ): Promise<TxProvingOutput> {
-    const txId = input.txId;
+    // const txId = input.txId;
+
+    let jobId = sanitizeForRoute(input.txId);
+
+    // check if job already exists
+    if (this.jobTrackers.has(jobId)) {
+      jobId = `${jobId}-${Date.now()}`;
+    }
 
     let resolver: (arg: TxProvingOutput) => void;
     let rejector: (err: unknown) => void;
@@ -136,19 +146,19 @@ export class HttpServerProver implements ITransactionProver {
       await this.mutex.runExclusive(async () => {
         // Store the transaction job in the job store
         await this.jobStore.addJob({
-          id: txId,
+          id: jobId,
           typ: 'transaction',
           payload: input,
         });
 
         // Register lifecycle tracking for this job
-        this.jobTrackers.set(txId, { proving: { resolver, rejector } });
+        this.jobTrackers.set(jobId, { proving: { resolver, rejector } });
       });
 
-      console.debug(`Scheduled transaction job "${txId}" successfully.`);
+      console.debug(`Scheduled transaction job "${jobId}" successfully.`);
       return ret;
     } catch (err) {
-      console.error(`Failed to schedule tx execution for job ${txId}:`, err);
+      console.error(`Failed to schedule tx execution for job ${jobId}:`, err);
       throw err; // Propagate the error to ensure proper handling upstream
     }
   }
@@ -160,34 +170,62 @@ export class HttpServerProver implements ITransactionProver {
     return new Promise((resolve, reject) => {
       this.server = this.app
         .listen(this.port, () => {
-          console.log(`EPM server listening on port ${this.port}`);
+          debugLog(`EPM server listening on port ${this.port}`);
           resolve();
         })
         .on('error', reject);
+
+      this.server.on('connection', (conn) => {
+        this.connections.add(conn);
+
+        // Remove the connection from the set when it closes
+        conn.on('close', () => {
+          this.connections.delete(conn);
+        });
+      });
     });
   }
 
   /**
    * Shuts down the EPM by stopping all workers and closing the HTTP server.
    */
-  public async shutdown(): Promise<void> {
-    console.log('Shutting down HttpServerProver...');
+  public async shutdown(forceTimeout?: number): Promise<void> {
+    debugLog('Shutting down HttpServerProver...');
     this.isShuttingDown = true; // Prevent worker restarts
 
     // Stop worker processes
     this.childWorkers.forEach((worker) => {
-      console.log(`Stopping worker process ${worker.workerId}`);
+      debugLog(`Stopping worker process ${worker.workerId}`);
       worker.stop();
     });
     this.childWorkers = [];
 
     // Close Express server
     if (this.server) {
+      // Start closing the server (stops accepting new connections)
+      this.server.close((err) => {
+        if (err) {
+          console.error('Error closing server:', err);
+        } else {
+          debugLog('Server has been closed gracefully.');
+        }
+      });
+
+      if (forceTimeout) {
+        // After `forceTimeout` ms, forcibly destroy any remaining open connections.
+        setTimeout(() => {
+          this.connections.forEach((conn) => {
+            // This will terminate the socket immediately,
+            // even if the request/response was in progress.
+            conn.destroy();
+          });
+          debugLog('All remaining connections have been forced closed.');
+        }, forceTimeout);
+      }
       await new Promise((resolve) => this.server.close(resolve));
     }
-    console.log('HttpServerProver shut down.');
+    debugLog('HttpServerProver shut down.');
   }
-
   /**
    * Spawns an array of external processes and tracks them.
    *
@@ -221,7 +259,7 @@ export class HttpServerProver implements ITransactionProver {
         `Worker #${index} exited with code=${code} signal=${signal}`
       );
       if (!this.isShuttingDown) {
-        console.log(`Restarting worker #${index}...`);
+        debugLog(`Restarting worker #${index}...`);
         worker.spawn(epmUrl, index);
       }
     });
@@ -230,17 +268,38 @@ export class HttpServerProver implements ITransactionProver {
   // TODO use zod schemas to ensure safe transport
   /**
    * Sets up the Express routes for:
-   *   1. GET `/jobs/next`  - Retrieve the next available job
-   *   2. POST `/jobs/:id/proved` - Receive proving result
-   *   3. POST `/jobs/:id/sent`   - Receive sending result
+   *   1. GET `/job/next`  - Retrieve the next available job
+   *   2. POST `/job/:id/proved` - Receive proving result
+   *   3. POST `/job/:id/sent`   - Receive sending result
+   *   4. POST `/worker/:workerid/hearbeat` - Receive worker heartbeat
    */
   private setupRoutes(): void {
     /**
-     * 1) GET /jobs/next
+       4) POST /worker/:workerid/hearbeat
+        - Worker sends a heartbeat to the server
+      */
+    this.app.post(
+      '/worker/:workerid/heartbeat',
+      async (req: Request, res: Response) => {
+        const workerId = req.params.workerid;
+        const status = req.body.status as TransactionProvingWorkerStatus;
+        debugLog('received a heartbeat from worker', workerId, status);
+
+        if (status.proving) {
+          await this.jobStore.markJobAsBeingProven(status.provingJobId);
+        }
+
+        debugLog(`Received heartbeat from worker ${workerId}:`, status);
+        return res.json({ status: 'ok' });
+      }
+    );
+
+    /**
+     * 1) GET /job/next
      *    - Returns 204 if no job available
      *    - Otherwise returns the next job in JSON
      */
-    this.app.get('/jobs/next', async (_req: Request, res: Response) => {
+    this.app.get('/job/next', async (_req: Request, res: Response) => {
       try {
         let job: TransactionExecutionJob | undefined;
         await this.mutex.runExclusive(async () => {
@@ -265,10 +324,10 @@ export class HttpServerProver implements ITransactionProver {
     });
 
     /**
-     * 2) POST /jobs/:id/proved
+     * 2) POST /job/:id/proved
      *    - External worker notifies that a job has been proved (or has failed).
      */
-    this.app.post('/jobs/:id/proved', async (req: Request, res: Response) => {
+    this.app.post('/job/:id/proved', async (req: Request, res: Response) => {
       const jobId = req.params.id;
       let provingResult: TxProvingOutput = req.body;
 
@@ -276,10 +335,7 @@ export class HttpServerProver implements ITransactionProver {
       try {
         tracker = this.jobTrackers.get(jobId);
         if (!tracker) {
-          console.warn(
-            'Job missing or already completed: No lifecycle tracker found for jobId=',
-            jobId
-          );
+          console.warn(`Job ${jobId} already completed or missing`);
           return res.status(200).json({
             status: 'ok',
             message: 'Job already completed or missing.',
@@ -302,4 +358,15 @@ export class HttpServerProver implements ITransactionProver {
       }
     });
   }
+}
+
+function sanitizeForRoute(input: string): string {
+  return input
+    .normalize('NFD') // Normalize Unicode characters
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics (accents)
+    .replace(/[^a-zA-Z0-9\s_-]/g, '') // Remove non-alphanumeric except space, underscore, and hyphen
+    .trim() // Trim leading/trailing spaces
+    .replace(/[\s_]+/g, '-') // Replace spaces and underscores with hyphens
+    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+    .toLowerCase(); // Convert to lowercase
 }

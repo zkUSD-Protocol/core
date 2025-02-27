@@ -11,14 +11,14 @@ import {
   ZkUSDAmountArgs,
   ZkusdEngineTransactionArgs,
 } from './transaction.js';
-import { Bool, PublicKey, UInt32, UInt64 } from 'o1js';
+import { AccountUpdate, Bool, PublicKey, UInt32, UInt64 } from 'o1js';
 import { OracleWhitelist } from './oracle.js';
 
 export {
   ZkUsdEngine,
   FungibleToken,
   TransactionConfig,
-  mkVaultTransactionConfigs,
+  mkZkusdTransactionConfigs,
 };
 
 type ZkUsdEngine = ReturnType<typeof ZkUsdEngineContract>;
@@ -42,7 +42,7 @@ interface TransactionConfig<T extends ZkusdEngineTransactionType> {
  * - requiresNewAccounts: Whether new accounts need to be created
  * - requiresPriceProof: Whether a price proof is needed for the operation
  */
-function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
+function mkZkusdTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
   [K in ZkusdEngineTransactionType]: TransactionConfig<K>;
 } {
   return {
@@ -127,14 +127,18 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
     [ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT]: {
       method: ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT,
       buildTx: async (args) => {
-        await engine.updateValidPriceBlockCount(UInt32.from(args.newValidPriceBlockCount));
+        await engine.updateValidPriceBlockCount(
+          UInt32.from(args.newValidPriceBlockCount)
+        );
       },
     },
     [ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST]: {
       method: ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST,
       buildTx: async (args) => {
         const whitelist: OracleWhitelist = new OracleWhitelist({
-          addresses: args.oracleWhitelist.map((addr) => PublicKey.fromBase58(addr)),
+          addresses: args.oracleWhitelist.map((addr) =>
+            PublicKey.fromBase58(addr)
+          ),
         });
         await engine.updateOracleWhitelist(whitelist);
       },
@@ -143,6 +147,15 @@ function mkVaultTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
       method: ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP,
       buildTx: async (args) => {
         await engine.toggleEmergencyStop(Bool(args.shouldStop));
+      },
+    },
+    [ZkusdEngineTransactionType.TRANSFER]: {
+      method: ZkusdEngineTransactionType.TRANSFER,
+      buildTx: async (args) => {
+        AccountUpdate.createSigned(PublicKey.fromBase58(args.from)).send({
+          to: PublicKey.fromBase58(args.to),
+          amount: BigInt(args.amount),
+        });
       },
     },
   };

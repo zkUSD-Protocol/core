@@ -49,8 +49,9 @@ export function createSizedArray<T, L extends number>(
   expectedLength: L = data.length as L // Auto-infer length if possible
 ): SizedArray<T, L> {
   if (data.length !== expectedLength) {
-    throw new Error(`Invalid array length: expected ${expectedLength}, got ${data.length}`);
+    throw new Error(
+      `Invalid array length: expected ${expectedLength}, got ${data.length}`
+    );
   }
   return data as SizedArray<T, L>;
 }
-

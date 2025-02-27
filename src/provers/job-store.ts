@@ -31,6 +31,11 @@ export interface JobStore<J extends AnyJob> {
   markJobAsCompleted(jobId: string, result: unknown): Promise<void>;
 
   /**
+   * Marks a job as assigned (so it’s no longer available).
+   */
+  markJobAsBeingProven(jobId: string): Promise<void>;
+
+  /**
    * (Optional) Retrieve job status/result.
    */
   getJobStatus(

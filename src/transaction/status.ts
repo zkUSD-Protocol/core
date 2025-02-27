@@ -144,6 +144,7 @@ export function statusIsFailed(
     'FailedBeforeSending',
     'Cancelled',
     'DroppedFromMempool',
+    'StuckInMempool',
     'DependencyRejectedFailedOrDropped',
   ];
   return statusIsOfKind(status, ...failureStates);
@@ -168,9 +169,9 @@ export function mkStatusFailedBeforeSending(
   return { kind: 'FailedBeforeSending', errors: [err] };
 }
 
-export function isTransactionStatus(value : any) : value is TransactionStatus {
-  try{
-    const kind = 'kind' in value ? value.kind : String(value)
+export function isTransactionStatus(value: any): value is TransactionStatus {
+  try {
+    const kind = 'kind' in value ? value.kind : String(value);
 
     const statuses: string[] = [
       'Scheduled',
@@ -185,11 +186,10 @@ export function isTransactionStatus(value : any) : value is TransactionStatus {
       'DroppedFromMempool',
       'StuckInMempool',
       'DependencyRejectedFailedOrDropped',
-      'Included'
-    ]
+      'Included',
+    ];
 
-    return statuses.includes(kind)
-
+    return statuses.includes(kind);
   } catch (e) {
     return false;
   }

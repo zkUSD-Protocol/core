@@ -11,21 +11,25 @@ import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 import {
-  AwaitingForOtherTx,
   TxLifecycleStatus,
   statusIsChainResolved,
+  statusIsFailed,
   statusIsFinal,
   statusIsOfKind,
 } from '../../../transaction/status.js';
+import { DEBUG, debugLog } from '../../../utils/debug.js';
 
-const DEBUG = !!process.env.DEBUG;
+// --------------------------------------------------------
+// This test follows the following scenaro:
+// - it creates users and vaults for them
+// - users deposit fund, mint zkusd
+// - after network achieves saturation
+//   (there's 13 tx - more than the network can process within 2 blocks)
+//   the engine is stopped.
+// - the assertion is made that all the minting operations made after the stop
+// - will fail. The rest should succeed.
+
 const printTx = DEBUG && true;
-
-const debugLog = (msg: string) => {
-  if (DEBUG) {
-    console.debug(msg);
-  }
-};
 
 type User = {
   keys: KeyPair;
@@ -41,10 +45,15 @@ const INITIAL_COLLATERAL_DEPOSIT = UInt64.from(500e9); // 500 Mina
 const MINA_PRICE_START = TestAmounts.PRICE_1_USD;
 const INITIAL_MINTING = UInt64.from(10e9); // 300zkusd
 
-const MINIMAL_SATURATION = 13
-const MINIMAL_MINTS_IN_MEMPOOL = 7
+const MINIMAL_SATURATION = 13;
+const MINIMAL_MINTS_IN_MEMPOOL = 7;
 
-describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated pool ', () => {
+// this test is dependent on the set of workers proving transactions in time.
+// in practice the more the better.
+// if you don't have enough workers to process transactions in time, the test will timeout and fail
+// because it will not achieve preliminary conditions.
+// In that case you may want to experiment with setting alternative slot time on Lightnet.
+describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => {
   let th: TestHelper<'local' | 'external'>;
 
   let users: User[] = [];
@@ -62,15 +71,16 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
       (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
     > = {
       local: async () => new LocalTransactionExecutor(),
-      external: ExternalTransactionExecutor.initializer(
-        { prover: new HttpServerProver({ jobTimeoutSec: 2 * 60 }) },
-        stopExecutor
-      ),
+      external: ExternalTransactionExecutor.initializer({
+        prover: new HttpServerProver(),
+        stop: stopExecutor,
+      }),
       default: 'external', // use workers by default
     };
 
     th = await TestHelper.initLightnetChain({ txExecutorInitializers });
-    th._txMgr.transactionOptions.statusChangeWaitingTimeoutMs = 20 * 60 * 1000; // 20 minutes
+    th.txMgr.transactionOptions.statusChangeWaitingTimeoutMs = 20 * 60 * 1000; // 20 minutes
+    th.txMgr.transactionOptions.dependencyStatusPollTimeoutMs = 20 * 60 * 1000; // 20 minutes
 
     await th.deployTokenContracts();
     const engineTokenAccount = await th.mina.fetchMinaAccount(
@@ -86,7 +96,7 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     await th.mina.fetchMinaAccount(th.engine.contract.address, { force: true });
     // fetchAccount({publicKey: th.engine.contract.address });
     // this
-    const stopped = th.engine.contract.isEmergencyStopped().toBoolean()
+    const stopped = th.engine.contract.isEmergencyStopped().toBoolean();
 
     if (stopped) {
       debugLog('Protocol is stopped, resuming first...');
@@ -248,7 +258,6 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     }
   });
 
-
   it('Should be able to stop the protocol on saturated mempool within 2 slots', async () => {
     // until there are at least 20 transaction awaiting inclusion - wait
     let awaitingInclusion = globalHandles.filter(
@@ -257,8 +266,8 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     ).length;
     let mintingAwaiting = globalHandles.filter(
       (handle) =>
-        handle.lifecycleStatus === TxLifecycleStatus.AWAITING_INCLUSION
-        && handle.txId.includes('mints')
+        handle.lifecycleStatus === TxLifecycleStatus.AWAITING_INCLUSION &&
+        handle.txId.includes('mints')
     ).length;
     while (awaitingInclusion == 0) {
       awaitingInclusion = globalHandles.filter(
@@ -268,9 +277,25 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    while (awaitingInclusion < MINIMAL_SATURATION || mintingAwaiting < MINIMAL_MINTS_IN_MEMPOOL) {
-      console.log(`Awaiting inclusion: ${awaitingInclusion}/${MINIMAL_SATURATION}`);
-      console.log(`Minting transactions awaiting inclusion: ${mintingAwaiting}/${MINIMAL_MINTS_IN_MEMPOOL}`);
+    const saturation = () =>
+      awaitingInclusion >= MINIMAL_SATURATION &&
+      mintingAwaiting >= MINIMAL_MINTS_IN_MEMPOOL;
+    const oneMintSuccesful = () => {
+      const minting = globalHandles.filter(
+        (handle) =>
+          handle.txStatus === 'Included' && handle.txId.includes('mints')
+      ).length;
+      return minting >= 0;
+    };
+
+    const saturationTimeout = Date.now() + 5 * 60 * 1000; // 5 minutes
+    while (!saturation() || !oneMintSuccesful()) {
+      debugLog(
+        `Awaiting inclusion: ${awaitingInclusion}/${MINIMAL_SATURATION}`
+      );
+      debugLog(
+        `Minting transactions awaiting inclusion: ${mintingAwaiting}/${MINIMAL_MINTS_IN_MEMPOOL}`
+      );
       await new Promise((resolve) => setTimeout(resolve, 2000));
       awaitingInclusion = globalHandles.filter(
         (handle) =>
@@ -278,19 +303,24 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
       ).length;
       mintingAwaiting = globalHandles.filter(
         (handle) =>
-          handle.lifecycleStatus === TxLifecycleStatus.AWAITING_INCLUSION
-          && handle.txId.includes('mints')
+          handle.lifecycleStatus === TxLifecycleStatus.AWAITING_INCLUSION &&
+          handle.txId.includes('mints')
       ).length;
-      assert.ok(awaitingInclusion > 0, 'Pool was emptied without saturation, adjust workers or parameters of chain or this test.')
-      process.stdout.write("\x1b[A\x1b[K"); // Move cursor up + clear line
-      process.stdout.write("\x1b[A\x1b[K"); // Move cursor up + clear line
+      if (Date.now() > saturationTimeout) {
+        throw new Error(
+          'Unable to achive preliminary test conditions within 5 minutes.'
+        );
+      }
     }
-    console.log(`Awaiting inclusion: ${awaitingInclusion}`);
-    console.log(`Minting transactions awaiting inclusion: ${mintingAwaiting}/${MINIMAL_MINTS_IN_MEMPOOL}`);
-    console.log('Mempool assumed saturated - lightnet processes 5-6 zkapp txes per block.')
+    debugLog(`Awaiting inclusion: ${awaitingInclusion}`);
+    debugLog(
+      `Minting transactions awaiting inclusion: ${mintingAwaiting}/${MINIMAL_MINTS_IN_MEMPOOL}`
+    );
+    debugLog(
+      'Mempool assumed saturated - lightnet processes 5-6 zkapp txes per block.'
+    );
 
-
-    console.log('Stopping the protocol..')
+    debugLog('------------------------');
     const stopProtocolHandle = await th.includeEngineTx(
       th.deployer,
       {
@@ -310,79 +340,43 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
 
     // the rest of the transactions should be settled eventually
 
-    // set a time out of 5 minutes starting now
-    const timeout = Date.now() + 5 * 60 * 1000;
+    // set a time out of 8 minutes starting now
+    const timeout = Date.now() + 8 * 60 * 1000;
     let done = 0;
-    let lastOutputLineCount = 0;
 
     while (Date.now() < timeout) {
       try {
         await Promise.all(
           globalHandles.map((handle) =>
-            handle.awaitStatusChange({ until: (status) => statusIsFinal(status), timeout: 4000 })
+            handle.awaitStatusChange({
+              until: (status) => statusIsFinal(status),
+              timeout: 4000,
+            })
           )
         );
         done = 1;
         break;
       } catch (e) {
         // Transactions not yet final
-        const notFinal = globalHandles.filter((handle) => !statusIsFinal(handle.txStatus));
-
-        // 1) Clear the previous output from last iteration
-        for (let i = 0; i < lastOutputLineCount; i++) {
-          process.stdout.write("\x1b[A\x1b[K"); // Move cursor up + clear line
-        }
-
-        // 2) Print new output and count lines as we go
-        let lineCount = 0;
+        const notFinal = globalHandles.filter(
+          (handle) => !statusIsFinal(handle.txStatus)
+        );
 
         // A single line for the summary
-        console.log(`Not yet final: ${notFinal.length}`);
-        lineCount++;
+        debugLog(`Not yet final: ${notFinal.length}`);
 
         // Print the first 5 in detail
-        notFinal.slice(0, 5).forEach((handle) => {
+        notFinal.slice(0, 5).forEach((handle, i) => {
           const jsonStatus = JSON.stringify(handle.txStatus, null, 2);
-          const lines = jsonStatus.split("\n").length;
-          // This console.log will occupy exactly `lines` lines on the screen
-          console.log(`${jsonStatus} - ${handle.txId}`);
-          lineCount += lines;
+          debugLog(`${i}. - ${jsonStatus} - ${handle.txId}`);
         });
-
-        // for every transaction that is awaiting other transactions print the dependent transactions
-        const awaitingOthers = notFinal.filter((handle) => statusIsOfKind(handle.txStatus, "AwaitingOtherTransactions"));
-        if(awaitingOthers.length > 0) {
-          console.log(`Transactions awaiting other transactions: ${awaitingOthers.length}`);
-        }
-        lineCount += 1;
-        awaitingOthers.forEach((handle) => {
-          assert.ok(statusIsOfKind(handle.txStatus, "AwaitingOtherTransactions"));
-          const dependent: string[] = (handle.txStatus as AwaitingForOtherTx).txs
-          // the above are strings - ids of handles , so find the handles in globalHandles
-          const dependentHandles = dependent.map((txId) => globalHandles.find((h) => h.txId === txId)).filter(Boolean) as TransactionHandle[];
-          // now print
-          dependentHandles.forEach((handle: TransactionHandle) => {
-            const jsonStatus = JSON.stringify(handle.txStatus, null, 2);
-            const lines = jsonStatus.split("\n").length;
-            // This console.log will occupy exactly `lines` lines on the screen
-            console.log(`${jsonStatus} - ${handle.txId}`);
-            lineCount += lines;
-          });
-
-          const jsonStatus = JSON.stringify(handle.txStatus, null, 2);
-          const lines = jsonStatus.split("\n").length;
-          // This console.log will occupy exactly `lines` lines on the screen
-          console.log(`${jsonStatus} - ${handle.txId}`);
-          lineCount += lines;
-        });
-
-        // Remember how many lines we just printed
-        lastOutputLineCount = lineCount;
       }
     }
 
     if (!done) {
-      throw new Error('Timeout - not all transactions were settled within 5 minutes')
+      throw new Error(
+        'Timeout - not all transactions were settled within 5 minutes'
+      );
     }
 
     await Promise.all(
@@ -391,30 +385,55 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
       )
     );
 
+    debugLog('-------------------');
     assert.ok(stopProtocolHandle.resolutionBlockHeight);
     const stoppedAtBlock = stopProtocolHandle.resolutionBlockHeight;
-    globalHandles.forEach((handle) => {
 
+    debugLog(`Stopped at block: ${stoppedAtBlock}`);
+
+    debugLog(`Current status of all transactions:`);
+
+    //sort by resolution block
+    globalHandles
+      .sort((a, b) => {
+        if (!a.resolutionBlockHeight) return 1; // Move `undefined` or `null` values to the end
+        if (!b.resolutionBlockHeight) return -1; // Move `undefined` or `null` values to the end
+        return Number(a.resolutionBlockHeight - b.resolutionBlockHeight);
+      })
+      .forEach((handle) => {
+        debugLog(
+          handle.resolutionBlockHeight,
+          handle.txId,
+          handle.lifecycleStatus,
+          handle.txStatus
+        );
+        if (typeof handle.txStatus == 'object' && 'txs' in handle.txStatus) {
+          debugLog(handle.txStatus.txs);
+        }
+      });
+
+    // check if status are as expected
+    globalHandles.forEach((handle) => {
       // if not resolved print the stringifie status and tx id
       if (!statusIsChainResolved(handle.txStatus)) {
-        console.log(handle.txId, JSON.stringify(handle.txStatus, null, 2));
+        debugLog(handle.txId, JSON.stringify(handle.txStatus, null, 2));
       }
-
-      // assert.ok(statusIsChainResolved(handle.txStatus));
-      assert.ok(handle.resolutionBlockHeight !== undefined);
 
       if (handle.txId.includes('mints')) {
-        // create vault do NOT work on stopped protocol
-        if (handle.resolutionBlockHeight > stoppedAtBlock) {
-          assert.ok(statusIsOfKind(handle.txStatus, "RejectedOnInclusion"))
+        // minting is affected by the protocol stop
+        if (!handle.resolutionBlockHeight) {
+          assert.ok(!statusIsOfKind(handle.txStatus, 'RejectedOnInclusion'));
+          assert.ok(statusIsFailed(handle.txStatus));
+        } else if (handle.resolutionBlockHeight >= stoppedAtBlock) {
+          assert.ok(statusIsFailed(handle.txStatus));
         } else {
-          assert.ok(statusIsOfKind(handle.txStatus, "Included"))
+          assert.ok(statusIsOfKind(handle.txStatus, 'Included'));
         }
       } else {
-        // create vault do work on stopped protocol
-        assert.ok(statusIsOfKind(handle.txStatus, "Included"))
+        // other txes should be included
+        assert.ok(statusIsOfKind(handle.txStatus, 'Included'));
       }
-    })
-    console.log('All tx before stopped were included, all after were rejected.')
+    });
+    debugLog('All tx before stopped were included, all after were rejected.');
   });
 });

@@ -4,15 +4,6 @@ import {
   TxProvingOutput,
 } from './itransactionprover.js';
 
-// const DEBUG = !!process.env.DEBUG;
-
-// const debugLog = (msg: string) => {
-//   if (DEBUG) {
-//     console.debug(msg);
-//   }
-// };
-
-
 type TxProvingRequest = {
   payload: TxProvingInput;
 };

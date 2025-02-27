@@ -512,7 +512,8 @@ export class TestHelper<E extends string> {
     let refreshAccounts: Account[] = [
       { publicKey: this.engine.contract.address }, // engine
       { publicKey: senderKey }, // sender
-      ('vaultAddress' in args.args && { // vault (only included if vaultAddress exists)
+      ('vaultAddress' in args.args && {
+        // vault (only included if vaultAddress exists)
         publicKey: PublicKey.fromBase58(args.args.vaultAddress),
         tokenId: this.engine.contract.deriveTokenId(),
       }) as Account,
@@ -615,6 +616,14 @@ export class TestHelper<E extends string> {
     return await Promise.all(agentMintTxs.map((t) => t.awaitIncluded()));
   }
 
+  async hasVault(vaultPubkey: PublicKey) {
+    const vaultAccount = await this.mina.fetchMinaAccount(vaultPubkey, {
+      tokenId: this.engine.contract.deriveTokenId(),
+      force: true,
+    });
+    return !!vaultAccount;
+  }
+
   async createVaults(...names: string[]) {
     const vaultCreationTxs: TransactionHandle[] = [];
 
@@ -624,17 +633,9 @@ export class TestHelper<E extends string> {
         throw new Error(`Agent ${name} not found`);
       }
 
-      const vaultKeyPair = agent.vault;
+      const vaultKey = agent.vault.publicKey;
 
-      const vaultAccount = await this.mina.fetchMinaAccount(
-        vaultKeyPair.publicKey,
-        {
-          tokenId: this.engine.contract.deriveTokenId(),
-          force: true,
-        }
-      );
-
-      if (vaultAccount) {
+      if (await this.hasVault(vaultKey)) {
         continue;
       }
 
@@ -647,7 +648,7 @@ export class TestHelper<E extends string> {
           transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
           args: {
             transactionId: `Create Vault for ${name}`,
-            vaultAddress: vaultKeyPair.publicKey.toBase58(),
+            vaultAddress: vaultKey.toBase58(),
             newAccounts: 2,
           },
         },

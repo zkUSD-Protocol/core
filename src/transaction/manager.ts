@@ -23,8 +23,8 @@ import { ZkUsdEngine } from '../system/transaction-config.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/verify.js';
 import { Account, isKeyPair, printTxAccountUpdates } from '../mina/utils.js';
 import { MinaZkappCommand } from '../o1js-compat/zkappcommand.js';
+import { DEBUG } from '../utils/debug.js';
 
-const DEBUG = !!process.env.DEBUG;
 const MUTEX_DEBUG = DEBUG && false; // set to true to debug mutex
 
 /**
@@ -40,7 +40,7 @@ export interface DefaultTransactionOptions {
   }) => Promise<UInt64>;
   printAccountUpdates: boolean;
   dependencyStatusPollInterval: number;
-  dependencyStatusPollTimeout: number;
+  dependencyStatusPollTimeoutMs: number;
   statusChangeWaitingIntervalMs: number;
   statusChangeWaitingTimeoutMs: number;
   inclusionAwaitingTimeoutMs: number;
@@ -65,7 +65,7 @@ export const defaultOptions: DefaultTransactionOptions = {
   },
   printAccountUpdates: false,
   dependencyStatusPollInterval: 3000,
-  dependencyStatusPollTimeout: 900000,
+  dependencyStatusPollTimeoutMs: 900000,
   statusChangeWaitingIntervalMs: 3000,
   statusChangeWaitingTimeoutMs: 900000,
   inclusionAwaitingTimeoutMs: 900000,
@@ -162,6 +162,14 @@ export class TransactionInternal {
   }
 
   private _lifecycle: Partial<TransactionLifecycle> = {};
+
+  public get lifeCyclePromises(): Partial<TransactionLifecycle> {
+    return {
+      provingPromise: this._lifecycle.provingPromise,
+      sendingPromise: this._lifecycle.sendingPromise,
+      waitingPromise: this._lifecycle.waitingPromise,
+    };
+  }
 
   /**
    * Retrieves the most up-to-date transaction state from whichever promise has been fulfilled.
@@ -513,6 +521,41 @@ export class TransactionManager<E extends string> {
     return await this.tx(sender, callback, options, args);
   }
 
+  public async timeOutAll() {
+    let promises: Promise<any>[] = [];
+
+    for (const tx of this.transactions.values()) {
+      promises.push(
+        tx.lifeCyclePromises.waitingPromise?.promise ?? Promise.resolve()
+      );
+      promises.push(
+        tx.lifeCyclePromises.provingPromise?.promise ?? Promise.resolve()
+      );
+      promises.push(
+        tx.lifeCyclePromises.sendingPromise?.promise ?? Promise.resolve()
+      );
+    }
+
+    try {
+      await Promise.race([
+        new Promise((_, reject) =>
+          setTimeout(() => {
+            reject(new Error('timeout'));
+          }, 1000)
+        ),
+        Promise.all(promises),
+      ]);
+    } catch (error) {
+      console.error('Error in timeOutAll:', error);
+    } finally {
+      // Force cleanup to ensure test runner can exit
+      this.cleanUpResources();
+    }
+  }
+
+  // Cleanup function to ensure no dangling resources
+  private cleanUpResources() {}
+
   // this will create a new transaction
   // and schedule it for proving signing and sending
   // it will also await for the dependencies to be included or failed
@@ -614,7 +657,7 @@ export class TransactionManager<E extends string> {
                 until: (status) =>
                   status === 'Included' || statusIsFailed(status),
                 statusPollInterval: options?.dependencyStatusPollInterval,
-                timeout: options?.dependencyStatusPollTimeout,
+                timeout: options?.dependencyStatusPollTimeoutMs,
               });
               if (depStatus !== 'Included') {
                 throw {
@@ -673,6 +716,7 @@ export class TransactionManager<E extends string> {
           return builtTx;
         } catch (error) {
           const status = failed_before_sending('building the tx', error);
+          console.error('Transaction build failed', error);
           tx.setStatuses(status, TxLifecycleStatus.FAILED);
           throw status;
         }

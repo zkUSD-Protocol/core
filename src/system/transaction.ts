@@ -15,13 +15,16 @@ export enum ZkusdEngineTransactionType {
   UPDATE_VALID_PRICE_BLOCK_COUNT = 'updateValidPriceBlockCount',
   UPDATE_ORACLE_WHITELIST = 'updateOracleWhitelist',
   TOGGLE_EMERGENCY_STOP = 'toggleEmergencyStop',
+  // auxilliary
+  TRANSFER = 'transfer',
 }
 
 export interface BaseZkusdEngineTransactionArgs {
   transactionId: string;
 }
 
-export interface BaseVaultTransactionArgs extends BaseZkusdEngineTransactionArgs {
+export interface BaseVaultTransactionArgs
+  extends BaseZkusdEngineTransactionArgs {
   vaultAddress: string;
 }
 
@@ -49,7 +52,8 @@ export interface UpdateAdminArgs extends BaseZkusdEngineTransactionArgs {
   newAdmin: string;
 }
 
-export interface ToggleEmergencyStopArgs extends BaseZkusdEngineTransactionArgs {
+export interface ToggleEmergencyStopArgs
+  extends BaseZkusdEngineTransactionArgs {
   shouldStop: boolean;
 }
 
@@ -57,8 +61,15 @@ export interface OracleWhitelistArgs extends BaseZkusdEngineTransactionArgs {
   oracleWhitelist: SizedArray<string, typeof OracleWhitelist.MAX_PARTICIPANTS>;
 }
 
-export interface UpdateValidPriceBlockCountArgs extends BaseZkusdEngineTransactionArgs {
+export interface UpdateValidPriceBlockCountArgs
+  extends BaseZkusdEngineTransactionArgs {
   newValidPriceBlockCount: number;
+}
+
+export interface SenderTransferArgs extends BaseZkusdEngineTransactionArgs {
+  from: string;
+  to: string;
+  amount: string;
 }
 
 export interface CollateralAmountAndPriceProofArgs
@@ -81,6 +92,8 @@ export type ZkusdEngineTransactionArgs = {
   [ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT]: UpdateValidPriceBlockCountArgs;
   [ZkusdEngineTransactionType.UPDATE_ORACLE_WHITELIST]: OracleWhitelistArgs;
   [ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP]: ToggleEmergencyStopArgs;
+  // auxilliary
+  [ZkusdEngineTransactionType.TRANSFER]: SenderTransferArgs;
 };
 
 /** Type-safe transaction arguments. */

@@ -107,7 +107,7 @@
 //   await new Promise((resolve) => setTimeout(resolve, 3000));
 
 //   // The job should now be "unassigned" in the store, so it can be picked up again.
-//   // The existing worker (or a second worker) will eventually re-request /jobs/next.
+//   // The existing worker (or a second worker) will eventually re-request /job/next.
 
 //   // Wait for result up to some reasonable limit
 //   const finalResult = await jobResultPromise;
