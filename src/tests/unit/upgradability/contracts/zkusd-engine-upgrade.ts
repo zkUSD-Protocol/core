@@ -16,6 +16,7 @@ import {
   AccountUpdateForest,
   Int64,
   UInt32,
+  VerificationKey,
 } from 'o1js';
 
 import {
@@ -705,6 +706,12 @@ export function ZkUsdEngineUpgradeContract(args: {
     @method.returns(Bool)
     public async canResume(): Promise<Bool> {
       //We need the admin signature to resume the token
+      return Bool(false);
+    }
+
+    @method.returns(Bool)
+    public async canChangeVerificationKey(vk: VerificationKey): Promise<Bool> {
+      //We need the admin signature to change the verification key
       return Bool(false);
     }
   }

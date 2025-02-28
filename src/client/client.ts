@@ -18,12 +18,11 @@ import {
   ZkusdEngineTransactionArgs,
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
+import { getContractKeys } from '../config/keys.js';
 
 interface ZKUSDClientConfig {
   chain: blockchain;
   httpProver: string;
-  engineAddress: string;
-  tokenAddress: string;
 }
 
 interface TransactionContext {
@@ -50,7 +49,11 @@ export class ZKUSDClient {
   }
 
   static async create(config: ZKUSDClientConfig) {
-    const { chain, httpProver, engineAddress, tokenAddress } = config;
+    const { chain, httpProver } = config;
+
+    const { token: tokenAddress, engine: engineAddress } =
+      getContractKeys(chain);
+
     const mina = await MinaNetworkInterface.initChain(chain);
     const prover = new HttpClientProver(httpProver);
     const executor = await ExternalTransactionExecutor.start(mina, {
@@ -61,14 +64,14 @@ export class ZKUSDClient {
     });
 
     const ZkUsdEngine = ZkUsdEngineContract({
-      zkUsdTokenAddress: PublicKey.fromBase58(tokenAddress),
+      zkUsdTokenAddress: tokenAddress,
       minaPriceInputZkProgramVkHash: verificationKeys.oracleAggregation.hash,
     });
 
     const FungibleToken = ZkUsdEngine.FungibleToken;
 
-    const engine = new ZkUsdEngine(PublicKey.fromBase58(engineAddress));
-    const token = new FungibleToken(PublicKey.fromBase58(tokenAddress));
+    const engine = new ZkUsdEngine(engineAddress);
+    const token = new FungibleToken(tokenAddress);
 
     return new ZKUSDClient(txMgr, engine, token);
   }

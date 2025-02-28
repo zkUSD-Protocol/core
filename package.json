@@ -60,7 +60,7 @@
     "o1js": "^2.2.0"
   },
   "dependencies": {
-    "@minatokens/token": "^0.5.5",
+    "@minatokens/token": "^0.16.16",
     "dotenv": "^16.4.7",
     "mina-signer": "^3.0.7"
   },

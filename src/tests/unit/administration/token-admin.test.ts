@@ -80,6 +80,12 @@ export class NewFungibleTokenAdmin
     await this.ensureAdminSignature();
     return Bool(true);
   }
+
+  @method.returns(Bool)
+  public async canChangeVerificationKey(vk: VerificationKey): Promise<Bool> {
+    await this.ensureAdminSignature();
+    return Bool(true);
+  }
 }
 
 describe('zkUSD Protocol Vault Token Administration Test Suite', () => {
