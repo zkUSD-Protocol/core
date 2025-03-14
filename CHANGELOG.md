@@ -1,5 +1,11 @@
 # @zkusd/core
 
+## 0.0.4
+
+### Patch Changes
+
+- 0fbcd14: updated version of MFT contract
+
 ## 0.0.3
 
 ### Patch Changes

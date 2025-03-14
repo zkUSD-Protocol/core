@@ -46,11 +46,11 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Git checkout
         uses: actions/checkout@v4
-      - name: NPM ci, build, & test
+      - name: NPM ci, build, & test:unit
         run: |
           npm ci
           npm run build --if-present
-          npm test
+          npm test:unit
         env:
           CI: true
       #
