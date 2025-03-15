@@ -1,4 +1,4 @@
-import { PrivateKey, PublicKey, UInt64 } from 'o1js';
+import { PrivateKey, PublicKey, UInt64, UInt8 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';
@@ -74,6 +74,10 @@ export class ZKUSDClient {
     const token = new FungibleToken(tokenAddress);
 
     return new ZKUSDClient(txMgr, engine, token);
+  }
+
+  async getCollateralRatio(): Promise<UInt8> {
+    return this.engine.getCollateralRatio();
   }
 
   /**
@@ -236,7 +240,8 @@ export class ZKUSDClient {
       throw new Error('Vault not found');
     }
 
-    return Vault.fromAccount(vaultAccount);
+    const ratio = await this.getCollateralRatio();
+    return Vault(ratio).fromAccount(vaultAccount);
   }
 
   /**

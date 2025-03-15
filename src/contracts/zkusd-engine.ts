@@ -19,6 +19,7 @@ import {
   Int64,
   UInt32,
   VerificationKey,
+  UInt8,
 } from 'o1js';
 
 import { Vault } from '../system/vault.js';
@@ -54,6 +55,8 @@ import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
  *          allows the engine to be the admin of the zkUSD token contract, while also managing the price state, interaction with the vaults,
  *          and administrative functionality such as the oracle whitelist.
  */
+
+const COLLATERAL_RATIO: UInt8 = UInt8.from(150); // 150% collateral ratio
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
@@ -169,6 +172,10 @@ export function ZkUsdEngineContract(args: {
       return balance;
     }
 
+    public async getCollateralRatio(): Promise<UInt8> {
+      return COLLATERAL_RATIO;
+    }
+
     /**
      * @notice  Returns the health factor of a vault
      * @param   vaultAddress The address of the vault
@@ -184,7 +191,8 @@ export function ZkUsdEngineContract(args: {
       );
 
       //Get the vault
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -265,7 +273,8 @@ export function ZkUsdEngineContract(args: {
         vaultAddress,
         this.deriveTokenId()
       );
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       //Update the owner
       vault.updateOwner(newOwner, owner);
@@ -316,7 +325,8 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      Vault.initialize(newVaultUpdate, owner);
+      const ratio = await this.getCollateralRatio();
+      Vault(ratio).initialize(newVaultUpdate, owner);
 
       //Emit the NewVault event
       this.emitEvent(
@@ -343,7 +353,8 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -400,7 +411,8 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -460,7 +472,8 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -511,7 +524,8 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       //Get the owner of the zkUSD
       // we have sender signature from zkUSD.burn
@@ -559,7 +573,8 @@ export function ZkUsdEngineContract(args: {
         vaultAddress,
         this.deriveTokenId()
       );
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -649,13 +664,13 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
-    @method.returns(Vault) // TODO does it have to be a methods
     async retrieveVault(vaultAddress: PublicKey) {
       const vaultUpdate = AccountUpdate.create(
         vaultAddress,
         this.deriveTokenId()
       );
-      return Vault.getAndRequireEquals(vaultUpdate);
+      const ratio = await this.getCollateralRatio();
+      return Vault(ratio).getAndRequireEquals(vaultUpdate);
     }
 
     /**

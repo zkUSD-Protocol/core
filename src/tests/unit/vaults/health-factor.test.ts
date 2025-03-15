@@ -8,7 +8,7 @@ import { MinaPrice } from '../../../system/oracle.js';
 describe('zkUSD Vault Health Factor Calculations Test Suite', () => {
   let th: TestHelper<'local'>;
   let price: MinaPrice;
-  let vault: Vault;
+  let vault: InstanceType<ReturnType<typeof Vault>>;
 
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
@@ -29,7 +29,9 @@ describe('zkUSD Vault Health Factor Calculations Test Suite', () => {
       th.engine.contract.deriveTokenId()
     );
 
-    vault = Vault.getAndRequireEquals(au);
+    const ratio = await th.engine.contract.getCollateralRatio();
+
+    vault = Vault(ratio).getAndRequireEquals(au);
   });
 
   describe('Health Factor Calculations', () => {

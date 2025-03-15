@@ -746,7 +746,9 @@ export class TestHelper<E extends string> {
       return undefined;
     }
 
-    return Vault.fromAccount(vaultAccount);
+    const ratio =await this.engine.contract.getCollateralRatio();
+
+    return Vault(ratio).fromAccount(vaultAccount);
   }
 
   public async retrieveAgentVaultState(agentName: string): Promise<VaultState> {

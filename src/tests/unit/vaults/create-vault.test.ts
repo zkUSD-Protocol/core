@@ -35,7 +35,8 @@ describe('zkUSD Deployment Test Suite', () => {
             keys.publicKey,
             testHelper.engine.contract.deriveTokenId()
           );
-          Vault.initialize(newVaultUpdate, keys.publicKey);
+          const ratio = await testHelper.engine.contract.getCollateralRatio();
+          Vault(ratio).initialize(newVaultUpdate, keys.publicKey);
         },
         {
           extraSigners: [keys.privateKey],
