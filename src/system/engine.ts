@@ -2,7 +2,8 @@
 // Protocol Core Types
 // ============================================================================
 
-import { Struct, PublicKey, UInt32, Bool, Field } from 'o1js';
+import { Struct, PublicKey, UInt32, Bool, Field, UInt8 } from 'o1js';
+import { VaultParams } from './vault';
 
 // Errors
 export const ZkUsdEngineErrors = {
@@ -27,18 +28,24 @@ export class ProtocolData extends Struct({
   admin: PublicKey,
   validPriceBlockCount: UInt32,
   emergencyStop: Bool,
+  collateralRatio: UInt8,
+  liquidationBonusRatio: UInt8
 }) {
   static new(
     params: {
       admin?: PublicKey;
       validPriceBlockCount?: UInt32;
       emergencyStop?: Bool;
+      collateralRatio?: UInt8;
+      liquidationBonusRatio?: UInt8;
     } = {}
   ): ProtocolData {
     return new ProtocolData({
       admin: params.admin ?? PublicKey.empty(),
       validPriceBlockCount: params.validPriceBlockCount ?? UInt32.from(0),
       emergencyStop: params.emergencyStop ?? Bool(false),
+      collateralRatio: params.collateralRatio ?? UInt8.from(0),
+      liquidationBonusRatio: params.liquidationBonusRatio ?? UInt8.from(0)
     });
   }
 
@@ -53,23 +60,55 @@ export class ProtocolData extends Struct({
     });
   }
 
+  getVaultParams() : VaultParams {
+    return {
+      collateralRatio: this.collateralRatio,
+      liquidationBonusRatio: this.liquidationBonusRatio,
+    };
+  }
+
   static unpack(packed: ProtocolDataPacked) {
-    const bits = packed.packedData.toBits(32 + 2);
-    const validPriceBlockCount = UInt32.Unsafe.fromField(
-      Field.fromBits(bits.slice(0, 32))
-    );
-    const emergencyStop = Bool(bits[32]);
-    const adminIsOdd = Bool(bits[32 + 1]);
-    const admin = PublicKey.from({
-      x: packed.adminX,
-      isOdd: adminIsOdd,
-    });
+    // Bit field definitions
+    const bitFields = [
+      { name: 'validPriceBlockCount', length: 32 },
+      { name: 'emergencyStop', length: 1 },
+      { name: 'adminIsOdd', length: 1 },
+      { name: 'collateralRatio', length: 8 },
+      { name: 'liquidationBonusRatio', length: 8 }
+    ];
+
+    // Calculate total bits and assert the limit
+    const TOTAL_BITS = bitFields.reduce((sum, { length }) => sum + length, 0);
+    if (TOTAL_BITS > 254) {
+      throw new Error(`ProtocolDataPacked uses ${TOTAL_BITS} bits, exceeding the 254-bit limit.`);
+    }
+
+    const bits = packed.packedData.toBits(TOTAL_BITS);
+
+    // Extract fields from bits using offsets
+    let offset = 0;
+    const readBits = (length: number) => {
+      const slice = bits.slice(offset, offset + length);
+      offset += length;
+      return Field.fromBits(slice);
+    };
+
+    const validPriceBlockCount = UInt32.Unsafe.fromField(readBits(32));
+    const emergencyStop = Bool(bits[offset++]);
+    const adminIsOdd = Bool(bits[offset++]);
+    const admin = PublicKey.from({ x: packed.adminX, isOdd: adminIsOdd });
+    const collateralRatio = UInt8.Unsafe.fromField(readBits(8));
+    const liquidationBonusRatio = UInt8.Unsafe.fromField(readBits(8));
+
     return new ProtocolData({
-      admin: admin,
-      validPriceBlockCount: validPriceBlockCount,
-      emergencyStop: emergencyStop,
+      admin,
+      validPriceBlockCount,
+      emergencyStop,
+      collateralRatio,
+      liquidationBonusRatio
     });
   }
+
 }
 
 /**

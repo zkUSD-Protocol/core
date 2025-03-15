@@ -194,9 +194,8 @@ describe('zkUSD Vault Mint Test Suite', () => {
       th.engine.contract.deriveTokenId()
     );
 
-    const ratio = await th.engine.contract.getCollateralRatio();
-
-    let vault = Vault(ratio).getAndRequireEquals(au);
+    const params = await th.engine.contract.getVaultParams();
+    let vault = Vault(params).getAndRequireEquals(au);
 
     const initialCollateral = vault.state.collateralAmount;
     let currentDebt = vault.state.debtAmount;
@@ -210,7 +209,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
       );
 
       // Only mint if health factor would remain above minimum
-      if (healthFactor!.greaterThanOrEqual(Vault(ratio).MIN_HEALTH_FACTOR)) {
+      if (healthFactor!.greaterThanOrEqual(Vault(params).MIN_HEALTH_FACTOR)) {
         await th.includeTx(
           th.agents.alice.keys,
           async () => {
@@ -232,7 +231,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
           th.engine.contract.deriveTokenId()
         );
 
-        vault = Vault(ratio).getAndRequireEquals(au2);
+        vault = Vault(params).getAndRequireEquals(au2);
         currentDebt = currentDebt?.add(TestAmounts.DEBT_1_ZKUSD);
       }
     }
@@ -245,7 +244,7 @@ describe('zkUSD Vault Mint Test Suite', () => {
 
     assert.strictEqual(
       finalHealthFactor!
-        .greaterThanOrEqual(Vault(ratio).MIN_HEALTH_FACTOR)
+        .greaterThanOrEqual(Vault(params).MIN_HEALTH_FACTOR)
         .toBoolean(),
       true
     );

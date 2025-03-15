@@ -29,9 +29,9 @@ describe('zkUSD Vault Health Factor Calculations Test Suite', () => {
       th.engine.contract.deriveTokenId()
     );
 
-    const ratio = await th.engine.contract.getCollateralRatio();
+    const params = await th.engine.contract.getVaultParams();
 
-    vault = Vault(ratio).getAndRequireEquals(au);
+    vault = Vault(params).getAndRequireEquals(au);
   });
 
   describe('Health Factor Calculations', () => {

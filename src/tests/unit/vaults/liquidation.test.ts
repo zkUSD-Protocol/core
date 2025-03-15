@@ -25,7 +25,7 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
     //Deploy a fresh vault
     await th.createVaults('alice', 'bob', 'charlie', 'dave');
 
-    Vault = MkVault(await th.engine.contract.getCollateralRatio());
+    Vault = MkVault(await th.engine.contract.getVaultParams());
 
     // Alice deposits 100 Mina
     await th.includeTx(

@@ -40,7 +40,7 @@ import {
 import { PriceAggregationProofPublicOutput } from '../../../../proofs/oracle-price-aggregation/common.js';
 import { ZkUsdEngineErrors } from '../../../../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../../../../system/oracle.js';
-import { Vault } from '../../../../system/vault.js';
+import { Vault, VaultParams } from '../../../../system/vault.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -48,6 +48,7 @@ import { Vault } from '../../../../system/vault.js';
  */
 
 const COLLATERAL_RATIO = UInt8.from(150);
+const LIQUIDATION_BONUS_RATIO = UInt8.from(110);
 
 export function ZkUsdEngineUpgradeContract(args: {
   zkUsdTokenAddress: PublicKey;
@@ -127,8 +128,21 @@ export function ZkUsdEngineUpgradeContract(args: {
       return balance;
     }
 
-    public async getCollateralRatio(): Promise<UInt8> {
-      return COLLATERAL_RATIO;
+    public async getVaultParams(): Promise<VaultParams> {
+      // return vault params from protocol data
+      return {
+        collateralRatio: COLLATERAL_RATIO,
+        liquidationBonusRatio: LIQUIDATION_BONUS_RATIO,
+      };
+    }
+
+    public async retrieveVault(vaultAddress: PublicKey) {
+      const vaultUpdate =
+        AccountUpdate.create(
+          vaultAddress,
+          this.deriveTokenId()
+        );
+      return Vault(await this.getVaultParams()).getAndRequireEquals(vaultUpdate);
     }
 
     /**
@@ -140,13 +154,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       vaultAddress: PublicKey,
       minaPrice: MinaPrice
     ): Promise<UInt64> {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -218,13 +226,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       //Get signature from the current owner
       const owner = this.sender.getAndRequireSignature();
 
-      //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Update the owner
       const newVaultState = vault.updateOwner(newOwner, owner);
@@ -275,9 +277,8 @@ export function ZkUsdEngineUpgradeContract(args: {
         this.deriveTokenId()
       );
 
-
-      const ratio = await this.getCollateralRatio();
-      Vault(ratio).initialize(newVaultUpdate, owner);
+      const params = await this.getVaultParams();
+      Vault(params).initialize(newVaultUpdate, owner);
 
       //Emit the NewVault event
       this.emitEvent(
@@ -298,14 +299,7 @@ export function ZkUsdEngineUpgradeContract(args: {
      */
     @method async depositCollateral(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      // const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -357,13 +351,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       await this.ensureProtocolNotStopped();
 
       //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -418,13 +406,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       //Ensure the protocol is not stopped
       await this.ensureProtocolNotStopped();
 
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
@@ -470,13 +452,7 @@ export function ZkUsdEngineUpgradeContract(args: {
      */
     @method async burnZkUsd(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the owner of the zkUSD
       // we have sender signature from zkUSD.burn
@@ -520,13 +496,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       await this.ensureProtocolNotStopped();
 
       // //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      const vault = Vault(ratio).getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
@@ -611,16 +581,6 @@ export function ZkUsdEngineUpgradeContract(args: {
           emergencyStop: shouldStop,
         })
       );
-    }
-
-    async retrieveVault(vaultAddress: PublicKey) {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const ratio = await this.getCollateralRatio();
-      return Vault(ratio).getAndRequireEquals(vaultUpdate);
     }
 
     /**

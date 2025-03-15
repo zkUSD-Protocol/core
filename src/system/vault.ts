@@ -49,6 +49,11 @@ export class VaultState extends Struct({
   owner: PublicKey,
 }) {}
 
+export class VaultParams extends Struct({
+  collateralRatio: UInt8,
+  liquidationBonusRatio: UInt8,
+}) {}
+
 /**
  * @title   Vault Struct
  * @notice  Core vault implementation that manages user collateral and debt positions
@@ -57,17 +62,17 @@ export class VaultState extends Struct({
  * @param   accountUpdate - The account update object used for on-chain state modifications
  * @param   state - The current state of the vault containing collateral and debt information
  */
-export function Vault(collateral_ratio: UInt8) {
+export function Vault(params: VaultParams) {
   const VaultClas = class Vault_ extends Struct({
     accountUpdate: AccountUpdate,
     state: VaultState,
   }) {
-    static COLLATERAL_RATIO: Field = collateral_ratio.value; // The collateral ratio is the minimum ratio of collateral to debt that the vault must maintain
+    static COLLATERAL_RATIO: Field = params.collateralRatio.value; // The collateral ratio is the minimum ratio of collateral to debt that the vault must maintain
     static COLLATERAL_RATIO_PRECISION = Field.from(100); // The precision of the collateral ratio
     static PROTOCOL_FEE_PRECISION = UInt64.from(100); // The precision of the protocol fee
     static UNIT_PRECISION = Field.from(1e9); // The precision of the unit - Mina has 9 decimal places
     static MIN_HEALTH_FACTOR = UInt64.from(100); // The minimum health factor that the vault must maintain when adjusted
-    static LIQUIDATION_BONUS_RATIO = Field.from(110); // The value ratio of the liquidation
+    static LIQUIDATION_BONUS_RATIO = params.liquidationBonusRatio.value; // The bonus ratio for liquidators when liquidating a vault
 
     /**
      * @notice  This method is used to initialize a new vault
