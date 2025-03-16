@@ -56,11 +56,13 @@ export class ProtocolData extends Struct({
         ...this.validPriceBlockCount.value.toBits(32),
         this.emergencyStop,
         this.admin.isOdd,
+        ...this.collateralRatio.value.toBits(8),
+        ...this.liquidationBonusRatio.value.toBits(8),
       ]),
     });
   }
 
-  getVaultParams() : VaultParams {
+  getVaultParams(): VaultParams {
     return {
       collateralRatio: this.collateralRatio,
       liquidationBonusRatio: this.liquidationBonusRatio,
@@ -94,8 +96,8 @@ export class ProtocolData extends Struct({
     };
 
     const validPriceBlockCount = UInt32.Unsafe.fromField(readBits(32));
-    const emergencyStop = Bool(bits[offset++]);
-    const adminIsOdd = Bool(bits[offset++]);
+    const emergencyStop = readBits(1).equals(1);
+    const adminIsOdd = readBits(1).equals(1);
     const admin = PublicKey.from({ x: packed.adminX, isOdd: adminIsOdd });
     const collateralRatio = UInt8.Unsafe.fromField(readBits(8));
     const liquidationBonusRatio = UInt8.Unsafe.fromField(readBits(8));

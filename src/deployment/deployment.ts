@@ -177,6 +177,8 @@ export class DeploymentService {
               validPriceBlockCount[this._txMgr.mina.network.chainId]
             ),
             emergencyStop: Bool(false),
+            collateralRatio: UInt8.from(150),
+            liquidationBonusRatio: UInt8.from(110),
           });
         },
         {

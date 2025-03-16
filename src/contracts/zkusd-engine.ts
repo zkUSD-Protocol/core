@@ -20,6 +20,8 @@ import {
   UInt32,
   VerificationKey,
   UInt8,
+  Provable,
+  PrivateKey,
 } from 'o1js';
 
 import { Vault, VaultParams } from '../system/vault.js';
@@ -60,6 +62,8 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
   validPriceBlockCount: UInt32;
   emergencyStop: Bool;
+  collateralRatio: UInt8;
+  liquidationBonusRatio: UInt8;
 }
 
 export function ZkUsdEngineContract(args: {
@@ -127,8 +131,8 @@ export function ZkUsdEngineContract(args: {
           admin: args.admin,
           validPriceBlockCount: args.validPriceBlockCount,
           emergencyStop: args.emergencyStop,
-          collateralRatio: UInt8.from(150),
-          liquidationBonusRatio: UInt8.from(110),
+          collateralRatio: args.collateralRatio,
+          liquidationBonusRatio: args.liquidationBonusRatio,
         }).pack()
       );
     }
