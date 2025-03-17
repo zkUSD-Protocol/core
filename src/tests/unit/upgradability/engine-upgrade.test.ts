@@ -12,6 +12,7 @@ import {
   Field,
   Poseidon,
   UInt32,
+  UInt8,
   VerificationKey,
 } from 'o1js';
 
@@ -139,6 +140,54 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
     );
   });
 
+  it('should maintain the current state of the engine before the upgrade', async () => {
+    const engineTrackingAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+
+      {
+        tokenId: th.engine.contract.deriveTokenId(),
+        force: true,
+      }
+    );
+
+    const expectedCollateral = TestAmounts.COLLATERAL_100_MINA;
+
+    assert.deepStrictEqual(engineTrackingAccount?.balance, expectedCollateral);
+
+    const expectedProtocolDataPacked: ProtocolDataPacked = ProtocolData.new({
+      admin: th.networkKeys.protocolAdmin.publicKey,
+      validPriceBlockCount: UInt32.from(
+        validPriceBlockCount[th.txMgr.mina.network.chainId]
+      ),
+      emergencyStop: Bool(false),
+      collateralRatio: UInt8.from(150),
+      liquidationBonusRatio: UInt8.from(110),
+    }).pack();
+
+    const expectedOracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
+
+    const expectedInteractionFlag = Bool(false);
+
+    const engineAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+      {
+        force: true,
+      }
+    );
+
+    const expectedAppState = [
+      expectedOracleWhitelistHash,
+      ...ProtocolDataPacked.toFields(expectedProtocolDataPacked),
+      expectedInteractionFlag.toField(),
+      Field(0),
+      Field(0),
+      Field(0),
+      Field(0),
+    ];
+
+    assert.deepStrictEqual(engineAccount?.zkapp?.appState, expectedAppState);
+  });
+
   it('should allow the engine vk to be updated with the correct signature', async () => {
     await th.includeTx(
       th.agents.alice.keys,
@@ -189,6 +238,8 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         validPriceBlockCount[th.txMgr.mina.network.chainId]
       ),
       emergencyStop: Bool(false),
+      collateralRatio: UInt8.from(150),
+      liquidationBonusRatio: UInt8.from(110),
     }).pack();
 
     const expectedOracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
