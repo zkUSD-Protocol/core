@@ -72,6 +72,7 @@ interface ExecutorContext {
 interface CompilationConfig {
   tokenPublicKey: PublicKey;
   enginePublicKey: PublicKey;
+  governmentPublicKey: PublicKey;
   cache?: Cache;
 }
 
@@ -123,6 +124,7 @@ async function compileContracts(
   const ZkUsdEngine = ZkUsdEngineContract({
     zkUsdTokenAddress: config.tokenPublicKey,
     minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
+    zkUsdGovernmentAddress: config.governmentPublicKey,
   });
 
   // 3. Extract FungibleToken class from ZkUsdEngine

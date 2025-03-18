@@ -87,6 +87,7 @@ export class DeploymentService {
     const ZkUsdEngine = ZkUsdEngineContract({
       zkUsdTokenAddress: this._networkKeys.token.publicKey,
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
+      zkUsdGovernmentAddress: this._networkKeys.government.publicKey
     });
 
     if (this._mina.proofsEnabled) {

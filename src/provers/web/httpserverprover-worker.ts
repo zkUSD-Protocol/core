@@ -50,6 +50,7 @@ self.addEventListener('message', async (event) => {
     const compilationResults = await compileContracts({
       tokenPublicKey: keys.token,
       enginePublicKey: keys.engine,
+      governmentPublicKey: keys.gov,
     });
 
     // 2) Create shared config object

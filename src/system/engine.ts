@@ -29,7 +29,7 @@ export class ProtocolData extends Struct({
   validPriceBlockCount: UInt32,
   emergencyStop: Bool,
   collateralRatio: UInt8,
-  liquidationBonusRatio: UInt8
+  liquidationBonusRatio: UInt8,
 }) {
   static new(
     params: {
@@ -45,7 +45,7 @@ export class ProtocolData extends Struct({
       validPriceBlockCount: params.validPriceBlockCount ?? UInt32.from(0),
       emergencyStop: params.emergencyStop ?? Bool(false),
       collateralRatio: params.collateralRatio ?? UInt8.from(0),
-      liquidationBonusRatio: params.liquidationBonusRatio ?? UInt8.from(0)
+      liquidationBonusRatio: params.liquidationBonusRatio ?? UInt8.from(0),
     });
   }
 
@@ -76,13 +76,15 @@ export class ProtocolData extends Struct({
       { name: 'emergencyStop', length: 1 },
       { name: 'adminIsOdd', length: 1 },
       { name: 'collateralRatio', length: 8 },
-      { name: 'liquidationBonusRatio', length: 8 }
+      { name: 'liquidationBonusRatio', length: 8 },
     ];
 
     // Calculate total bits and assert the limit
     const TOTAL_BITS = bitFields.reduce((sum, { length }) => sum + length, 0);
     if (TOTAL_BITS > 254) {
-      throw new Error(`ProtocolDataPacked uses ${TOTAL_BITS} bits, exceeding the 254-bit limit.`);
+      throw new Error(
+        `ProtocolDataPacked uses ${TOTAL_BITS} bits, exceeding the 254-bit limit.`
+      );
     }
 
     const bits = packed.packedData.toBits(TOTAL_BITS);
@@ -107,10 +109,9 @@ export class ProtocolData extends Struct({
       validPriceBlockCount,
       emergencyStop,
       collateralRatio,
-      liquidationBonusRatio
+      liquidationBonusRatio,
     });
   }
-
 }
 
 /**

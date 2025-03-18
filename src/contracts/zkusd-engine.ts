@@ -20,8 +20,6 @@ import {
   UInt32,
   VerificationKey,
   UInt8,
-  Provable,
-  PrivateKey,
 } from 'o1js';
 
 import { Vault, VaultParams } from '../system/vault.js';
@@ -49,11 +47,21 @@ import {
   ZkUsdEngineErrors,
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
+import { ZkusdGovResolutionProgramWitness } from '../system/governance.js';
+import { ZkUsdGovernmentPoc } from './zkusd-government-poc.js';
+import {
+  NO_RESOLUTION_INDEX,
+  ZkusdProtocolUpdateProof,
+  ZkusdUpdateMinaBlockchainState,
+  ZkusdUpdatedProtocolState,
+  theUpdatePreconditionsMatchMinaBlockchainState,
+  theUpdatePreconditionsMatchProtocolState,
+} from '../system/update.js';
 
 /**
  * @title   zkUSD Engine contract
  * @notice  This contract is the master contract used to govern the rules of interaction with the zkUSD system.
- *          It uses a token account design model which installs user vaults on the token account of the engine. This
+ *          ItIpnsAddr uses a token account design model which installs user vaults on the token account of the engine. This
  *          allows the engine to be the admin of the zkUSD token contract, while also managing the price state, interaction with the vaults,
  *          and administrative functionality such as the oracle whitelist.
  */
@@ -68,13 +76,25 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
 
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
+  zkUsdGovernmentAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
 }) {
-  const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
+  const {
+    zkUsdTokenAddress,
+    minaPriceInputZkProgramVkHash,
+    zkUsdGovernmentAddress,
+  } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
-    @state(Field) oracleWhitelistHash = State<Field>(); // Posieden hash of the oracle whitelist
+    // -- on-chain data --
+    @state(Field) oracleWhitelistHash = State<Field>(); // Poseidon hash of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>(); // Protocol data
     @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
+
+    // -- off-chain data --
+    @state(Field) configMerkleRoot = State<Field>(); // Merkle root of the contract offchain state. (not used yet)
+
+    // -- government data --
+    @state(Field) govResolutionNullifierTreeRoot = State<Field>(); // Pins the tree of executed gov proofs.
 
     static ZKUSD_TOKEN_ADDRESS = zkUsdTokenAddress; // The address of the zkUSD token contract
     static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3); // The minimum number of valid oracle submissions required to update the price
@@ -191,12 +211,13 @@ export function ZkUsdEngineContract(args: {
 
     // TODO doc
     public async retrieveVault(vaultAddress: PublicKey) {
-      const vaultUpdate =
-        AccountUpdate.create(
+      const vaultUpdate = AccountUpdate.create(
         vaultAddress,
         this.deriveTokenId()
       );
-      return Vault(await this.getVaultParams()).getAndRequireEquals(vaultUpdate);
+      return Vault(await this.getVaultParams()).getAndRequireEquals(
+        vaultUpdate
+      );
     }
 
     /**
@@ -208,7 +229,6 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPrice: MinaPrice
     ): Promise<UInt64> {
-
       //Get the vault & add the precondition
       const vault = await this.retrieveVault(vaultAddress);
 
@@ -625,7 +645,7 @@ export function ZkUsdEngineContract(args: {
         this.protocolDataPacked.getAndRequireEquals()
       );
 
-      //Assertions
+      // Assertions
       shouldStop
         .equals(protocolData.emergencyStop)
         .assertFalse('Protocol is already in desired state');
@@ -641,7 +661,68 @@ export function ZkUsdEngineContract(args: {
       this.emitEvent(
         'EmergencyStopToggled',
         new EmergencyStopToggledEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
           emergencyStop: shouldStop,
+        })
+      );
+    }
+    @method async govStopProtocol(
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionProof: ZkusdProtocolUpdateProof
+    ) {
+      const gov = new ZkUsdGovernmentPoc(zkUsdGovernmentAddress);
+      // TODO: do we require the contract to also be checked against
+      // an onchain pinned vkh
+
+      const govAcceptance = await gov.canExecuteGovResolution(
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof,
+      );
+      govAcceptance.assertTrue(
+        'ZkUSD government contract disallowed the update proof.'
+      );
+
+      resolutionProof.verify(resolutionProgramVk);
+
+      const blockchainState = await buildBlockchainState(this);
+      theUpdatePreconditionsMatchMinaBlockchainState({
+        preconditions: resolutionProof.publicInput.blockchainPreconditions,
+        blockchainState,
+      }).assertTrue();
+
+      const updatedProtocolState = await buildUpdatedProtocolState(this);
+      theUpdatePreconditionsMatchProtocolState({
+        preconditions: resolutionProof.publicInput.protocolUpdatePreconditions,
+        protocolStatus: updatedProtocolState,
+      }).assertTrue();
+
+      // -- execute --
+
+      const operation = resolutionProof.publicInput.protocolUpdateOperation;
+      const newEmergencyStop = operation.emergencyStop.execute(
+        updatedProtocolState.emergencyStop
+      );
+
+      // --
+
+      // apply the new state
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      protocolData.emergencyStop = newEmergencyStop;
+      this.protocolDataPacked.set(protocolData.pack());
+
+      // Nullify the proof
+      markProofAsExecuted(this, resolutionProof);
+
+      // Emit the EmergencyStopToggled event
+      this.emitEvent(
+        'EmergencyStopToggled',
+        new EmergencyStopToggledEvent({
+          resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
+          emergencyStop: Bool(true),
         })
       );
     }
@@ -798,6 +879,32 @@ export function ZkUsdEngineContract(args: {
     public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
       return Bool(true); // TODO change it to read the permission instead
     }
+  }
+
+  function markProofAsExecuted(
+    engine: ZkUsdEngine,
+    proof: ZkusdProtocolUpdateProof
+  ) {
+  }
+
+  async function buildUpdatedProtocolState(
+    engine: ZkUsdEngine
+  ): Promise<ZkusdUpdatedProtocolState> {
+    const protocolData = ProtocolData.unpack(
+      engine.protocolDataPacked.getAndRequireEquals()
+    );
+    return new ZkusdUpdatedProtocolState({
+      emergencyStop: protocolData.emergencyStop,
+    });
+  }
+
+  async function buildBlockchainState(
+    engine: ZkUsdEngine
+  ): Promise<ZkusdUpdateMinaBlockchainState> {
+    return new ZkusdUpdateMinaBlockchainState({
+      slotIndex: engine.network.globalSlotSinceGenesis.getAndRequireEquals(),
+      blockchainLength: engine.network.blockchainLength.getAndRequireEquals(),
+    });
   }
 
   return ZkUsdEngine;

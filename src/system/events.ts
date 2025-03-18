@@ -50,6 +50,7 @@ export class LiquidateEvent extends Struct({
 }) {}
 
 export class EmergencyStopToggledEvent extends Struct({
+  resolutionIndex: UInt32,
   emergencyStop: Bool,
 }) {}
 

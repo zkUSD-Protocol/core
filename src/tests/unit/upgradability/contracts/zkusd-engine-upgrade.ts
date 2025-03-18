@@ -41,6 +41,7 @@ import { PriceAggregationProofPublicOutput } from '../../../../proofs/oracle-pri
 import { ZkUsdEngineErrors } from '../../../../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../../../../system/oracle.js';
 import { Vault, VaultParams } from '../../../../system/vault.js';
+import { NO_RESOLUTION_INDEX } from '../../../../system/update.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -578,6 +579,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       this.emitEvent(
         'EmergencyStopToggled',
         new EmergencyStopToggledEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
           emergencyStop: shouldStop,
         })
       );

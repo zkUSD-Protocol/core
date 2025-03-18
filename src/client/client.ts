@@ -51,7 +51,7 @@ export class ZKUSDClient {
   static async create(config: ZKUSDClientConfig) {
     const { chain, httpProver } = config;
 
-    const { token: tokenAddress, engine: engineAddress } =
+    const { token: tokenAddress, engine: engineAddress, gov: govAddress } =
       getContractKeys(chain);
 
     const mina = await MinaNetworkInterface.initChain(chain);
@@ -66,6 +66,7 @@ export class ZKUSDClient {
     const ZkUsdEngine = ZkUsdEngineContract({
       zkUsdTokenAddress: tokenAddress,
       minaPriceInputZkProgramVkHash: verificationKeys.oracleAggregation.hash,
+      zkUsdGovernmentAddress: govAddress,
     });
 
     const FungibleToken = ZkUsdEngine.FungibleToken;
