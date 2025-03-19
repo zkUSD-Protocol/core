@@ -59,9 +59,13 @@ export class ZkusdProtocolUpdateInput extends Struct({
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {}
 
+export const NotAFinalZkusdProtocolUpdateProof = Field.from(0);
+export const YesItIsAFinalZkusdProtocolUpdateProof = Field.from(25329768464765890060619421345429226387561522247782730071636646908705875653989n);
+
 export class ZkusdProtocolUpdateOutput extends Struct({
   protocolUpdateHash: Field,
   auxilliaryOutput: Provable.Array(Field, 4),
+  isFinalProof: Field, // -- do not set it to IsFinalZkusdProtocolUpdateProof unless it is the final proof than enables the update.
 }) {
 }
 

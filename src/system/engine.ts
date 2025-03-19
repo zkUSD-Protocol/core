@@ -5,6 +5,10 @@
 import { Struct, PublicKey, UInt32, Bool, Field, UInt8 } from 'o1js';
 import { VaultParams } from './vault';
 
+export const ZkUsdEngineMethodCodes = {
+  GovStopProtocol: Field.from(1100110n),
+}
+
 // Errors
 export const ZkUsdEngineErrors = {
   UPDATES_BLOCKED:

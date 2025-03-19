@@ -45,12 +45,14 @@ import {
   ProtocolData,
   ProtocolDataPacked,
   ZkUsdEngineErrors,
+  ZkUsdEngineMethodCodes,
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 import { ZkusdGovResolutionProgramWitness } from '../system/governance.js';
 import { ZkUsdGovernmentPoc } from './zkusd-government-poc.js';
 import {
   NO_RESOLUTION_INDEX,
+  YesItIsAFinalZkusdProtocolUpdateProof,
   ZkusdProtocolUpdateProof,
   ZkusdUpdateMinaBlockchainState,
   ZkusdUpdatedProtocolState,
@@ -73,6 +75,8 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   collateralRatio: UInt8;
   liquidationBonusRatio: UInt8;
 }
+
+
 
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
@@ -676,6 +680,7 @@ export function ZkUsdEngineContract(args: {
       // an onchain pinned vkh
 
       const govAcceptance = await gov.canExecuteGovResolution(
+        ZkUsdEngineMethodCodes.GovStopProtocol,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
@@ -685,6 +690,9 @@ export function ZkUsdEngineContract(args: {
       );
 
       resolutionProof.verify(resolutionProgramVk);
+
+      resolutionProof.publicOutput.isFinalProof.assertEquals(YesItIsAFinalZkusdProtocolUpdateProof, "The protocol update proof is not final");
+
 
       const blockchainState = await buildBlockchainState(this);
       theUpdatePreconditionsMatchMinaBlockchainState({
