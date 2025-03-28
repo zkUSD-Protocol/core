@@ -1,7 +1,7 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, UInt32, UInt8, VerificationKey } from 'o1js';
+import { AccountUpdate, Bool, Provable, UInt32, UInt8, VerificationKey } from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
@@ -77,7 +77,7 @@ export class DeploymentService {
 
   /**
    * Compiles all necessary contracts and proofs for the protocol.
-   * This includes the oracle aggregation proof, vault, engine, and token contracts.
+  * This includes the oracle aggregation proof, vault, engine, and token contracts.
    */
   async compile() {
     console.log('Compiling Contracts - start');
@@ -94,12 +94,14 @@ export class DeploymentService {
     const ZkUsdEngine = ZkUsdEngineContract({
       zkUsdTokenAddress: this._networkKeys.token.publicKey,
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
-      zkUsdGovernmentAddress: this._networkKeys.government.publicKey
+      zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
+      GovernmentClass: ZkUsdAdminSignatureContract
     });
 
     if (this._mina.proofsEnabled) {
       await ZkUsdEngine.compile();
       await ZkUsdEngine.FungibleToken.compile();
+      await ZkUsdAdminSignatureContract.compile();
     }
 
     this._token = {
@@ -165,6 +167,15 @@ export class DeploymentService {
       { force: true }
     );
 
+    const govAccount = await this._mina.fetchMinaAccount(
+      this._networkKeys.government.publicKey,
+      { force: true }
+    );
+    this._networkKeys.government.publicKey,
+      { force: true }
+    Provable.log('governance address - deployment', this._networkKeys.government.publicKey)
+
+
     if (!tokenAccount || force) {
       if (!force) console.log('Contracts dont exist - deploying....');
       else console.log('Forcing contracts deployment....');
@@ -192,9 +203,6 @@ export class DeploymentService {
             collateralRatio: UInt8.from(150),
             liquidationBonusRatio: UInt8.from(110),
           });
-          await this._gov.contract.deploy(
-            {adminPublicKey: this._networkKeys.protocolAdmin.publicKey,
-             stopProtocolVkHash: this._adminSigProgramVk.hash});
         },
         {
           extraSigners: [
@@ -211,6 +219,31 @@ export class DeploymentService {
       console.log('Token and Engine contracts already deployed');
     }
 
+    if (!govAccount || force) {
+      if (!force) console.log('Gov contracts dont exist deploying');
+      else console.log('Forcing contracts deployment....');
+      const txHandle = await this._txMgr.tx(
+        this._deployer,
+        async () => {
+          AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
+          await this._gov.contract.deploy(
+            {
+              adminPublicKey: this._networkKeys.protocolAdmin.publicKey,
+              stopProtocolVkHash: this._adminSigProgramVk.hash
+            });
+        },
+        {
+          extraSigners: [
+            this._networkKeys.government.privateKey,
+          ],
+          name: 'Deploying Gov contracts',
+          executor: 'local',
+        }
+      );
+      await txHandle.awaitIncluded();
+    } else {
+      console.log('Gov contracts already deployed');
+    }
     // fetch the latest nonce for the accounts
     await this._mina.fetchMinaAccount(this._networkKeys.engine.publicKey);
     await this._mina.fetchMinaAccount(
@@ -230,9 +263,15 @@ export class DeploymentService {
           if (!engineTokenAccount)
             AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
           await this._engine.contract.initialize();
+          await this._gov.contract.initialize(
+            {
+              adminPublicKey: this._networkKeys.protocolAdmin.publicKey,
+              stopProtocolVkHash: this._adminSigProgramVk.hash
+            });
         },
         {
           extraSigners: [
+            this._networkKeys.government.privateKey,
             this._networkKeys.protocolAdmin.privateKey,
             this._networkKeys.engine.privateKey,
           ],

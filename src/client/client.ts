@@ -19,6 +19,7 @@ import {
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
 import { getContractKeys } from '../config/keys.js';
+import { ZkUsdAdminSignatureContract } from '../contracts/zkusd-government-poc.js';
 
 interface ZKUSDClientConfig {
   chain: blockchain;
@@ -67,6 +68,7 @@ export class ZKUSDClient {
       zkUsdTokenAddress: tokenAddress,
       minaPriceInputZkProgramVkHash: verificationKeys.oracleAggregation.hash,
       zkUsdGovernmentAddress: govAddress,
+      GovernmentClass: ZkUsdAdminSignatureContract
     });
 
     const FungibleToken = ZkUsdEngine.FungibleToken;

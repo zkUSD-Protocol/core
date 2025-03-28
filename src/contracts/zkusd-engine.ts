@@ -20,6 +20,7 @@ import {
   UInt32,
   VerificationKey,
   UInt8,
+  Provable,
 } from 'o1js';
 
 import { Vault, VaultParams } from '../system/vault.js';
@@ -48,7 +49,7 @@ import {
   ZkUsdEngineMethodCodes,
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
-import { ZkusdGovResolutionProgramWitness } from '../system/governance.js';
+import { ZkUsdGovernmentPocConstructor, ZkusdGovResolutionProgramWitness } from '../system/governance.js';
 import { ZkUsdGovernmentPoc } from './zkusd-government-poc.js';
 import {
   NO_RESOLUTION_INDEX,
@@ -82,11 +83,13 @@ export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
   zkUsdGovernmentAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
+  GovernmentClass: ZkUsdGovernmentPocConstructor;
 }) {
   const {
     zkUsdTokenAddress,
     minaPriceInputZkProgramVkHash,
     zkUsdGovernmentAddress,
+    GovernmentClass,
   } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     // -- on-chain data --
@@ -673,12 +676,12 @@ export function ZkUsdEngineContract(args: {
     @method async govStopProtocol(
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionProof: ZkusdProtocolUpdateProof
+      resolutionProof: ZkusdProtocolUpdateProof,
     ) {
-      const gov = new ZkUsdGovernmentPoc(zkUsdGovernmentAddress);
+      const gov = new GovernmentClass(zkUsdGovernmentAddress);
+      Provable.log('governance address', zkUsdGovernmentAddress)
       // TODO: do we require the contract to also be checked against
       // an onchain pinned vkh
-
       const govAcceptance = await gov.canExecuteGovResolution(
         ZkUsdEngineMethodCodes.GovStopProtocol,
         resolutionProgramVk,

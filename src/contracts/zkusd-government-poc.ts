@@ -47,6 +47,9 @@ export class ZkUsdGovernmentPoc extends SmartContract {
     _resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
     _resolutionProof: ZkusdProtocolUpdateProof,
   ) {
+    Provable.log(
+      "base method called",
+    )
     return Bool(false);
   }
 
@@ -59,7 +62,7 @@ export class ZkUsdGovernmentPoc extends SmartContract {
     super.deploy(args);
   }
 }
-type ZkUsdDeployArgs =  {
+type ZkUsdDeployArgs = {
   adminPublicKey: PublicKey;
   stopProtocolVkHash: Field;
   verificationKey?: {
@@ -88,6 +91,11 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
     this.stopProtocolVkHash.set(args.stopProtocolVkHash);
   }
 
+  async initialize(args: ZkUsdDeployArgs): Promise<void> {
+    this.adminPublicKey.set(args.adminPublicKey);
+    this.stopProtocolVkHash.set(args.stopProtocolVkHash);
+  }
+
   async ensureAdminSignature(): Promise<AccountUpdate> {
     const admin = this.adminPublicKey.getAndRequireEquals();
     return AccountUpdate.createSigned(admin);
@@ -104,11 +112,6 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
       The contract admin public matches the one in the output of the proof:
       See: `AdminSignatureZkusdProtocolUpdateProgram` output.
       The `zkMethodCode` is explicitly permited by this contract.
-
-      NOTE: This method does not VERIFY the proof validity. The validation
-      is left out to the caller.
-      You can think of it as an additional guard put by the government (admin)
-      on a _verified_ zkusd update proof.
   */
   @method.returns(Bool)
   public async canExecuteGovResolution(
@@ -117,12 +120,26 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
     resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
     resolutionProof: ZkusdProtocolUpdateProof,
   ) {
+    Provable.log(
+      "zkEngineMethodCode",
+      zkEngineMethodCode,
+    )
+
     // the method is allowed:
     zkEngineMethodCode.assertEquals(ZkUsdEngineMethodCodes.GovStopProtocol)
 
     // verify the verification key against the on-chain state.
     const vkh = this.stopProtocolVkHash.getAndRequireEquals();
+
+    Provable.log(
+      "resolutionProgramVk",
+      resolutionProgramVk.hash,
+      vkh
+    )
     vkh.assertEquals(resolutionProgramVk.hash);
+
+    resolutionProof.verify(resolutionProgramVk);
+    Provable.log("proof verified");
 
     // verify the proof's admin key against the on-chain state.
     const currentAdminHash = Poseidon.hash(
@@ -130,6 +147,12 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
     );
     const proofAdminHash =
       resolutionProof.publicOutput.auxilliaryOutput[0];
+
+    Provable.log(
+      "admin keys hashes",
+      currentAdminHash,
+      proofAdminHash
+    )
 
     currentAdminHash.assertEquals(
       proofAdminHash,

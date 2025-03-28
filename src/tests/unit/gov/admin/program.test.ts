@@ -4,42 +4,20 @@ import {
   PrivateKey,
   PublicKey,
   Signature,
-  verify, /* assuming verify function for proofs exists */
+  verify /* assuming verify function for proofs exists */,
   VerificationKey,
-  UInt32,
 } from 'o1js';
-import { YesItIsAFinalZkusdProtocolUpdateProof, ZkusdProtocolUpdateInput, zkusdProtocolUpdateInputToFields } from '../../../../system/update.js';
+import {
+  YesItIsAFinalZkusdProtocolUpdateProof,
+  ZkusdProtocolUpdateInput,
+  zkusdProtocolUpdateInputToFields,
+} from '../../../../system/update.js';
 import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../contracts/zkusd-government-poc.js';
-import { BooleanPrecondition } from '../../../../system/preconditions.js';
 import { BoolOperation } from '../../../../system/update-operations.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { createSampleUpdateInput } from '../utils.js';
 
-
-const createSampleUpdateInput = (overrides?: Partial<ZkusdProtocolUpdateInput>): ZkusdProtocolUpdateInput => {
-  return new ZkusdProtocolUpdateInput({
-    govResolutionIndex: UInt32.from(0),
-    protocolUpdatePreconditions: {
-      emergencyStop: BooleanPrecondition.mkUnconstrained(),
-      fieldBitMask: Field.from(0),
-    },
-    blockchainPreconditions: {
-      slotIndexValidityRange: {
-        firstValidBlock: UInt32.from(0),
-        lastValidBlock: UInt32.from(0),
-      },
-      blockchainLength: {
-        firstValidBlock: UInt32.from(0),
-        lastValidBlock: UInt32.from(0),
-      },
-      fieldBitMask: Field.from(0),
-    },
-    protocolUpdateOperation: {
-      emergencyStop: BoolOperation.mkFlip(),
-      fieldBitMask: Field.from(1),
-    },
-  });
-}
 
 // --- Test Suite ---
 
@@ -61,7 +39,8 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     updateInputFields = zkusdProtocolUpdateInputToFields(updateInput);
 
     console.log('Compiling ZkProgram...');
-    const { verificationKey: vk } = await AdminSignatureZkusdProtocolUpdateProgram.compile();
+    const { verificationKey: vk } =
+      await AdminSignatureZkusdProtocolUpdateProgram.compile();
     verificationKey = vk;
     console.log('Compilation complete.');
   });
@@ -85,13 +64,17 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
 
     // Compare protocolUpdateHash (Field)
     assert(
-      proof.proof.publicOutput.protocolUpdateHash.equals(expectedOutputHash).toBoolean(),
+      proof.proof.publicOutput.protocolUpdateHash
+        .equals(expectedOutputHash)
+        .toBoolean(),
       'protocolUpdateHash did not match expected value'
     );
 
     // Compare isFinalProof (Field)
     assert(
-      proof.proof.publicOutput.isFinalProof.equals(YesItIsAFinalZkusdProtocolUpdateProof).toBoolean(),
+      proof.proof.publicOutput.isFinalProof
+        .equals(YesItIsAFinalZkusdProtocolUpdateProof)
+        .toBoolean(),
       'isFinalProof did not match expected value'
     );
     // Check auxilliaryOutput if needed
@@ -111,7 +94,8 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       emergencyStop: BoolOperation.mkFlip(), // Change a field
       fieldBitMask: Field.from(0),
     };
-    const differentInputFields = zkusdProtocolUpdateInputToFields(differentInput);
+    const differentInputFields =
+      zkusdProtocolUpdateInputToFields(differentInput);
 
     const fields1hash = Poseidon.hash(updateInputFields);
     const fields2hash = Poseidon.hash(differentInputFields);
@@ -121,20 +105,21 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     assert.strictEqual(fields1hash.equals(fields2hash).toBoolean(), false);
 
     // 2. Sign the *different* data with the correct private key
-    const signatureForDifferentData = Signature.create(adminPrivateKey, differentInputFields);
+    const signatureForDifferentData = Signature.create(
+      adminPrivateKey,
+      differentInputFields
+    );
 
     // 3. Attempt to prove using the original input but the mismatched signature
     console.log('Attempting proof with mismatched data signature...');
-    await assert.rejects(
-      async () => {
-        const programx = await AdminSignatureZkusdProtocolUpdateProgram.create(
-          updateInput,
-          signatureForDifferentData,
-          adminPublicKey
-        );
-        verify(programx.proof, verificationKey);
-      }
-    );
+    await assert.rejects(async () => {
+      const programx = await AdminSignatureZkusdProtocolUpdateProgram.create(
+        updateInput,
+        signatureForDifferentData,
+        adminPublicKey
+      );
+      verify(programx.proof, verificationKey);
+    });
     console.log('Proof failed as expected.');
   });
 
@@ -149,44 +134,40 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
 
     // 3. Attempt to prove using the correct input/signature but the WRONG public key
     console.log('Attempting proof with wrong public key...');
-    await assert.rejects(
-      async () => {
-        await AdminSignatureZkusdProtocolUpdateProgram.create(
-          updateInput,
-          validSignature,
-          wrongPublicKey
-        );
-      },
-    );
+    await assert.rejects(async () => {
+      await AdminSignatureZkusdProtocolUpdateProgram.create(
+        updateInput,
+        validSignature,
+        wrongPublicKey
+      );
+    });
     console.log('Proof failed as expected.');
   });
 
-   // Test Case 4: Corrupted Signature (Conceptual - Actual corruption depends on Signature structure)
-   // Note: Directly modifying o1js Signature fields might be tricky/not recommended.
-   // This might be better tested by ensuring the verify method itself is robust,
-   // but we can simulate a slightly altered signature structure if possible.
-   it('should potentially fail if the signature object is malformed (conceptual)', async () => {
-     // 1. Create a valid signature
-     const validSignature = Signature.create(adminPrivateKey, updateInputFields);
+  // Test Case 4: Corrupted Signature (Conceptual - Actual corruption depends on Signature structure)
+  // Note: Directly modifying o1js Signature fields might be tricky/not recommended.
+  // This might be better tested by ensuring the verify method itself is robust,
+  // but we can simulate a slightly altered signature structure if possible.
+  it('should potentially fail if the signature object is malformed (conceptual)', async () => {
+    // 1. Create a valid signature
+    const validSignature = Signature.create(adminPrivateKey, updateInputFields);
 
-     // 2. Create a malformed signature
-     const corruptedSignature = new Signature(
-       validSignature.s, validSignature.r,
-     );
+    // 2. Create a malformed signature
+    const corruptedSignature = new Signature(
+      validSignature.s,
+      validSignature.r
+    );
 
-     // 3. Attempt to prove using the corrupted signature
-     console.log('Attempting proof with corrupted signature...');
-     await assert.rejects(
-       async () => {
-         const program = await AdminSignatureZkusdProtocolUpdateProgram.create(
-           updateInput,
-           corruptedSignature,
-           adminPublicKey
-         );
-         verify(program.proof, verificationKey);
-       }
-     );
-     console.log('Proof failed as expected (due to corruption).');
-   });
-
+    // 3. Attempt to prove using the corrupted signature
+    console.log('Attempting proof with corrupted signature...');
+    await assert.rejects(async () => {
+      const program = await AdminSignatureZkusdProtocolUpdateProgram.create(
+        updateInput,
+        corruptedSignature,
+        adminPublicKey
+      );
+      verify(program.proof, verificationKey);
+    });
+    console.log('Proof failed as expected (due to corruption).');
+  });
 });
