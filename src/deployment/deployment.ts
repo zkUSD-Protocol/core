@@ -8,6 +8,7 @@ import { TransactionManager } from '../transaction/manager.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCount } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
+import { AdminSignatureZkusdProtocolUpdateProgram, ZkUsdAdminSignatureContract } from '../contracts/zkusd-government-poc.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -30,7 +31,9 @@ export class DeploymentService {
   private _networkKeys: NetworkKeyPairs;
   private _token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  private _gov: ContractInstance<ZkUsdAdminSignatureContract>;
   private _oracleAggregationVk: VerificationKey;
+  private _adminSigProgramVk: VerificationKey;
 
   private constructor(txMgr: TransactionManager<any>) {
     this._txMgr = txMgr;
@@ -82,6 +85,9 @@ export class DeploymentService {
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
+    const adminSigProgramCompiled = await AdminSignatureZkusdProtocolUpdateProgram.compile()
+    this._adminSigProgramVk = adminSigProgramCompiled.verificationKey;
+
     this.updateVerificationKeys();
 
     const ZkUsdEngine = ZkUsdEngineContract({
@@ -103,6 +109,10 @@ export class DeploymentService {
 
     this._engine = {
       contract: new ZkUsdEngine(this._networkKeys.engine.publicKey),
+    };
+
+    this._gov = {
+      contract: new ZkUsdAdminSignatureContract(this._networkKeys.government.publicKey),
     };
 
     console.timeEnd('Compiling Contracts');
@@ -181,6 +191,9 @@ export class DeploymentService {
             collateralRatio: UInt8.from(150),
             liquidationBonusRatio: UInt8.from(110),
           });
+          await this._gov.contract.deploy(
+            {adminPublicKey: this._networkKeys.protocolAdmin.publicKey,
+             stopProtocolVkHash: this._adminSigProgramVk.hash});
         },
         {
           extraSigners: [

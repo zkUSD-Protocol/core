@@ -16,6 +16,7 @@ import {
   VerificationKey,
   ZkProgram,
   method,
+  Permissions,
   state,
 } from 'o1js';
 import {
@@ -29,6 +30,7 @@ import {
 } from '../system/update.js';
 
 import { ZkusdGovResolutionProgramWitness } from '../system/governance.js';
+import { ZkUsdEngineMethodCodes } from '../system/engine.js';
 
 export class ZkUsdGovernmentPoc extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
@@ -47,12 +49,44 @@ export class ZkUsdGovernmentPoc extends SmartContract {
   ) {
     return Bool(false);
   }
+
+  async deploy(args?: {
+    verificationKey?: {
+      data: string;
+      hash: Field | string;
+    };
+  }): Promise<void> {
+    super.deploy(args);
+  }
 }
+type ZkUsdDeployArgs =  {
+  adminPublicKey: PublicKey;
+  stopProtocolVkHash: Field;
+  verificationKey?: {
+    data: string;
+    hash: Field | string;
+  };
+};
 
-
-export class ZkAdminSignatureContract extends ZkUsdGovernmentPoc {
+export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
   @state(PublicKey) adminPublicKey = State<PublicKey>();
   @state(Field) stopProtocolVkHash = State<Field>();
+
+
+  async deploy(args: ZkUsdDeployArgs): Promise<void> {
+    await super.deploy({verificationKey:args?.verificationKey});
+
+    this.account.permissions.set({
+      ...Permissions.default(),
+      setPermissions: Permissions.impossible(),
+      setVerificationKey: Permissions.VerificationKey.signature(),
+
+      editState: Permissions.proof(),
+      send: Permissions.proof(),
+    });
+    this.adminPublicKey.set(args.adminPublicKey);
+    this.stopProtocolVkHash.set(args.stopProtocolVkHash);
+  }
 
   async ensureAdminSignature(): Promise<AccountUpdate> {
     const admin = this.adminPublicKey.getAndRequireEquals();
@@ -65,6 +99,17 @@ export class ZkAdminSignatureContract extends ZkUsdGovernmentPoc {
     this.adminPublicKey.set(newAdmin);
   }
 
+  /** Admin signature proofs can be executed iff:
+      the vk key matches one pinned to the on-chain state of this contract.
+      The contract admin public matches the one in the output of the proof:
+      See: `AdminSignatureZkusdProtocolUpdateProgram` output.
+      The `zkMethodCode` is explicitly permited by this contract.
+
+      NOTE: This method does not VERIFY the proof validity. The validation
+      is left out to the caller.
+      You can think of it as an additional guard put by the government (admin)
+      on a _verified_ zkusd update proof.
+  */
   @method.returns(Bool)
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
@@ -72,9 +117,14 @@ export class ZkAdminSignatureContract extends ZkUsdGovernmentPoc {
     resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
     resolutionProof: ZkusdProtocolUpdateProof,
   ) {
-    const vkh = this.stopProtocolVkHash.getAndRequireEquals();
-    const ret = vkh.equals(resolutionProgramVk.hash);
+    // the method is allowed:
+    zkEngineMethodCode.assertEquals(ZkUsdEngineMethodCodes.GovStopProtocol)
 
+    // verify the verification key against the on-chain state.
+    const vkh = this.stopProtocolVkHash.getAndRequireEquals();
+    vkh.assertEquals(resolutionProgramVk.hash);
+
+    // verify the proof's admin key against the on-chain state.
     const currentAdminHash = Poseidon.hash(
       this.adminPublicKey.getAndRequireEquals().toFields()
     );
@@ -86,10 +136,9 @@ export class ZkAdminSignatureContract extends ZkUsdGovernmentPoc {
       'Admin public key does not match the proof'
     );
 
-    return ret;
+    return Bool(true);
   }
 
-  @method.returns(ZkusdProtocolUpdateGovContractProof)
   public async signAndCreateProtocolUpdate(
     input: ZkusdProtocolUpdateInput,
     adminPrivateKey: PrivateKey,
@@ -101,7 +150,6 @@ export class ZkAdminSignatureContract extends ZkUsdGovernmentPoc {
     return this.createProtocolUpdate(input, signature);
   }
 
-  @method.returns(ZkusdProtocolUpdateGovContractProof)
   public async createProtocolUpdate(
     input: ZkusdProtocolUpdateInput,
     signature: Signature,
@@ -186,10 +234,10 @@ export const ZKUSD_COUNCIL_TREE_HEIGHT = 8; // will fit the 240 council members
 
 export class ZkusdCouncilMemberWitness extends MerkleWitness(ZKUSD_COUNCIL_TREE_HEIGHT) {}
 
-function sumBits(bitField: Field){
+function sumBits(bitField: Field) {
   let sum = Field.from(0);
   const bits = bitField.toBits();
-  for(let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++){
+  for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
     sum = Provable.if(bits[i], sum.add(Field.from(1)), sum);
   }
   return UInt8.Unsafe.fromField(sum)
