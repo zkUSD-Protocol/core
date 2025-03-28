@@ -64,6 +64,7 @@ export class DeploymentService {
   private updateVerificationKeys() {
     updateVerificationKeys({
       oracleAggregationVk: this._oracleAggregationVk,
+      adminSigProgramVk: this._adminSigProgramVk,
     });
   }
 

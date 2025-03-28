@@ -1,8 +1,7 @@
-
 import { Bool, Field, Provable, Struct } from 'o1js'; // or your zk library
 
 // Define the max valid Field value: Field.ORDER - 1
-const FieldMax = Field.from(Field.ORDER - 1n);
+export const FieldMax = Field.from(Field.ORDER - 1n);
 
 interface UpdateOperation<T> {
   execute: (state: T) => T;
@@ -18,7 +17,7 @@ export class BoolOperation extends Struct({
     const isFlip: Bool = this.operation.equals(2);
     const flipped: Bool = state.not();
 
-    const isNoop: Bool = this.operation.equals(3);
+    // const isNoop: Bool = this.operation.equals(3);
 
     return Provable.if(isSet, value, Provable.if(isFlip, flipped, state));
   }
@@ -35,7 +34,7 @@ export class BoolOperation extends Struct({
     });
   }
 
-  static mkNoop(value: Bool) {
+  static mkNoop() {
     return new BoolOperation({
       operation: Field.from(3)
     });

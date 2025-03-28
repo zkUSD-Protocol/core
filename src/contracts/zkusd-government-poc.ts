@@ -207,7 +207,7 @@ export const AdminSignatureZkusdProtocolUpdateProgram = ZkProgram({
         signaturePublicKey: PublicKey
       ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
         const proofDataFields = zkusdProtocolUpdateInputToFields(publicInput);
-        updateSignature.verify(signaturePublicKey, proofDataFields);
+        updateSignature.verify(signaturePublicKey, proofDataFields).assertTrue();
 
         return {
           publicOutput: {

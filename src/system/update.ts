@@ -9,7 +9,7 @@ export const NO_RESOLUTION_INDEX = UInt32.from(4200000000);
 export const ZkusdUpdateWitness = MerkleWitness(ZKUSD_UPDATE_TREE_HEIGHT);
 
 
-class ValidityRangeUIn32 extends Struct({
+export class ValidityRangeUInt32 extends Struct({
   firstValidBlock: UInt32,
   lastValidBlock: UInt32,
 }) {}
@@ -42,8 +42,8 @@ export class ZkusdUpdatePreconditions extends Struct({
 }) {}
 
 export class MinaBlockchainPreconditions extends Struct({
-  slotIndexValidityRange: ValidityRangeUIn32,
-  blockchainLength: ValidityRangeUIn32,
+  slotIndexValidityRange: ValidityRangeUInt32,
+  blockchainLength: ValidityRangeUInt32,
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
 }) {}
 
