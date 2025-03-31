@@ -18,7 +18,6 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSampleUpdateInput } from '../utils.js';
 
-
 // --- Test Suite ---
 
 describe('AdminSignatureZkusdProtocolUpdateProgram', () => {

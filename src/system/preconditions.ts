@@ -79,7 +79,7 @@ export class BooleanPrecondition extends Struct({
       .or(this.requireFalse().and(value.not()));
   }
 
-  static mkRequire(value: boolean) {
+  static mkMustEqual(value: boolean) {
     return new BooleanPrecondition({ value: Field.from(value ? 1 : 0) });
   }
 

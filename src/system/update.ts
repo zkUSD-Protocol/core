@@ -1,6 +1,7 @@
 import { Bool, DynamicProof, Field, MerkleWitness, Proof, Provable, Struct, UInt32 } from 'o1js';
 import { BooleanPrecondition } from './preconditions.js';
 import { BoolOperation } from './update-operations.js';
+import { CurrentSlot } from 'o1js/dist/node/lib/mina/precondition.js';
 
 export const ZKUSD_UPDATE_TREE_HEIGHT = 32;
 
@@ -39,18 +40,63 @@ export class ZkusdUpdatePreconditions extends Struct({
   //  overallCollateralization
   //  verificationKey
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
-}) {}
+}) {
+
+  static create(args: {
+    emergencyStop?: BooleanPrecondition,
+  }): ZkusdUpdatePreconditions {
+    // build the field mask based on given args
+    let fieldBitMask = Field.from(0).toBits()
+    fieldBitMask[0] = args.emergencyStop ? Bool(true) : Bool(false)
+    return new ZkusdUpdatePreconditions({
+      emergencyStop: args.emergencyStop || BooleanPrecondition.mkUnconstrained(),
+      fieldBitMask: Field.fromBits(fieldBitMask),
+    });
+  }
+}
 
 export class MinaBlockchainPreconditions extends Struct({
   slotIndexValidityRange: ValidityRangeUInt32,
   blockchainLength: ValidityRangeUInt32,
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
-}) {}
+}) {
 
-export class ZkusdUpdateMinaBlockchainState extends Struct({
-  slotIndex: UInt32,
+  static always(): MinaBlockchainPreconditions {
+    return new MinaBlockchainPreconditions({
+      slotIndexValidityRange: {
+        firstValidBlock: UInt32.from(0),
+        lastValidBlock: UInt32.from(0),
+      },
+      blockchainLength: {
+        firstValidBlock: UInt32.from(0),
+        lastValidBlock: UInt32.from(0),
+      },
+      fieldBitMask: Field.from(0), // nothing is set
+    });
+  }
+
+  static blockchainLength(firstValidBlock?: UInt32, lastValidBlock?: UInt32): MinaBlockchainPreconditions {
+    const lower = firstValidBlock || UInt32.from(0);
+    const upper = lastValidBlock || UInt32.MAXINT();
+    return new MinaBlockchainPreconditions({
+      slotIndexValidityRange: {
+        firstValidBlock: UInt32.from(0),
+        lastValidBlock: UInt32.from(0),
+      },
+      blockchainLength: {
+        firstValidBlock: lower,
+        lastValidBlock: upper,
+      },
+      fieldBitMask: Field.from(2), // only blockchain length is set
+    });
+  }
+}
+
+// current slot cannot be passed into a struct (can it?)
+export type ZkusdUpdateMinaBlockchainState = {
+  currentSlot: CurrentSlot,
   blockchainLength: UInt32,
-}) {}
+}
 
 export class ZkusdProtocolUpdateInput extends Struct({
   govResolutionIndex: UInt32,
@@ -59,7 +105,10 @@ export class ZkusdProtocolUpdateInput extends Struct({
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {}
 
+// The value not that important only `YesItIsAFinalZkusdProtocolUpdateProof` will be
+// accepted as the final proof.
 export const NotAFinalZkusdProtocolUpdateProof = Field.from(0);
+// Just a random enough field value that will let be certain that its usage is intentional.
 export const YesItIsAFinalZkusdProtocolUpdateProof = Field.from(25329768464765890060619421345429226387561522247782730071636646908705875653989n);
 
 export class ZkusdProtocolUpdateOutput extends Struct({
@@ -93,18 +142,32 @@ export function theUpdatePreconditionsMatchProtocolState(args:
     preconditions: ZkusdUpdatePreconditions
     protocolStatus: ZkusdUpdatedProtocolState,
   }): Bool {
-  return args.preconditions.emergencyStop.matches(args.protocolStatus.emergencyStop);
+
+  const bitMask = args.preconditions.fieldBitMask.toBits()
+  const hasEmergencyStopPrecondition = bitMask[0];
+
+  const emergencyStopMatch = args.preconditions.emergencyStop.matches(args.protocolStatus.emergencyStop).or(hasEmergencyStopPrecondition.not());
+  return emergencyStopMatch;
 }
 
-export function theUpdatePreconditionsMatchMinaBlockchainState(args:
+export function requireBlockchainPreconditions(args:
   {
     preconditions: MinaBlockchainPreconditions,
     blockchainState: ZkusdUpdateMinaBlockchainState,
-  }): Bool {
-  return args.preconditions.slotIndexValidityRange.firstValidBlock.lessThanOrEqual(args.blockchainState.slotIndex)
-    .and(args.blockchainState.slotIndex.lessThanOrEqual(args.preconditions.slotIndexValidityRange.lastValidBlock))
-    .and(args.preconditions.blockchainLength.firstValidBlock.lessThanOrEqual(args.blockchainState.blockchainLength))
+  }): void {
+  const bitMask = args.preconditions.fieldBitMask.toBits()
+
+  const lower = Provable.if(bitMask[0], args.preconditions.slotIndexValidityRange.firstValidBlock, UInt32.from(0));
+  const upper = Provable.if(bitMask[0], args.preconditions.slotIndexValidityRange.lastValidBlock, UInt32.MAXINT());
+  // assert
+  args.blockchainState.currentSlot.requireBetween(lower, upper);
+
+  let blockChainLengthValidity = args.preconditions.blockchainLength.firstValidBlock.lessThanOrEqual(args.blockchainState.blockchainLength)
     .and(args.blockchainState.blockchainLength.lessThanOrEqual(args.preconditions.blockchainLength.lastValidBlock));
+  blockChainLengthValidity = blockChainLengthValidity.or(bitMask[1].not());
+
+  // assert
+  blockChainLengthValidity.assertTrue();
 }
 
 // --------- to fields

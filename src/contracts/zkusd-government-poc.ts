@@ -63,8 +63,6 @@ export class ZkUsdGovernmentPoc extends SmartContract {
   }
 }
 type ZkUsdDeployArgs = {
-  adminPublicKey: PublicKey;
-  stopProtocolVkHash: Field;
   verificationKey?: {
     data: string;
     hash: Field | string;
@@ -75,9 +73,16 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
   @state(PublicKey) adminPublicKey = State<PublicKey>();
   @state(Field) stopProtocolVkHash = State<Field>();
 
+  async initialize(
+    adminPublicKey: PublicKey,
+    stopProtocolVkHash: Field
+  ) {
+    this.adminPublicKey.set(adminPublicKey);
+    this.stopProtocolVkHash.set(stopProtocolVkHash);
+  }
 
-  async deploy(args: ZkUsdDeployArgs): Promise<void> {
-    await super.deploy({verificationKey:args?.verificationKey});
+  async deploy(args?: ZkUsdDeployArgs): Promise<void> {
+    await super.deploy(args);
 
     this.account.permissions.set({
       ...Permissions.default(),
@@ -87,13 +92,6 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
       editState: Permissions.proof(),
       send: Permissions.proof(),
     });
-    this.adminPublicKey.set(args.adminPublicKey);
-    this.stopProtocolVkHash.set(args.stopProtocolVkHash);
-  }
-
-  async initialize(args: ZkUsdDeployArgs): Promise<void> {
-    this.adminPublicKey.set(args.adminPublicKey);
-    this.stopProtocolVkHash.set(args.stopProtocolVkHash);
   }
 
   async ensureAdminSignature(): Promise<AccountUpdate> {
@@ -158,6 +156,7 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
       proofAdminHash,
       'Admin public key does not match the proof'
     );
+    Provable.log("return true");
 
     return Bool(true);
   }

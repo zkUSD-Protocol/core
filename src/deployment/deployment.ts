@@ -226,17 +226,17 @@ export class DeploymentService {
         this._deployer,
         async () => {
           AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
-          await this._gov.contract.deploy(
-            {
-              adminPublicKey: this._networkKeys.protocolAdmin.publicKey,
-              stopProtocolVkHash: this._adminSigProgramVk.hash
-            });
+          await this._gov.contract.deploy();
+          await this._gov.contract.initialize(
+            this._networkKeys.protocolAdmin.publicKey,
+            this._adminSigProgramVk.hash
+          );
         },
         {
           extraSigners: [
             this._networkKeys.government.privateKey,
           ],
-          name: 'Deploying Gov contracts',
+          name: 'Deploying & initilializing Gov contracts',
           executor: 'local',
         }
       );
@@ -263,15 +263,9 @@ export class DeploymentService {
           if (!engineTokenAccount)
             AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
           await this._engine.contract.initialize();
-          await this._gov.contract.initialize(
-            {
-              adminPublicKey: this._networkKeys.protocolAdmin.publicKey,
-              stopProtocolVkHash: this._adminSigProgramVk.hash
-            });
         },
         {
           extraSigners: [
-            this._networkKeys.government.privateKey,
             this._networkKeys.protocolAdmin.privateKey,
             this._networkKeys.engine.privateKey,
           ],

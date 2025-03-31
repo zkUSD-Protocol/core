@@ -50,14 +50,13 @@ import {
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 import { ZkUsdGovernmentPocConstructor, ZkusdGovResolutionProgramWitness } from '../system/governance.js';
-import { ZkUsdGovernmentPoc } from './zkusd-government-poc.js';
 import {
   NO_RESOLUTION_INDEX,
   YesItIsAFinalZkusdProtocolUpdateProof,
   ZkusdProtocolUpdateProof,
   ZkusdUpdateMinaBlockchainState,
   ZkusdUpdatedProtocolState,
-  theUpdatePreconditionsMatchMinaBlockchainState,
+  requireBlockchainPreconditions,
   theUpdatePreconditionsMatchProtocolState,
 } from '../system/update.js';
 
@@ -688,6 +687,7 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVkhWitness,
         resolutionProof,
       );
+      Provable.log('govAcceptance', govAcceptance)
       govAcceptance.assertTrue(
         'ZkUSD government contract disallowed the update proof.'
       );
@@ -697,23 +697,30 @@ export function ZkUsdEngineContract(args: {
       resolutionProof.publicOutput.isFinalProof.assertEquals(YesItIsAFinalZkusdProtocolUpdateProof, "The protocol update proof is not final");
 
 
+      Provable.log('blockchain state check')
       const blockchainState = await buildBlockchainState(this);
-      theUpdatePreconditionsMatchMinaBlockchainState({
+      // log precoditions and blockchainstate
+      Provable.log('blockchainState', blockchainState)
+      Provable.log('resolutionProof.publicInput.blockchainPreconditions', resolutionProof.publicInput.blockchainPreconditions)
+      requireBlockchainPreconditions({
         preconditions: resolutionProof.publicInput.blockchainPreconditions,
         blockchainState,
-      }).assertTrue();
+      });
 
-      const updatedProtocolState = await buildUpdatedProtocolState(this);
+      Provable.log('protocol state check')
+      const protocolState = await buildProtocolState(this);
+      Provable.log('resolutionProof.publicInput.protocolUpdatePreconditions', resolutionProof.publicInput.protocolUpdatePreconditions)
+      Provable.log('protocolState', protocolState)
       theUpdatePreconditionsMatchProtocolState({
         preconditions: resolutionProof.publicInput.protocolUpdatePreconditions,
-        protocolStatus: updatedProtocolState,
+        protocolStatus: protocolState,
       }).assertTrue();
 
       // -- execute --
 
       const operation = resolutionProof.publicInput.protocolUpdateOperation;
       const newEmergencyStop = operation.emergencyStop.execute(
-        updatedProtocolState.emergencyStop
+        protocolState.emergencyStop
       );
 
       // --
@@ -898,7 +905,7 @@ export function ZkUsdEngineContract(args: {
   ) {
   }
 
-  async function buildUpdatedProtocolState(
+  async function buildProtocolState(
     engine: ZkUsdEngine
   ): Promise<ZkusdUpdatedProtocolState> {
     const protocolData = ProtocolData.unpack(
@@ -912,10 +919,10 @@ export function ZkUsdEngineContract(args: {
   async function buildBlockchainState(
     engine: ZkUsdEngine
   ): Promise<ZkusdUpdateMinaBlockchainState> {
-    return new ZkusdUpdateMinaBlockchainState({
-      slotIndex: engine.network.globalSlotSinceGenesis.getAndRequireEquals(),
+    return {
+      currentSlot: engine.currentSlot,
       blockchainLength: engine.network.blockchainLength.getAndRequireEquals(),
-    });
+    };
   }
 
   return ZkUsdEngine;
