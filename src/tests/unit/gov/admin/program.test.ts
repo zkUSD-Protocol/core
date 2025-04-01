@@ -95,11 +95,12 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     // 1. Create different input data/fields
     const differentInput = createSampleUpdateInput(); // Use helper
     differentInput.protocolUpdateOperation = {
-      emergencyStop: BoolOperation.mkFlip(), // Change a field
-      collateralRatio: UInt8Operation.mkSetTo(UInt8.zero), // Keep the same
-      validPriceBlockCount: UInt8Operation.mkSetTo(UInt8.one), // Keep the same
-      liquidationBonusRatio: UInt8Operation.mkSetTo(UInt8.zero), // Keep the same
-      oracleWhitelistHash: FieldOperation.mkNoop(), // Keep the same
+      emergencyStop: BoolOperation.mkFlip(),
+      collateralRatio: UInt8Operation.mkSetTo(UInt8.zero),
+      validPriceBlockCount: UInt8Operation.mkSetTo(UInt8.one),
+      liquidationBonusRatio: UInt8Operation.mkSetTo(UInt8.zero),
+      configMerkleRoot: FieldOperation.mkNoop(),
+      oracleWhitelistHash: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(2),
     };
     const differentInputFields =

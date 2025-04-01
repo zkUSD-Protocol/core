@@ -47,6 +47,7 @@ export const updateProtocolEmergencyStop = (
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
       oracleWhitelistHash: FieldOperation.mkNoop(),
+      configMerkleRoot: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(1),
     },
   });
@@ -77,6 +78,7 @@ export const createSampleUpdateInput = (
       liquidationBonusRatio: UInt8Operation.mkNoop(),
       oracleWhitelistHash: FieldOperation.mkNoop(),
       emergencyStop: BoolOperation.mkFlip(),
+      configMerkleRoot: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(1),
     },
   });

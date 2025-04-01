@@ -72,6 +72,12 @@ export class LiquidationBonusRatioUpdatedEvent extends Struct({
   newRatio: UInt8,
 }) {}
 
+export class ConfigMerkleRootUpdatedEvent extends Struct({
+  resolutionIndex: UInt32,
+  oldRoot: Field,
+  newRoot: Field,
+}) {}
+
 export class AdminUpdatedEvent extends Struct({
   previousAdmin: PublicKey,
   newAdmin: PublicKey,

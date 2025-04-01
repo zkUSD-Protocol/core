@@ -38,6 +38,7 @@ import {
   ValidPriceBlockCountUpdatedEvent,
   CollateralRatioUpdatedEvent,
   LiquidationBonusRatioUpdatedEvent,
+  ConfigMerkleRootUpdatedEvent,
 } from '../system/events.js';
 import {
   MinaPriceInput,
@@ -124,7 +125,8 @@ export function ZkUsdEngineContract(args: {
       BurnZkUsd: BurnZkUsdEvent,
       Liquidate: LiquidateEvent,
       CollateralRatioUpdated: CollateralRatioUpdatedEvent,
-      LiquidationBonusRatioUpdated: LiquidationBonusRatioUpdatedEvent
+      LiquidationBonusRatioUpdated: LiquidationBonusRatioUpdatedEvent,
+      ConfigMerkleRootUpdated: ConfigMerkleRootUpdatedEvent,
     };
 
     /**
@@ -1055,6 +1057,38 @@ export function ZkUsdEngineContract(args: {
           resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
           previousHash,
           newHash: whitelisthash,
+        })
+      );
+    }
+
+    @method async govUpdateConfigMerkleRoot(
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness) {
+
+      const {
+        operation,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof
+      );
+
+      const oldConfigMerkleRoot = this.configMerkleRoot.getAndRequireEquals();
+
+      // Step 2: execute the collateral ratio update
+      const newConfigRoot = operation.configMerkleRoot.execute(
+        oldConfigMerkleRoot
+      );
+
+      this.configMerkleRoot.set(newConfigRoot);
+
+      this.emitEvent('ConfigMerkleRootUpdated',
+        new ConfigMerkleRootUpdatedEvent({
+          resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
+          oldRoot: oldConfigMerkleRoot,
+          newRoot: newConfigRoot,
         })
       );
     }

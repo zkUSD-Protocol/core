@@ -28,6 +28,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   validPriceBlockCount: UInt8Operation,
   liquidationBonusRatio: UInt8Operation,
   oracleWhitelistHash: FieldOperation,
+  configMerkleRoot: FieldOperation,
   // add more
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
 }) {
@@ -38,6 +39,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
       oracleWhitelistHash: FieldOperation.mkNoop(),
+      configMerkleRoot: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(1),
     });
   }
@@ -50,6 +52,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
       oracleWhitelistHash: FieldOperation.mkNoop(),
+      configMerkleRoot: FieldOperation.mkNoop(),
       collateralRatio: operation,
       fieldBitMask: Field.from(2),
     });
