@@ -36,6 +36,8 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
   ValidPriceBlockCountUpdatedEvent,
+  CollateralRatioUpdatedEvent,
+  LiquidationBonusRatioUpdatedEvent,
 } from '../system/events.js';
 import {
   MinaPriceInput,
@@ -49,16 +51,20 @@ import {
   ZkUsdEngineMethodCodes,
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
-import { ZkUsdGovernmentPocConstructor, ZkusdGovResolutionProgramWitness } from '../system/governance.js';
+import {
+  ZkUsdGovernmentPocConstructor,
+  ZkusdGovResolutionProgramWitness,
+} from '../system/governance.js';
 import {
   NO_RESOLUTION_INDEX,
   YesItIsAFinalZkusdProtocolUpdateProof,
-  ZkusdProtocolUpdateProof,
+  ZkusdProtocolUpdateOperation,
   ZkusdUpdateMinaBlockchainState,
   ZkusdUpdatedProtocolState,
   requireBlockchainPreconditions,
   theUpdatePreconditionsMatchProtocolState,
 } from '../system/update.js';
+import { ZkusdProtocolUpdateProof } from '../system/update-proof.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -70,13 +76,13 @@ import {
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
-  validPriceBlockCount: UInt32;
+  validPriceBlockCount: UInt8;
   emergencyStop: Bool;
   collateralRatio: UInt8;
   liquidationBonusRatio: UInt8;
 }
-
-
+export const MinimalViableCollateralRatio: UInt8 = UInt8.from(115);
+export const MinimalViablePriceValidity: UInt8 = UInt8.one;
 
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
@@ -87,8 +93,6 @@ export function ZkUsdEngineContract(args: {
   const {
     zkUsdTokenAddress,
     minaPriceInputZkProgramVkHash,
-    zkUsdGovernmentAddress,
-    GovernmentClass,
   } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     // -- on-chain data --
@@ -119,6 +123,8 @@ export function ZkUsdEngineContract(args: {
       MintZkUsd: MintZkUsdEvent,
       BurnZkUsd: BurnZkUsdEvent,
       Liquidate: LiquidateEvent,
+      CollateralRatioUpdated: CollateralRatioUpdatedEvent,
+      LiquidationBonusRatioUpdated: LiquidationBonusRatioUpdatedEvent
     };
 
     /**
@@ -278,7 +284,7 @@ export function ZkUsdEngineContract(args: {
       const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
       const lastValidBlock = firstValidBlock.add(
-        protocolData.validPriceBlockCount
+        protocolData.validPriceBlockCount.toUInt32()
       );
 
       this.network.blockchainLength.requireBetween(
@@ -641,6 +647,13 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    @method.returns(ProtocolData) async getProtocolData() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData;
+    }
+
     /**
      * @notice  Toggles the emergency stop state of the protocol
      * @dev     Can only be called by authorized addresses via protocol vault
@@ -672,78 +685,344 @@ export function ZkUsdEngineContract(args: {
         })
       );
     }
-    @method async govStopProtocol(
+    /**
+     * @notice Shared function that checks governance acceptance, verifies the proof,
+     *         ensures preconditions, and returns the existing protocol data + operation.
+     */
+    async runGovUpdateCommon(
+      methodCode: Field,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionProof: ZkusdProtocolUpdateProof,
-    ) {
-      const gov = new GovernmentClass(zkUsdGovernmentAddress);
-      Provable.log('governance address', zkUsdGovernmentAddress)
-      // TODO: do we require the contract to also be checked against
-      // an onchain pinned vkh
+      resolutionProof: ZkusdProtocolUpdateProof
+    ): Promise<{
+      protocolDataBefore: ProtocolData;
+      operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
+      resolutionProof: ZkusdProtocolUpdateProof; // we may need to return it to mark as executed
+    }> {
+      // 1. Verify governance acceptance
+      const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);
       const govAcceptance = await gov.canExecuteGovResolution(
-        ZkUsdEngineMethodCodes.GovStopProtocol,
+        methodCode,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof,
+        resolutionProof
       );
-      Provable.log('govAcceptance', govAcceptance)
       govAcceptance.assertTrue(
         'ZkUSD government contract disallowed the update proof.'
       );
 
+      // 2. Verify the proof
       resolutionProof.verify(resolutionProgramVk);
 
-      resolutionProof.publicOutput.isFinalProof.assertEquals(YesItIsAFinalZkusdProtocolUpdateProof, "The protocol update proof is not final");
+      // 3. Ensure the proof is final
+      resolutionProof.publicOutput.isFinalProof.assertEquals(
+        YesItIsAFinalZkusdProtocolUpdateProof,
+        'The protocol update proof is not final'
+      );
 
-
-      Provable.log('blockchain state check')
-      const blockchainState = await buildBlockchainState(this);
-      // log precoditions and blockchainstate
-      Provable.log('blockchainState', blockchainState)
-      Provable.log('resolutionProof.publicInput.blockchainPreconditions', resolutionProof.publicInput.blockchainPreconditions)
+      // 4. Check blockchain-level preconditions (time, block length, etc.)
+      const blockchainState = await this.buildBlockchainState();
       requireBlockchainPreconditions({
         preconditions: resolutionProof.publicInput.blockchainPreconditions,
         blockchainState,
       });
 
-      Provable.log('protocol state check')
-      const protocolState = await buildProtocolState(this);
-      Provable.log('resolutionProof.publicInput.protocolUpdatePreconditions', resolutionProof.publicInput.protocolUpdatePreconditions)
-      Provable.log('protocolState', protocolState)
+      // 5. Check protocol-level preconditions
+      const protocolState = await this.buildProtocolState();
       theUpdatePreconditionsMatchProtocolState({
         preconditions: resolutionProof.publicInput.protocolUpdatePreconditions,
-        protocolStatus: protocolState,
+        protocolState: protocolState,
       }).assertTrue();
 
-      // -- execute --
+      // 6. Fetch the old on-chain protocol data
+      const packedData = this.protocolDataPacked.getAndRequireEquals();
+      const protocolDataBefore = ProtocolData.unpack(packedData);
 
+      // 7. Extract the update operation from the proof
       const operation = resolutionProof.publicInput.protocolUpdateOperation;
+
+      // Return all we need for the actual update
+      return { protocolDataBefore, operation, resolutionProof };
+    }
+
+    @method async govToggleEmergencyStop(
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionProof: ZkusdProtocolUpdateProof
+    ) {
+      // Reuse the shared logic
+      const {
+        protocolDataBefore,
+        operation,
+        resolutionProof: proof,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovStopProtocol,
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof
+      );
+
+      // Execute the update on the emergencyStop field
       const newEmergencyStop = operation.emergencyStop.execute(
-        protocolState.emergencyStop
+        protocolDataBefore.emergencyStop
       );
 
-      // --
-
-      // apply the new state
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      protocolData.emergencyStop = newEmergencyStop;
-      this.protocolDataPacked.set(protocolData.pack());
+      // Commit updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
+        emergencyStop: newEmergencyStop,
+        collateralRatio: protocolDataBefore.collateralRatio,
+        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
 
       // Nullify the proof
-      markProofAsExecuted(this, resolutionProof);
+      this.markProofAsExecuted(proof);
 
-      // Emit the EmergencyStopToggled event
+      // Emit the event
       this.emitEvent(
         'EmergencyStopToggled',
         new EmergencyStopToggledEvent({
-          resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
-          emergencyStop: Bool(true),
+          resolutionIndex: proof.publicInput.govResolutionIndex,
+          emergencyStop: newEmergencyStop,
         })
       );
     }
+
+    @method async govUpdateValidPriceBlockCount(
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+    ) {
+      // Step 1: perform common checks
+      Provable.log('govUpdateValidPriceBlockCount')
+      const {
+        protocolDataBefore,
+        operation,
+        resolutionProof: proof,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof
+      );
+
+      // Step 2: execute the collateral ratio update
+      const newValidPriceBlockCount = operation.validPriceBlockCount.execute(
+        protocolDataBefore.validPriceBlockCount
+      );
+
+      newValidPriceBlockCount.assertGreaterThanOrEqual(MinimalViablePriceValidity);
+
+      // Step 3: store the updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: newValidPriceBlockCount,
+        emergencyStop: protocolDataBefore.emergencyStop,
+        collateralRatio: protocolDataBefore.collateralRatio,
+        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      // Step 4: mark the proof as executed
+      this.markProofAsExecuted(proof);
+
+
+      // Step 5: emit an event
+      this.emitEvent(
+        'ValidPriceBlockCountUpdated',
+        new ValidPriceBlockCountUpdatedEvent({
+          resolutionIndex: proof.publicInput.govResolutionIndex,
+          previousCount: protocolDataBefore.validPriceBlockCount,
+          newCount: newValidPriceBlockCount,
+        })
+      );
+      Provable.log('done.');
+    }
+
+    @method async govUpdateLiquidationBonusRatio(
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+    ) {
+      // Step 1: perform common checks
+      Provable.log('govUpdateLiquidationBonusRatio')
+      const {
+        protocolDataBefore,
+        operation,
+        resolutionProof: proof,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateLiquidationBonusRatio,
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof
+      );
+
+      // Step 2: execute the collateral ratio update
+      const newLiquidationBonusRatio = operation.liquidationBonusRatio.execute(
+        protocolDataBefore.liquidationBonusRatio
+      );
+
+      newLiquidationBonusRatio.assertGreaterThanOrEqual(MinimalViablePriceValidity);
+
+      // Step 3: store the updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
+        emergencyStop: protocolDataBefore.emergencyStop,
+        collateralRatio: protocolDataBefore.collateralRatio,
+        liquidationBonusRatio: newLiquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      // Step 4: mark the proof as executed
+      this.markProofAsExecuted(proof);
+
+
+      // Step 5: emit an event
+      this.emitEvent(
+        'LiquidationBonusRatioUpdated',
+        new LiquidationBonusRatioUpdatedEvent({
+          resolutionIndex: proof.publicInput.govResolutionIndex,
+          oldRatio: protocolDataBefore.liquidationBonusRatio,
+          newRatio: newLiquidationBonusRatio,
+        })
+      );
+      Provable.log('done.');
+    }
+
+    @method async govUpdateCollateralRatio(
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+    ) {
+      // Step 1: perform common checks
+      Provable.log('govUpdateCollateralRatio')
+      const {
+        protocolDataBefore,
+        operation,
+        resolutionProof: proof,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateCollateralRatio, // define a new code in your engine
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof
+      );
+
+      // Step 2: execute the collateral ratio update
+      const newCollateralRatio = operation.collateralRatio.execute(
+        protocolDataBefore.collateralRatio
+      );
+
+      newCollateralRatio.assertGreaterThanOrEqual(MinimalViableCollateralRatio);
+
+      // Step 3: store the updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
+        emergencyStop: protocolDataBefore.emergencyStop,
+        collateralRatio: newCollateralRatio,
+        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      // Step 4: mark the proof as executed
+      this.markProofAsExecuted(proof);
+
+
+      // Step 5: emit an event
+      this.emitEvent(
+        'CollateralRatioUpdated',
+        new CollateralRatioUpdatedEvent({
+          resolutionIndex: proof.publicInput.govResolutionIndex,
+          oldRatio: protocolDataBefore.collateralRatio,
+          newRatio: newCollateralRatio,
+        })
+      );
+      Provable.log('done.');
+    }
+
+    // @method async govStopProtocol(
+    //   resolutionProgramVk: VerificationKey,
+    //   resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+    //   resolutionProof: ZkusdProtocolUpdateProof
+    // ) {
+    //   const gov = new GovernmentClass(zkUsdGovernmentAddress);
+    //   Provable.log('governance address', zkUsdGovernmentAddress);
+    //   // TODO: do we require the contract to also be checked against
+    //   // an onchain pinned vkh
+    //   const govAcceptance = await gov.canExecuteGovResolution(
+    //     ZkUsdEngineMethodCodes.GovStopProtocol,
+    //     resolutionProgramVk,
+    //     resolutionProgramVkhWitness,
+    //     resolutionProof
+    //   );
+    //   Provable.log('govAcceptance', govAcceptance);
+    //   govAcceptance.assertTrue(
+    //     'ZkUSD government contract disallowed the update proof.'
+    //   );
+
+    //   resolutionProof.verify(resolutionProgramVk);
+
+    //   resolutionProof.publicOutput.isFinalProof.assertEquals(
+    //     YesItIsAFinalZkusdProtocolUpdateProof,
+    //     'The protocol update proof is not final'
+    //   );
+
+    //   Provable.log('blockchain state check');
+    //   const blockchainState = await buildBlockchainState(this);
+    //   // log precoditions and blockchainstate
+    //   Provable.log('blockchainState', blockchainState);
+    //   Provable.log(
+    //     'resolutionProof.publicInput.blockchainPreconditions',
+    //     resolutionProof.publicInput.blockchainPreconditions
+    //   );
+    //   requireBlockchainPreconditions({
+    //     preconditions: resolutionProof.publicInput.blockchainPreconditions,
+    //     blockchainState,
+    //   });
+
+    //   Provable.log('protocol state check');
+    //   const protocolState = await buildProtocolState(this);
+    //   Provable.log(
+    //     'resolutionProof.publicInput.protocolUpdatePreconditions',
+    //     resolutionProof.publicInput.protocolUpdatePreconditions
+    //   );
+    //   Provable.log('protocolState', protocolState);
+    //   theUpdatePreconditionsMatchProtocolState({
+    //     preconditions: resolutionProof.publicInput.protocolUpdatePreconditions,
+    //     protocolState: protocolState,
+    //   }).assertTrue();
+
+    //   // -- execute --
+
+    //   const operation = resolutionProof.publicInput.protocolUpdateOperation;
+    //   const newEmergencyStop = operation.emergencyStop.execute(
+    //     protocolState.emergencyStop
+    //   );
+
+    //   // --
+
+    //   // apply the new state
+    //   const protocolData = ProtocolData.unpack(
+    //     this.protocolDataPacked.getAndRequireEquals()
+    //   );
+    //   protocolData.emergencyStop = newEmergencyStop;
+    //   this.protocolDataPacked.set(protocolData.pack());
+
+    //   // Nullify the proof
+    //   markProofAsExecuted(this, resolutionProof);
+
+    //   // Emit the EmergencyStopToggled event
+    //   this.emitEvent(
+    //     'EmergencyStopToggled',
+    //     new EmergencyStopToggledEvent({
+    //       resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
+    //       emergencyStop: Bool(true),
+    //     })
+    //   );
+    // }
 
     /**
      * @notice  Updates the oracle whitelist merkle root
@@ -774,11 +1053,13 @@ export function ZkUsdEngineContract(args: {
       return protocolData.validPriceBlockCount;
     }
 
+    // async govUpdateValidPriceBlockCount(count: UInt32) {k
+
     /**
      * @notice  Updates the valid price block count
      * @param   count The new valid price block count
      */
-    @method async updateValidPriceBlockCount(count: UInt32) {
+    @method async updateValidPriceBlockCount(count: UInt8) {
       //Precondition
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
@@ -791,10 +1072,13 @@ export function ZkUsdEngineContract(args: {
       protocolData.validPriceBlockCount = count;
       this.protocolDataPacked.set(protocolData.pack());
 
-      this.emitEvent('ValidPriceBlockCountUpdated', {
-        previousCount: previousCount,
-        newCount: count,
-      });
+      this.emitEvent('ValidPriceBlockCountUpdated', 
+        new ValidPriceBlockCountUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousCount: previousCount,
+          newCount: count,
+        })
+      );
     }
 
     getAdmin() {
@@ -889,41 +1173,37 @@ export function ZkUsdEngineContract(args: {
       return Bool(true);
     }
 
-    /**
-     * @notice  Returns true if the admin can change the verification key
-     * @returns True if the admin can change the verification key
-     */
-    @method.returns(Bool)
-    public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
-      return Bool(true); // TODO change it to read the permission instead
-    }
-  }
+    markProofAsExecuted(
+      proof: ZkusdProtocolUpdateProof
+    ) {}
 
-  function markProofAsExecuted(
-    engine: ZkUsdEngine,
-    proof: ZkusdProtocolUpdateProof
-  ) {
-  }
-
-  async function buildProtocolState(
-    engine: ZkUsdEngine
+  async buildProtocolState(
   ): Promise<ZkusdUpdatedProtocolState> {
     const protocolData = ProtocolData.unpack(
-      engine.protocolDataPacked.getAndRequireEquals()
+      this.protocolDataPacked.getAndRequireEquals()
     );
     return new ZkusdUpdatedProtocolState({
       emergencyStop: protocolData.emergencyStop,
     });
   }
 
-  async function buildBlockchainState(
-    engine: ZkUsdEngine
+  async buildBlockchainState(
   ): Promise<ZkusdUpdateMinaBlockchainState> {
     return {
-      currentSlot: engine.currentSlot,
-      blockchainLength: engine.network.blockchainLength.getAndRequireEquals(),
+      currentSlot: this.currentSlot,
+      blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
     };
   }
+
+  /**
+   * @notice  Returns true if the admin can change the verification key
+   * @returns True if the admin can change the verification key
+   */
+  @method.returns(Bool)
+  public async canChangeVerificationKey(_vk: VerificationKey): Promise < Bool > {
+    return Bool(true); // TODO change it to read the permission instead
+  }
+}
 
   return ZkUsdEngine;
 }

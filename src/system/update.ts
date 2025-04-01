@@ -1,6 +1,14 @@
-import { Bool, DynamicProof, Field, MerkleWitness, Proof, Provable, Struct, UInt32 } from 'o1js';
+import {
+  Bool,
+  Field,
+  MerkleWitness,
+  Proof,
+  Provable,
+  Struct,
+  UInt32,
+} from 'o1js';
 import { BooleanPrecondition } from './preconditions.js';
-import { BoolOperation } from './update-operations.js';
+import { BoolOperation, UInt8Operation } from './update-operations.js';
 import { CurrentSlot } from 'o1js/dist/node/lib/mina/precondition.js';
 
 export const ZKUSD_UPDATE_TREE_HEIGHT = 32;
@@ -9,7 +17,6 @@ export const NO_RESOLUTION_INDEX = UInt32.from(4200000000);
 
 export const ZkusdUpdateWitness = MerkleWitness(ZKUSD_UPDATE_TREE_HEIGHT);
 
-
 export class ValidityRangeUInt32 extends Struct({
   firstValidBlock: UInt32,
   lastValidBlock: UInt32,
@@ -17,9 +24,55 @@ export class ValidityRangeUInt32 extends Struct({
 
 export class ZkusdProtocolUpdateOperation extends Struct({
   emergencyStop: BoolOperation,
+  collateralRatio: UInt8Operation,
+  validPriceBlockCount: UInt8Operation,
+  liquidationBonusRatio: UInt8Operation,
   // add more
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
-}) {}
+}) {
+  static emergencyStop(operation: BoolOperation): ZkusdProtocolUpdateOperation {
+    return new ZkusdProtocolUpdateOperation({
+      emergencyStop: operation,
+      collateralRatio: UInt8Operation.mkNoop(),
+      validPriceBlockCount: UInt8Operation.mkNoop(),
+      liquidationBonusRatio: UInt8Operation.mkNoop(),
+      fieldBitMask: Field.from(1),
+    });
+  }
+
+  static collateralRatio(
+    operation: UInt8Operation
+  ): ZkusdProtocolUpdateOperation {
+    return new ZkusdProtocolUpdateOperation({
+      emergencyStop: BoolOperation.mkNoop(),
+      validPriceBlockCount: UInt8Operation.mkNoop(),
+      liquidationBonusRatio: UInt8Operation.mkNoop(),
+      collateralRatio: operation,
+      fieldBitMask: Field.from(2),
+    });
+  }
+}
+
+export const mkProtocolUpdateInput = (
+  protocolUpdateOperation: ZkusdProtocolUpdateOperation,
+  args?: {
+    blockchainPreconditions?: MinaBlockchainPreconditions;
+    protocolPreconditions?: ZkusdUpdatePreconditions;
+    // blockchainPreconditions?: MinaBlockchainPreconditions;
+  }
+): ZkusdProtocolUpdateInput => {
+  const blockchainPreconditions =
+    args?.blockchainPreconditions ?? MinaBlockchainPreconditions.always();
+  return new ZkusdProtocolUpdateInput({
+    govResolutionIndex: UInt32.from(0),
+    protocolUpdatePreconditions: args?.protocolPreconditions ?? {
+      emergencyStop: BooleanPrecondition.mkUnconstrained(),
+      fieldBitMask: Field.from(0),
+    },
+    blockchainPreconditions,
+    protocolUpdateOperation: protocolUpdateOperation,
+  });
+};
 
 export class ZkusdUpdatedProtocolState extends Struct({
   emergencyStop: Bool,
@@ -41,15 +94,15 @@ export class ZkusdUpdatePreconditions extends Struct({
   //  verificationKey
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
 }) {
-
   static create(args: {
-    emergencyStop?: BooleanPrecondition,
+    emergencyStop?: BooleanPrecondition;
   }): ZkusdUpdatePreconditions {
     // build the field mask based on given args
-    let fieldBitMask = Field.from(0).toBits()
-    fieldBitMask[0] = args.emergencyStop ? Bool(true) : Bool(false)
+    let fieldBitMask = Field.from(0).toBits();
+    fieldBitMask[0] = args.emergencyStop ? Bool(true) : Bool(false);
     return new ZkusdUpdatePreconditions({
-      emergencyStop: args.emergencyStop || BooleanPrecondition.mkUnconstrained(),
+      emergencyStop:
+        args.emergencyStop || BooleanPrecondition.mkUnconstrained(),
       fieldBitMask: Field.fromBits(fieldBitMask),
     });
   }
@@ -60,7 +113,6 @@ export class MinaBlockchainPreconditions extends Struct({
   blockchainLength: ValidityRangeUInt32,
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
 }) {
-
   static always(): MinaBlockchainPreconditions {
     return new MinaBlockchainPreconditions({
       slotIndexValidityRange: {
@@ -75,7 +127,10 @@ export class MinaBlockchainPreconditions extends Struct({
     });
   }
 
-  static blockchainLength(firstValidBlock?: UInt32, lastValidBlock?: UInt32): MinaBlockchainPreconditions {
+  static blockchainLength(
+    firstValidBlock?: UInt32,
+    lastValidBlock?: UInt32
+  ): MinaBlockchainPreconditions {
     const lower = firstValidBlock || UInt32.from(0);
     const upper = lastValidBlock || UInt32.MAXINT();
     return new MinaBlockchainPreconditions({
@@ -94,9 +149,9 @@ export class MinaBlockchainPreconditions extends Struct({
 
 // current slot cannot be passed into a struct (can it?)
 export type ZkusdUpdateMinaBlockchainState = {
-  currentSlot: CurrentSlot,
-  blockchainLength: UInt32,
-}
+  currentSlot: CurrentSlot;
+  blockchainLength: UInt32;
+};
 
 export class ZkusdProtocolUpdateInput extends Struct({
   govResolutionIndex: UInt32,
@@ -109,24 +164,16 @@ export class ZkusdProtocolUpdateInput extends Struct({
 // accepted as the final proof.
 export const NotAFinalZkusdProtocolUpdateProof = Field.from(0);
 // Just a random enough field value that will let be certain that its usage is intentional.
-export const YesItIsAFinalZkusdProtocolUpdateProof = Field.from(25329768464765890060619421345429226387561522247782730071636646908705875653989n);
+export const YesItIsAFinalZkusdProtocolUpdateProof =
+  Field.from(
+    25329768464765890060619421345429226387561522247782730071636646908705875653989n
+  );
 
 export class ZkusdProtocolUpdateOutput extends Struct({
   protocolUpdateHash: Field,
   auxilliaryOutput: Provable.Array(Field, 4),
   isFinalProof: Field, // -- do not set it to IsFinalZkusdProtocolUpdateProof unless it is the final proof than enables the update.
-}) {
-}
-
-
-export class ZkusdProtocolUpdateProof extends DynamicProof<
-  ZkusdProtocolUpdateInput,
-  ZkusdProtocolUpdateOutput
-> {
-  static publicInputType = ZkusdProtocolUpdateInput;
-  static publicOutputType = ZkusdProtocolUpdateOutput;
-  static maxProofsVerified = 2 as const;
-}
+}) {}
 
 export class ZkusdProtocolUpdateGovContractProof extends Proof<
   ZkusdProtocolUpdateInput,
@@ -137,33 +184,46 @@ export class ZkusdProtocolUpdateGovContractProof extends Proof<
   static maxProofsVerified = 2 as const;
 }
 
-export function theUpdatePreconditionsMatchProtocolState(args:
-  {
-    preconditions: ZkusdUpdatePreconditions
-    protocolStatus: ZkusdUpdatedProtocolState,
-  }): Bool {
-
-  const bitMask = args.preconditions.fieldBitMask.toBits()
+export function theUpdatePreconditionsMatchProtocolState(args: {
+  preconditions: ZkusdUpdatePreconditions;
+  protocolState: ZkusdUpdatedProtocolState;
+}): Bool {
+  const bitMask = args.preconditions.fieldBitMask.toBits();
   const hasEmergencyStopPrecondition = bitMask[0];
 
-  const emergencyStopMatch = args.preconditions.emergencyStop.matches(args.protocolStatus.emergencyStop).or(hasEmergencyStopPrecondition.not());
+  const emergencyStopMatch = args.preconditions.emergencyStop
+    .matches(args.protocolState.emergencyStop)
+    .or(hasEmergencyStopPrecondition.not());
   return emergencyStopMatch;
 }
 
-export function requireBlockchainPreconditions(args:
-  {
-    preconditions: MinaBlockchainPreconditions,
-    blockchainState: ZkusdUpdateMinaBlockchainState,
-  }): void {
-  const bitMask = args.preconditions.fieldBitMask.toBits()
+export function requireBlockchainPreconditions(args: {
+  preconditions: MinaBlockchainPreconditions;
+  blockchainState: ZkusdUpdateMinaBlockchainState;
+}): void {
+  const bitMask = args.preconditions.fieldBitMask.toBits();
 
-  const lower = Provable.if(bitMask[0], args.preconditions.slotIndexValidityRange.firstValidBlock, UInt32.from(0));
-  const upper = Provable.if(bitMask[0], args.preconditions.slotIndexValidityRange.lastValidBlock, UInt32.MAXINT());
+  const lower = Provable.if(
+    bitMask[0],
+    args.preconditions.slotIndexValidityRange.firstValidBlock,
+    UInt32.from(0)
+  );
+  const upper = Provable.if(
+    bitMask[0],
+    args.preconditions.slotIndexValidityRange.lastValidBlock,
+    UInt32.MAXINT()
+  );
   // assert
   args.blockchainState.currentSlot.requireBetween(lower, upper);
 
-  let blockChainLengthValidity = args.preconditions.blockchainLength.firstValidBlock.lessThanOrEqual(args.blockchainState.blockchainLength)
-    .and(args.blockchainState.blockchainLength.lessThanOrEqual(args.preconditions.blockchainLength.lastValidBlock));
+  let blockChainLengthValidity =
+    args.preconditions.blockchainLength.firstValidBlock
+      .lessThanOrEqual(args.blockchainState.blockchainLength)
+      .and(
+        args.blockchainState.blockchainLength.lessThanOrEqual(
+          args.preconditions.blockchainLength.lastValidBlock
+        )
+      );
   blockChainLengthValidity = blockChainLengthValidity.or(bitMask[1].not());
 
   // assert
@@ -171,9 +231,15 @@ export function requireBlockchainPreconditions(args:
 }
 
 // --------- to fields
-export function zkusdProtocolUpdateInputToFields(input: ZkusdProtocolUpdateInput): Field[] {
-  const protocolUpdatePreconditionsFields = zkusdUpdatePreconditionsToFields(input.protocolUpdatePreconditions);
-  const blockchainPreconditionsFields = minaBlockchainPreconditionsToFields(input.blockchainPreconditions);
+export function zkusdProtocolUpdateInputToFields(
+  input: ZkusdProtocolUpdateInput
+): Field[] {
+  const protocolUpdatePreconditionsFields = zkusdUpdatePreconditionsToFields(
+    input.protocolUpdatePreconditions
+  );
+  const blockchainPreconditionsFields = minaBlockchainPreconditionsToFields(
+    input.blockchainPreconditions
+  );
   return [
     ...input.govResolutionIndex.toFields(),
     ...protocolUpdatePreconditionsFields,
@@ -181,13 +247,14 @@ export function zkusdProtocolUpdateInputToFields(input: ZkusdProtocolUpdateInput
     ...zkusdProtocolUpdateOperationToFields(input.protocolUpdateOperation),
   ];
 }
-export function zkusdUpdatePreconditionsToFields(preconditions: ZkusdUpdatePreconditions): Field[] {
-  return [
-    preconditions.emergencyStop.value,
-    preconditions.fieldBitMask,
-  ];
+export function zkusdUpdatePreconditionsToFields(
+  preconditions: ZkusdUpdatePreconditions
+): Field[] {
+  return [preconditions.emergencyStop.value, preconditions.fieldBitMask];
 }
-export function minaBlockchainPreconditionsToFields(preconditions: MinaBlockchainPreconditions): Field[] {
+export function minaBlockchainPreconditionsToFields(
+  preconditions: MinaBlockchainPreconditions
+): Field[] {
   return [
     ...preconditions.slotIndexValidityRange.firstValidBlock.toFields(),
     ...preconditions.slotIndexValidityRange.lastValidBlock.toFields(),
@@ -197,7 +264,9 @@ export function minaBlockchainPreconditionsToFields(preconditions: MinaBlockchai
   ];
 }
 
-export function zkusdProtocolUpdateOperationToFields(protocolUpdateOperation: ZkusdProtocolUpdateOperation): Field[] {
+export function zkusdProtocolUpdateOperationToFields(
+  protocolUpdateOperation: ZkusdProtocolUpdateOperation
+): Field[] {
   return [
     protocolUpdateOperation.emergencyStop.operation,
     protocolUpdateOperation.fieldBitMask,

@@ -5,11 +5,9 @@ import assert from 'node:assert';
 import { TestHelper, TestAmounts } from '../../../test-helper.js';
 import {
   MinaBlockchainPreconditions,
-  ZkusdProtocolUpdateProof,
   ZkusdUpdatePreconditions,
   zkusdProtocolUpdateInputToFields,
 } from '../../../../system/update.js';
-import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../contracts/zkusd-government-poc.js';
 import { verificationKeys } from '../../../../config/verification-keys.js';
 import {
   ZkusdGovResolutionProgramWitness,
@@ -22,6 +20,8 @@ import {
   // If you have a numeric precondition for block slots, import it here:
   // NumericPrecondition
 } from '../../../../system/preconditions.js';
+import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../proofs/gov/admin-signature.js';
+import { ZkusdProtocolUpdateProof } from '../../../../system/update-proof.js';
 
 describe('zkUSD Government Admin Signature Tests', () => {
   let testHelper: TestHelper<'local'>;
@@ -41,7 +41,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
     const proofResult = await AdminSignatureZkusdProtocolUpdateProgram.create(
       updateInput,
       signature,
-      protocolAdmin.privateKey.toPublicKey()
+      protocolAdmin.privateKey.toPublicKey(),
     );
 
     return {
@@ -103,7 +103,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
     await testHelper.includeTx(
       testHelper.agents.alice.keys,
       async () => {
-        await testHelper.engine.contract.govStopProtocol(
+        await testHelper.engine.contract.govToggleEmergencyStop(
           verificationKey,
           witness,
           sideLoadedProof
@@ -144,7 +144,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
       await testHelper.includeTx(
         testHelper.agents.alice.keys,
         async () => {
-          await testHelper.engine.contract.govStopProtocol(
+          await testHelper.engine.contract.govToggleEmergencyStop(
             verificationKey,
             witness,
             sideLoadedProof
@@ -164,7 +164,6 @@ describe('zkUSD Government Admin Signature Tests', () => {
     assert.equal(isStopped, true, 'Protocol should still be stopped');
   });
   describe('Blockchain Length Precondition Tests (Bob)', () => {
-
     // Suppose we require the chain length to be >= 1010 to start
     const requiredChainLength = 1010;
 
@@ -183,7 +182,10 @@ describe('zkUSD Government Admin Signature Tests', () => {
       // but also requires the current blockchain length to be >= requiredChainLength
       const updateInput = updateProtocolEmergencyStop({
         // these fields might differ based on your updateProtocolEmergencyStop signature
-        blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
+        blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(
+          UInt32.from(requiredChainLength),
+          UInt32.from(2000)
+        ),
         emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
         protocolPreconditions: ZkusdUpdatePreconditions.create({
           // Protocol is currently stopped => mustEqual(true)
@@ -197,24 +199,21 @@ describe('zkUSD Government Admin Signature Tests', () => {
 
       // Bob includes the transaction, but if the blockchain length is < requiredChainLength,
       // the transaction should fail due to the unmet precondition
-      await assert.rejects(
-        async () => {
-          await testHelper.includeTx(
-            testHelper.agents.bob.keys, // Bob is the sender
-            async () => {
-              await testHelper.engine.contract.govStopProtocol(
-                verificationKey,
-                witness,
-                sideLoadedProof
-              );
-            },
-            {
-              name: "Bob attempts to start protocol but blockchain length hasn't reached the threshold",
-            }
-          );
-        },
-        'Expected transaction to fail but it succeeded.'
-      );
+      await assert.rejects(async () => {
+        await testHelper.includeTx(
+          testHelper.agents.bob.keys, // Bob is the sender
+          async () => {
+            await testHelper.engine.contract.govToggleEmergencyStop(
+              verificationKey,
+              witness,
+              sideLoadedProof
+            );
+          },
+          {
+            name: "Bob attempts to start protocol but blockchain length hasn't reached the threshold",
+          }
+        );
+      }, 'Expected transaction to fail but it succeeded.');
 
       // The protocol should remain stopped
       await testHelper.mina.fetchMinaAccount(
@@ -234,7 +233,10 @@ describe('zkUSD Government Admin Signature Tests', () => {
       // or you can recreate it for clarity:
       const updateInput = updateProtocolEmergencyStop({
         emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-        blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
+        blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(
+          UInt32.from(requiredChainLength),
+          UInt32.from(2000)
+        ),
         protocolPreconditions: ZkusdUpdatePreconditions.create({
           // protocol is currently stopped => mustEqual(true)
           emergencyStop: BooleanPrecondition.mkMustEqual(true),
@@ -249,7 +251,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
       await testHelper.includeTx(
         testHelper.agents.bob.keys,
         async () => {
-          await testHelper.engine.contract.govStopProtocol(
+          await testHelper.engine.contract.govToggleEmergencyStop(
             verificationKey,
             witness,
             sideLoadedProof

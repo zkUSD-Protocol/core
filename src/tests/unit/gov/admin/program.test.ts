@@ -6,17 +6,21 @@ import {
   Signature,
   verify /* assuming verify function for proofs exists */,
   VerificationKey,
+  UInt8,
 } from 'o1js';
 import {
   YesItIsAFinalZkusdProtocolUpdateProof,
   ZkusdProtocolUpdateInput,
   zkusdProtocolUpdateInputToFields,
 } from '../../../../system/update.js';
-import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../contracts/zkusd-government-poc.js';
-import { BoolOperation } from '../../../../system/update-operations.js';
+import {
+  BoolOperation,
+  UInt8Operation,
+} from '../../../../system/update-operations.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSampleUpdateInput } from '../utils.js';
+import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../proofs/gov/admin-signature.js';
 
 // --- Test Suite ---
 
@@ -54,7 +58,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     const proof = await AdminSignatureZkusdProtocolUpdateProgram.create(
       updateInput,
       validSignature,
-      adminPublicKey
+      adminPublicKey,
     );
     console.log('Proving complete.');
 
@@ -91,7 +95,10 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     const differentInput = createSampleUpdateInput(); // Use helper
     differentInput.protocolUpdateOperation = {
       emergencyStop: BoolOperation.mkFlip(), // Change a field
-      fieldBitMask: Field.from(0),
+      collateralRatio: UInt8Operation.mkSetTo(UInt8.zero), // Keep the same
+      validPriceBlockCount: UInt8Operation.mkSetTo(UInt8.one), // Keep the same
+      liquidationBonusRatio: UInt8Operation.mkSetTo(UInt8.zero), // Keep the same
+      fieldBitMask: Field.from(2),
     };
     const differentInputFields =
       zkusdProtocolUpdateInputToFields(differentInput);
@@ -115,7 +122,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       const programx = await AdminSignatureZkusdProtocolUpdateProgram.create(
         updateInput,
         signatureForDifferentData,
-        adminPublicKey
+        adminPublicKey,
       );
       verify(programx.proof, verificationKey);
     });
@@ -137,7 +144,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       await AdminSignatureZkusdProtocolUpdateProgram.create(
         updateInput,
         validSignature,
-        wrongPublicKey
+        wrongPublicKey,
       );
     });
     console.log('Proof failed as expected.');
@@ -163,7 +170,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       const program = await AdminSignatureZkusdProtocolUpdateProgram.create(
         updateInput,
         corruptedSignature,
-        adminPublicKey
+        adminPublicKey,
       );
       verify(program.proof, verificationKey);
     });

@@ -1,14 +1,15 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, Provable, UInt32, UInt8, VerificationKey } from 'o1js';
+import { AccountUpdate, Bool, Provable, UInt8, VerificationKey } from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
-import { validPriceBlockCount } from '../mina/networks.js';
+import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
-import { AdminSignatureZkusdProtocolUpdateProgram, ZkUsdAdminSignatureContract } from '../contracts/zkusd-government-poc.js';
+import { ZkUsdAdminSignatureContract } from '../contracts/zkusd-government-poc.js';
+import { AdminSignatureZkusdProtocolUpdateProgram } from '../proofs/gov/admin-signature.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -196,8 +197,8 @@ export class DeploymentService {
           );
           await this._engine.contract.deploy({
             admin: this._networkKeys.protocolAdmin.publicKey,
-            validPriceBlockCount: UInt32.from(
-              validPriceBlockCount[this._txMgr.mina.network.chainId]
+            validPriceBlockCount: UInt8.from(
+              validPriceBlockCounts[this._txMgr.mina.network.chainId]
             ),
             emergencyStop: Bool(false),
             collateralRatio: UInt8.from(150),

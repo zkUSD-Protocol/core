@@ -5,9 +5,8 @@ const FieldMax = Field.from(Field.ORDER - 1n);
 
 export class FieldPrecondition extends Struct({
   lower: Field,
-  upper: Field
+  upper: Field,
 }) {
-
   matches(value: Field): Bool {
     const greaterOrEqualLower = value.greaterThanOrEqual(this.lower);
     const lessOrEqualUpper = value.lessThanOrEqual(this.upper);
@@ -17,50 +16,49 @@ export class FieldPrecondition extends Struct({
   static mkEqual(value: Field) {
     return new FieldPrecondition({
       lower: value,
-      upper: value
+      upper: value,
     });
   }
 
   static mkGreater(value: Field) {
     return new FieldPrecondition({
       lower: value.add(1),
-      upper: FieldMax
+      upper: FieldMax,
     });
   }
 
   static mkGreaterOrEqual(value: Field) {
     return new FieldPrecondition({
       lower: value,
-      upper: FieldMax
+      upper: FieldMax,
     });
   }
 
   static mkLess(value: Field) {
     return new FieldPrecondition({
       lower: Field.from(0),
-      upper: value.sub(1)
+      upper: value.sub(1),
     });
   }
 
   static mkLessOrEqual(value: Field) {
     return new FieldPrecondition({
       lower: Field.from(0),
-      upper: value
+      upper: value,
     });
   }
 
   static mkUnconstrained() {
     return new FieldPrecondition({
       lower: Field.from(0),
-      upper: FieldMax
+      upper: FieldMax,
     });
   }
 }
 
 export class BooleanPrecondition extends Struct({
-  value: Field
+  value: Field,
 }) {
-
   requireFalse() {
     return this.value.equals(Field.from(0));
   }

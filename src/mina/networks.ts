@@ -2,7 +2,7 @@ import { blockchain } from '../types/utility.js';
 
 export type { MinaNetwork, blockchain };
 
-export { networks, Local, Lightnet, validPriceBlockCount, Devnet };
+export { networks, Local, Lightnet, validPriceBlockCounts, Devnet };
 interface MinaNetwork {
   mina: string[];
   archive: string[];
@@ -13,7 +13,7 @@ interface MinaNetwork {
   explorerTransactionUrl?: string;
 }
 
-const validPriceBlockCount: Record<blockchain, number> = {
+const validPriceBlockCounts: Record<blockchain, number> = {
   local: 1,
   lightnet: 10,
   devnet: 5, // TODO isn't it too high?

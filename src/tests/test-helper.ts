@@ -33,7 +33,7 @@ import {
   WithDefault,
 } from '../types/utility.js';
 import crypto from 'crypto';
-import { validPriceBlockCount } from '../mina/networks.js';
+import { validPriceBlockCounts } from '../mina/networks.js';
 import { Mutex } from '../utils/mutex.js';
 import { Account, isKeyPair } from '../mina/utils.js';
 import {
@@ -917,7 +917,7 @@ class PriceInputManager {
   }
 
   private get priceValidity(): number {
-    return validPriceBlockCount[this.mina.network.chainId];
+    return validPriceBlockCounts[this.mina.network.chainId];
   }
 
   private async currentBlockHeight(): Promise<UInt32> {

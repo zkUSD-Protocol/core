@@ -1,13 +1,16 @@
-// ============================================================================
+// ===========================================================================
 // Protocol Core Types
 // ============================================================================
 
-import { Struct, PublicKey, UInt32, Bool, Field, UInt8 } from 'o1js';
+import { Struct, PublicKey, Bool, Field, UInt8 } from 'o1js';
 import { VaultParams } from './vault';
 
 export const ZkUsdEngineMethodCodes = {
   GovStopProtocol: Field.from(1100001n),
-}
+  GovUpdateCollateralRatio: Field.from(1100002n),
+  GovUpdateValidPriceBlockCount: Field.from(1100003n),
+  GovUpdateLiquidationBonusRatio: Field.from(1100004n),
+};
 
 // Errors
 export const ZkUsdEngineErrors = {
@@ -30,7 +33,7 @@ export const ZkUsdEngineErrors = {
  */
 export class ProtocolData extends Struct({
   admin: PublicKey,
-  validPriceBlockCount: UInt32,
+  validPriceBlockCount: UInt8,
   emergencyStop: Bool,
   collateralRatio: UInt8,
   liquidationBonusRatio: UInt8,
@@ -38,7 +41,7 @@ export class ProtocolData extends Struct({
   static new(
     params: {
       admin?: PublicKey;
-      validPriceBlockCount?: UInt32;
+      validPriceBlockCount?: UInt8;
       emergencyStop?: Bool;
       collateralRatio?: UInt8;
       liquidationBonusRatio?: UInt8;
@@ -46,7 +49,7 @@ export class ProtocolData extends Struct({
   ): ProtocolData {
     return new ProtocolData({
       admin: params.admin ?? PublicKey.empty(),
-      validPriceBlockCount: params.validPriceBlockCount ?? UInt32.from(0),
+      validPriceBlockCount: params.validPriceBlockCount ?? UInt8.from(0),
       emergencyStop: params.emergencyStop ?? Bool(false),
       collateralRatio: params.collateralRatio ?? UInt8.from(0),
       liquidationBonusRatio: params.liquidationBonusRatio ?? UInt8.from(0),
@@ -57,7 +60,7 @@ export class ProtocolData extends Struct({
     return new ProtocolDataPacked({
       adminX: this.admin.x,
       packedData: Field.fromBits([
-        ...this.validPriceBlockCount.value.toBits(32),
+        ...this.validPriceBlockCount.value.toBits(8),
         this.emergencyStop,
         this.admin.isOdd,
         ...this.collateralRatio.value.toBits(8),
@@ -76,7 +79,7 @@ export class ProtocolData extends Struct({
   static unpack(packed: ProtocolDataPacked) {
     // Bit field definitions
     const bitFields = [
-      { name: 'validPriceBlockCount', length: 32 },
+      { name: 'validPriceBlockCount', length: 8 },
       { name: 'emergencyStop', length: 1 },
       { name: 'adminIsOdd', length: 1 },
       { name: 'collateralRatio', length: 8 },
@@ -101,7 +104,7 @@ export class ProtocolData extends Struct({
       return Field.fromBits(slice);
     };
 
-    const validPriceBlockCount = UInt32.Unsafe.fromField(readBits(32));
+    const validPriceBlockCount = UInt8.Unsafe.fromField(readBits(8));
     const emergencyStop = readBits(1).equals(1);
     const adminIsOdd = readBits(1).equals(1);
     const admin = PublicKey.from({ x: packed.adminX, isOdd: adminIsOdd });

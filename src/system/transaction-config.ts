@@ -11,7 +11,7 @@ import {
   ZkUSDAmountArgs,
   ZkusdEngineTransactionArgs,
 } from './transaction.js';
-import { AccountUpdate, Bool, PublicKey, UInt32, UInt64 } from 'o1js';
+import { AccountUpdate, Bool, PublicKey, UInt64, UInt8 } from 'o1js';
 import { OracleWhitelist } from './oracle.js';
 
 export {
@@ -128,7 +128,7 @@ function mkZkusdTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
       method: ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT,
       buildTx: async (args) => {
         await engine.updateValidPriceBlockCount(
-          UInt32.from(args.newValidPriceBlockCount)
+          UInt8.from(args.newValidPriceBlockCount)
         );
       },
     },
