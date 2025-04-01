@@ -10,6 +10,7 @@ export const ZkUsdEngineMethodCodes = {
   GovUpdateCollateralRatio: Field.from(1100002n),
   GovUpdateValidPriceBlockCount: Field.from(1100003n),
   GovUpdateLiquidationBonusRatio: Field.from(1100004n),
+  GovUpdateOracleWhitelist: Field.from(1100005n),
 };
 
 // Errors

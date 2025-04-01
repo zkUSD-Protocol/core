@@ -1023,6 +1023,42 @@ export function ZkUsdEngineContract(args: {
     //     })
     //   );
     // }
+    @method async govUpdateOracleWhitelist(whitelist: OracleWhitelist,
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionProgramVk: VerificationKey,
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness) {
+      //Precondition
+      const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
+
+      const {
+        operation,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
+        resolutionProgramVk,
+        resolutionProgramVkhWitness,
+        resolutionProof
+      );
+      // check if whitelist matches the proof
+      const whitelisthash = Poseidon.hash(OracleWhitelist.toFields(whitelist));
+      const oldWhitelistHash = this.oracleWhitelistHash.getAndRequireEquals();
+
+      // Step 2: execute the collateral ratio update
+      const proofWhitelistHash = operation.oracleWhitelistHash.execute(
+        oldWhitelistHash
+      );
+      whitelisthash.assertEquals(proofWhitelistHash);
+
+      this.oracleWhitelistHash.set(whitelisthash);
+
+      this.emitEvent('OracleWhitelistUpdated',
+        new OracleWhitelistUpdatedEvent({
+          resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
+          previousHash,
+          newHash: whitelisthash,
+        })
+      );
+    }
+
 
     /**
      * @notice  Updates the oracle whitelist merkle root
@@ -1040,10 +1076,13 @@ export function ZkUsdEngineContract(args: {
       );
       this.oracleWhitelistHash.set(updatedWhitelistHash);
 
-      this.emitEvent('OracleWhitelistUpdated', {
-        previousHash,
+      this.emitEvent('OracleWhitelistUpdated',
+        new OracleWhitelistUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousHash,
         newHash: updatedWhitelistHash,
-      });
+        })
+      );
     }
 
     async getValidPriceBlockCount() {
@@ -1072,7 +1111,7 @@ export function ZkUsdEngineContract(args: {
       protocolData.validPriceBlockCount = count;
       this.protocolDataPacked.set(protocolData.pack());
 
-      this.emitEvent('ValidPriceBlockCountUpdated', 
+      this.emitEvent('ValidPriceBlockCountUpdated',
         new ValidPriceBlockCountUpdatedEvent({
           resolutionIndex: NO_RESOLUTION_INDEX,
           previousCount: previousCount,
@@ -1177,33 +1216,33 @@ export function ZkUsdEngineContract(args: {
       proof: ZkusdProtocolUpdateProof
     ) {}
 
-  async buildProtocolState(
-  ): Promise<ZkusdUpdatedProtocolState> {
-    const protocolData = ProtocolData.unpack(
-      this.protocolDataPacked.getAndRequireEquals()
-    );
-    return new ZkusdUpdatedProtocolState({
-      emergencyStop: protocolData.emergencyStop,
-    });
-  }
+    async buildProtocolState(
+    ): Promise<ZkusdUpdatedProtocolState> {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return new ZkusdUpdatedProtocolState({
+        emergencyStop: protocolData.emergencyStop,
+      });
+    }
 
-  async buildBlockchainState(
-  ): Promise<ZkusdUpdateMinaBlockchainState> {
-    return {
-      currentSlot: this.currentSlot,
-      blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
-    };
-  }
+    async buildBlockchainState(
+    ): Promise<ZkusdUpdateMinaBlockchainState> {
+      return {
+        currentSlot: this.currentSlot,
+        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
+      };
+    }
 
-  /**
-   * @notice  Returns true if the admin can change the verification key
-   * @returns True if the admin can change the verification key
-   */
-  @method.returns(Bool)
-  public async canChangeVerificationKey(_vk: VerificationKey): Promise < Bool > {
-    return Bool(true); // TODO change it to read the permission instead
+    /**
+     * @notice  Returns true if the admin can change the verification key
+     * @returns True if the admin can change the verification key
+     */
+    @method.returns(Bool)
+    public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
+      return Bool(true); // TODO change it to read the permission instead
+    }
   }
-}
 
   return ZkUsdEngine;
 }

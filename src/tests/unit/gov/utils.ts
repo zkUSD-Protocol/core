@@ -1,7 +1,7 @@
 import { Field, UInt32 } from "o1js";
 import { MinaBlockchainPreconditions, ZkusdProtocolUpdateInput, ZkusdUpdatePreconditions } from "../../../system/update.js";
 import { BooleanPrecondition } from "../../../system/preconditions.js";
-import { BoolOperation, UInt8Operation } from "../../../system/update-operations.js";
+import { BoolOperation, FieldOperation, UInt8Operation } from "../../../system/update-operations.js";
 
 
 export const toggleEmergencyStop = (
@@ -46,6 +46,7 @@ export const updateProtocolEmergencyStop = (
       emergencyStop: args.emergencyStopOperation,
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
+      oracleWhitelistHash: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(1),
     },
   });
@@ -74,6 +75,7 @@ export const createSampleUpdateInput = (
       collateralRatio: UInt8Operation.mkNoop(),
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
+      oracleWhitelistHash: FieldOperation.mkNoop(),
       emergencyStop: BoolOperation.mkFlip(),
       fieldBitMask: Field.from(1),
     },

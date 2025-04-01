@@ -15,6 +15,7 @@ import {
 } from '../../../../system/update.js';
 import {
   BoolOperation,
+  FieldOperation,
   UInt8Operation,
 } from '../../../../system/update-operations.js';
 import { describe, it, before } from 'node:test';
@@ -98,6 +99,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       collateralRatio: UInt8Operation.mkSetTo(UInt8.zero), // Keep the same
       validPriceBlockCount: UInt8Operation.mkSetTo(UInt8.one), // Keep the same
       liquidationBonusRatio: UInt8Operation.mkSetTo(UInt8.zero), // Keep the same
+      oracleWhitelistHash: FieldOperation.mkNoop(), // Keep the same
       fieldBitMask: Field.from(2),
     };
     const differentInputFields =

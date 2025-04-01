@@ -8,7 +8,7 @@ import {
   UInt32,
 } from 'o1js';
 import { BooleanPrecondition } from './preconditions.js';
-import { BoolOperation, UInt8Operation } from './update-operations.js';
+import { BoolOperation, FieldOperation, UInt8Operation } from './update-operations.js';
 import { CurrentSlot } from 'o1js/dist/node/lib/mina/precondition.js';
 
 export const ZKUSD_UPDATE_TREE_HEIGHT = 32;
@@ -27,6 +27,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   collateralRatio: UInt8Operation,
   validPriceBlockCount: UInt8Operation,
   liquidationBonusRatio: UInt8Operation,
+  oracleWhitelistHash: FieldOperation,
   // add more
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
 }) {
@@ -36,6 +37,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       collateralRatio: UInt8Operation.mkNoop(),
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
+      oracleWhitelistHash: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(1),
     });
   }
@@ -47,6 +49,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       emergencyStop: BoolOperation.mkNoop(),
       validPriceBlockCount: UInt8Operation.mkNoop(),
       liquidationBonusRatio: UInt8Operation.mkNoop(),
+      oracleWhitelistHash: FieldOperation.mkNoop(),
       collateralRatio: operation,
       fieldBitMask: Field.from(2),
     });

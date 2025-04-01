@@ -78,6 +78,7 @@ export class AdminUpdatedEvent extends Struct({
 }) {}
 
 export class OracleWhitelistUpdatedEvent extends Struct({
+  resolutionIndex: UInt32,
   previousHash: Field,
   newHash: Field,
 }) {}

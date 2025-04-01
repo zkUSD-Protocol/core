@@ -126,3 +126,88 @@ export class UInt8Operation extends Struct({
     });
   }
 }
+
+
+/**
+ * @notice Operations for updating a Field state, with the following codes:
+ *  0 => set
+ *  1 => add
+ *  2 => subtract
+ *  3 => no-op
+ */
+export class FieldOperation extends Struct({
+  operation: Field,
+  value: Field,
+}) {
+  execute(state: Field): Field {
+    // Strict check: fail if operation > 3
+    this.operation.assertLessThanOrEqual(3);
+
+    // Evaluate which operation to apply
+    const isSet = this.operation.equals(0);
+    const isAdd = this.operation.equals(1);
+    const isSub = this.operation.equals(2);
+    // 3 => no-op
+
+    // Potential results
+    const setResult = this.value;
+    const addResult = state.add(this.value);
+    const subResult = state.sub(this.value);
+    const noChange = state;
+
+    // Nest the conditions:
+    //  1) If isSet => setResult
+    //  2) Else if isAdd => addResult
+    //  3) Else if isSub => subResult
+    //  4) Else => noChange
+    const retField: Field = Provable.if(
+      isSet,
+      setResult,
+      Provable.if(isAdd, addResult, Provable.if(isSub, subResult, noChange))
+    );
+
+    // Return the new state as a Field
+    return retField;
+  }
+
+  /**
+   * @dev Set the state to the given value
+   */
+  static mkSetTo(value: Field): FieldOperation {
+    return new FieldOperation({
+      operation: Field(0),
+      value,
+    });
+  }
+
+  /**
+   * @dev Add the given value to the current state
+   */
+  static mkAdd(value: Field): FieldOperation {
+    return new FieldOperation({
+      operation: Field(1),
+      value,
+    });
+  }
+
+  /**
+   * @dev Subtract the given value from the current state
+   */
+  static mkSub(value: Field): FieldOperation {
+    return new FieldOperation({
+      operation: Field(2),
+      value,
+    });
+  }
+
+  /**
+   * @dev No-op: leave the state unchanged
+   */
+  static mkNoop(): FieldOperation {
+    return new FieldOperation({
+      operation: Field(3),
+      // The 'value' field is unused when operation=3, so it can be anything
+      value: Field.from(0),
+    });
+  }
+}
