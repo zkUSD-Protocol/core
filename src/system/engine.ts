@@ -11,6 +11,7 @@ export const ZkUsdEngineMethodCodes = {
   GovUpdateValidPriceBlockCount: Field.from(1100003n),
   GovUpdateLiquidationBonusRatio: Field.from(1100004n),
   GovUpdateOracleWhitelist: Field.from(1100005n),
+  GovCRITICALUpdateVerificationKey: Field.from(1200005n),
 };
 
 // Errors

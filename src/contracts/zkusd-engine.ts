@@ -39,6 +39,7 @@ import {
   CollateralRatioUpdatedEvent,
   LiquidationBonusRatioUpdatedEvent,
   ConfigMerkleRootUpdatedEvent,
+  VerificationKeyUpdatedEvent,
 } from '../system/events.js';
 import {
   MinaPriceInput,
@@ -66,6 +67,7 @@ import {
   theUpdatePreconditionsMatchProtocolState,
 } from '../system/update.js';
 import { ZkusdProtocolUpdateProof } from '../system/update-proof.js';
+import { ZkusdEngineUpdateWitness, applyResolutionProof, getInitialZkusdResolutionNullifierTreeRoot } from '../system/engine-update-witness.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -117,6 +119,7 @@ export function ZkUsdEngineContract(args: {
       AdminUpdated: AdminUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
       ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
+      VerificationKeyUpdated: VerificationKeyUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
       NewVault: NewVaultEvent,
       DepositCollateral: DepositCollateralEvent,
@@ -152,7 +155,7 @@ export function ZkUsdEngineContract(args: {
          * This design choice balances protocol upgradeability with security, acknowledging that
          * true immutability of verification keys is not achievable under Mina's current architecture.
          */
-        setVerificationKey: Permissions.VerificationKey.signature(),
+        setVerificationKey: Permissions.VerificationKey.proofOrSignature(),
 
         editState: Permissions.proof(),
         send: Permissions.proof(),
@@ -169,6 +172,7 @@ export function ZkUsdEngineContract(args: {
           liquidationBonusRatio: args.liquidationBonusRatio,
         }).pack()
       );
+      this.govResolutionNullifierTreeRoot.set(getInitialZkusdResolutionNullifierTreeRoot());
     }
 
     //Blocks the updating of state of the token accounts
@@ -687,6 +691,25 @@ export function ZkUsdEngineContract(args: {
         })
       );
     }
+
+    /**
+     * Ensures the provided update proof has not been used, marks it as used, and returns the updated Merkle root.
+     * Enforces strict sequential usage (e.g., index 2 only after index 1 is used).
+     */
+    applyResolutionProof(
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionWitness: ZkusdEngineUpdateWitness) {
+      const updateHashRoot = this.govResolutionNullifierTreeRoot.getAndRequireEquals();
+
+      const newRootHash = applyResolutionProof(
+        resolutionProof,
+        resolutionWitness,
+        updateHashRoot);
+
+      this.govResolutionNullifierTreeRoot.set(newRootHash);
+    }
+
+
     /**
      * @notice Shared function that checks governance acceptance, verifies the proof,
      *         ensures preconditions, and returns the existing protocol data + operation.
@@ -695,12 +718,19 @@ export function ZkUsdEngineContract(args: {
       methodCode: Field,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionProof: ZkusdProtocolUpdateProof
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionWitness: ZkusdEngineUpdateWitness
     ): Promise<{
       protocolDataBefore: ProtocolData;
       operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
       resolutionProof: ZkusdProtocolUpdateProof; // we may need to return it to mark as executed
     }> {
+      // 0. Has this been already used
+      this.applyResolutionProof(
+        resolutionProof,
+        resolutionWitness
+      );
+
       // 1. Verify governance acceptance
       const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);
       const govAcceptance = await gov.canExecuteGovResolution(
@@ -750,7 +780,8 @@ export function ZkUsdEngineContract(args: {
     @method async govToggleEmergencyStop(
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionProof: ZkusdProtocolUpdateProof
+      resolutionProof: ZkusdProtocolUpdateProof,
+      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Reuse the shared logic
       const {
@@ -761,7 +792,8 @@ export function ZkUsdEngineContract(args: {
         ZkUsdEngineMethodCodes.GovStopProtocol,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof
+        resolutionProof,
+        resolutionWitness
       );
 
       // Execute the update on the emergencyStop field
@@ -779,9 +811,6 @@ export function ZkUsdEngineContract(args: {
       });
       this.protocolDataPacked.set(updatedProtocolData.pack());
 
-      // Nullify the proof
-      this.markProofAsExecuted(proof);
-
       // Emit the event
       this.emitEvent(
         'EmergencyStopToggled',
@@ -796,6 +825,7 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateValidPriceBlockCount')
@@ -807,7 +837,8 @@ export function ZkUsdEngineContract(args: {
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof
+        resolutionProof,
+        resolutionWitness
       );
 
       // Step 2: execute the collateral ratio update
@@ -827,11 +858,7 @@ export function ZkUsdEngineContract(args: {
       });
       this.protocolDataPacked.set(updatedProtocolData.pack());
 
-      // Step 4: mark the proof as executed
-      this.markProofAsExecuted(proof);
-
-
-      // Step 5: emit an event
+      // Step 4: emit an event
       this.emitEvent(
         'ValidPriceBlockCountUpdated',
         new ValidPriceBlockCountUpdatedEvent({
@@ -847,6 +874,7 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateLiquidationBonusRatio')
@@ -858,7 +886,8 @@ export function ZkUsdEngineContract(args: {
         ZkUsdEngineMethodCodes.GovUpdateLiquidationBonusRatio,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof
+        resolutionProof,
+        resolutionWitness,
       );
 
       // Step 2: execute the collateral ratio update
@@ -878,11 +907,7 @@ export function ZkUsdEngineContract(args: {
       });
       this.protocolDataPacked.set(updatedProtocolData.pack());
 
-      // Step 4: mark the proof as executed
-      this.markProofAsExecuted(proof);
-
-
-      // Step 5: emit an event
+      // Step 3: emit an event
       this.emitEvent(
         'LiquidationBonusRatioUpdated',
         new LiquidationBonusRatioUpdatedEvent({
@@ -898,6 +923,7 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateCollateralRatio')
@@ -909,7 +935,8 @@ export function ZkUsdEngineContract(args: {
         ZkUsdEngineMethodCodes.GovUpdateCollateralRatio, // define a new code in your engine
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof
+        resolutionProof,
+        resolutionWitness
       );
 
       // Step 2: execute the collateral ratio update
@@ -929,11 +956,7 @@ export function ZkUsdEngineContract(args: {
       });
       this.protocolDataPacked.set(updatedProtocolData.pack());
 
-      // Step 4: mark the proof as executed
-      this.markProofAsExecuted(proof);
-
-
-      // Step 5: emit an event
+      // Step 4: emit an event
       this.emitEvent(
         'CollateralRatioUpdated',
         new CollateralRatioUpdatedEvent({
@@ -945,90 +968,12 @@ export function ZkUsdEngineContract(args: {
       Provable.log('done.');
     }
 
-    // @method async govStopProtocol(
-    //   resolutionProgramVk: VerificationKey,
-    //   resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-    //   resolutionProof: ZkusdProtocolUpdateProof
-    // ) {
-    //   const gov = new GovernmentClass(zkUsdGovernmentAddress);
-    //   Provable.log('governance address', zkUsdGovernmentAddress);
-    //   // TODO: do we require the contract to also be checked against
-    //   // an onchain pinned vkh
-    //   const govAcceptance = await gov.canExecuteGovResolution(
-    //     ZkUsdEngineMethodCodes.GovStopProtocol,
-    //     resolutionProgramVk,
-    //     resolutionProgramVkhWitness,
-    //     resolutionProof
-    //   );
-    //   Provable.log('govAcceptance', govAcceptance);
-    //   govAcceptance.assertTrue(
-    //     'ZkUSD government contract disallowed the update proof.'
-    //   );
-
-    //   resolutionProof.verify(resolutionProgramVk);
-
-    //   resolutionProof.publicOutput.isFinalProof.assertEquals(
-    //     YesItIsAFinalZkusdProtocolUpdateProof,
-    //     'The protocol update proof is not final'
-    //   );
-
-    //   Provable.log('blockchain state check');
-    //   const blockchainState = await buildBlockchainState(this);
-    //   // log precoditions and blockchainstate
-    //   Provable.log('blockchainState', blockchainState);
-    //   Provable.log(
-    //     'resolutionProof.publicInput.blockchainPreconditions',
-    //     resolutionProof.publicInput.blockchainPreconditions
-    //   );
-    //   requireBlockchainPreconditions({
-    //     preconditions: resolutionProof.publicInput.blockchainPreconditions,
-    //     blockchainState,
-    //   });
-
-    //   Provable.log('protocol state check');
-    //   const protocolState = await buildProtocolState(this);
-    //   Provable.log(
-    //     'resolutionProof.publicInput.protocolUpdatePreconditions',
-    //     resolutionProof.publicInput.protocolUpdatePreconditions
-    //   );
-    //   Provable.log('protocolState', protocolState);
-    //   theUpdatePreconditionsMatchProtocolState({
-    //     preconditions: resolutionProof.publicInput.protocolUpdatePreconditions,
-    //     protocolState: protocolState,
-    //   }).assertTrue();
-
-    //   // -- execute --
-
-    //   const operation = resolutionProof.publicInput.protocolUpdateOperation;
-    //   const newEmergencyStop = operation.emergencyStop.execute(
-    //     protocolState.emergencyStop
-    //   );
-
-    //   // --
-
-    //   // apply the new state
-    //   const protocolData = ProtocolData.unpack(
-    //     this.protocolDataPacked.getAndRequireEquals()
-    //   );
-    //   protocolData.emergencyStop = newEmergencyStop;
-    //   this.protocolDataPacked.set(protocolData.pack());
-
-    //   // Nullify the proof
-    //   markProofAsExecuted(this, resolutionProof);
-
-    //   // Emit the EmergencyStopToggled event
-    //   this.emitEvent(
-    //     'EmergencyStopToggled',
-    //     new EmergencyStopToggledEvent({
-    //       resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
-    //       emergencyStop: Bool(true),
-    //     })
-    //   );
-    // }
     @method async govUpdateOracleWhitelist(whitelist: OracleWhitelist,
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
-      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness) {
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionWitness: ZkusdEngineUpdateWitness
+    ) {
       //Precondition
       const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
 
@@ -1038,7 +983,8 @@ export function ZkUsdEngineContract(args: {
         ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof
+        resolutionProof,
+        resolutionWitness
       );
       // check if whitelist matches the proof
       const whitelisthash = Poseidon.hash(OracleWhitelist.toFields(whitelist));
@@ -1061,10 +1007,51 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    // NOTE: Until we're sure that it is secure
+    // @method async govCRITICALUpdateEngineVerificationKey (
+    //   newVerificationKey: VerificationKey,
+    //   resolutionProof: ZkusdProtocolUpdateProof,
+    //   resolutionProgramVk: VerificationKey,
+    //   resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness) {
+    //   //Precondition
+
+    //   // TODO maybe we could save the old vkh in the state to then
+    //   // verify the precondition
+
+    //   const {
+    //     operation,
+    //   } = await this.runGovUpdateCommon(
+    //     ZkUsdEngineMethodCodes.GovCRITICALUpdateVerificationKey,
+    //     resolutionProgramVk,
+    //     resolutionProgramVkhWitness,
+    //     resolutionProof
+    //   );
+
+    //   // this is fine, the operation will ignore its argument
+    //   const newProofsVKH = operation.newVerificationKey.execute(
+    //     Field.from(0)
+    //   );
+    //   newProofsVKH.assertNotEquals(Field.from(0));
+
+    //   // CRITICAL TODO is this even secure assert vk hash matches the proof
+    //   newVerificationKey.hash.assertEquals(newProofsVKH);
+
+    //   this.account.verificationKey.set(newVerificationKey);
+
+    //   this.emitEvent('VerificationKeyUpdated',
+    //     new VerificationKeyUpdatedEvent({
+    //       resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
+    //       newVerificationKeyHash: newProofsVKH,
+    //     })
+    //   );
+    // }
+
     @method async govUpdateConfigMerkleRoot(
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
-      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness) {
+      resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
+      resolutionWitness: ZkusdEngineUpdateWitness
+    ) {
 
       const {
         operation,
@@ -1072,7 +1059,8 @@ export function ZkUsdEngineContract(args: {
         ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
         resolutionProgramVk,
         resolutionProgramVkhWitness,
-        resolutionProof
+        resolutionProof,
+        resolutionWitness
       );
 
       const oldConfigMerkleRoot = this.configMerkleRoot.getAndRequireEquals();
@@ -1114,7 +1102,7 @@ export function ZkUsdEngineContract(args: {
         new OracleWhitelistUpdatedEvent({
           resolutionIndex: NO_RESOLUTION_INDEX,
           previousHash,
-        newHash: updatedWhitelistHash,
+          newHash: updatedWhitelistHash,
         })
       );
     }
@@ -1245,10 +1233,6 @@ export function ZkUsdEngineContract(args: {
       await this.ensureAdminSignature();
       return Bool(true);
     }
-
-    markProofAsExecuted(
-      proof: ZkusdProtocolUpdateProof
-    ) {}
 
     async buildProtocolState(
     ): Promise<ZkusdUpdatedProtocolState> {

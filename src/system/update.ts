@@ -2,6 +2,7 @@ import {
   Bool,
   Field,
   MerkleWitness,
+  Poseidon,
   Proof,
   Provable,
   Struct,
@@ -10,6 +11,7 @@ import {
 import { BooleanPrecondition } from './preconditions.js';
 import { BoolOperation, FieldOperation, UInt8Operation } from './update-operations.js';
 import { CurrentSlot } from 'o1js/dist/node/lib/mina/precondition.js';
+import { findNextResolutionIndexFromRoot } from './engine-update-witness.js';
 
 export const ZKUSD_UPDATE_TREE_HEIGHT = 32;
 
@@ -29,6 +31,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   liquidationBonusRatio: UInt8Operation,
   oracleWhitelistHash: FieldOperation,
   configMerkleRoot: FieldOperation,
+  newVerificationKey: FieldOperation,
   // add more
   fieldBitMask: Field, // --- informs which of the other fields are actually set.
 }) {
@@ -40,6 +43,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       liquidationBonusRatio: UInt8Operation.mkNoop(),
       oracleWhitelistHash: FieldOperation.mkNoop(),
       configMerkleRoot: FieldOperation.mkNoop(),
+      newVerificationKey: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(1),
     });
   }
@@ -54,6 +58,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       oracleWhitelistHash: FieldOperation.mkNoop(),
       configMerkleRoot: FieldOperation.mkNoop(),
       collateralRatio: operation,
+      newVerificationKey: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(2),
     });
   }
@@ -61,16 +66,29 @@ export class ZkusdProtocolUpdateOperation extends Struct({
 
 export const mkProtocolUpdateInput = (
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
-  args?: {
+  args: {
+    resolutionIndex?: number;
+    resolutionNullifierRoot?: Field;
     blockchainPreconditions?: MinaBlockchainPreconditions;
     protocolPreconditions?: ZkusdUpdatePreconditions;
     // blockchainPreconditions?: MinaBlockchainPreconditions;
   }
 ): ZkusdProtocolUpdateInput => {
+
+  let resolutionIndex: number;
+
+  if (args.resolutionIndex !== undefined) {
+    resolutionIndex = args.resolutionIndex;
+  } else if (args.resolutionNullifierRoot !== undefined) {
+    resolutionIndex = findNextResolutionIndexFromRoot(args.resolutionNullifierRoot);
+  } else {
+    throw new Error('Either resolutionIndex or resolutionNullifierRoot must be set');
+  }
+
   const blockchainPreconditions =
     args?.blockchainPreconditions ?? MinaBlockchainPreconditions.always();
   return new ZkusdProtocolUpdateInput({
-    govResolutionIndex: UInt32.from(0),
+    govResolutionIndex: UInt32.from(resolutionIndex),
     protocolUpdatePreconditions: args?.protocolPreconditions ?? {
       emergencyStop: BooleanPrecondition.mkUnconstrained(),
       fieldBitMask: Field.from(0),
@@ -165,6 +183,10 @@ export class ZkusdProtocolUpdateInput extends Struct({
   blockchainPreconditions: MinaBlockchainPreconditions,
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {}
+
+export function zkusdProtocolUpdateInputHash(updateInput: ZkusdProtocolUpdateInput): Field {
+  return Poseidon.hash(zkusdProtocolUpdateInputToFields(updateInput));
+}
 
 // The value not that important only `YesItIsAFinalZkusdProtocolUpdateProof` will be
 // accepted as the final proof.

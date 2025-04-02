@@ -101,6 +101,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       liquidationBonusRatio: UInt8Operation.mkSetTo(UInt8.zero),
       configMerkleRoot: FieldOperation.mkNoop(),
       oracleWhitelistHash: FieldOperation.mkNoop(),
+      newVerificationKey: FieldOperation.mkNoop(),
       fieldBitMask: Field.from(2),
     };
     const differentInputFields =
