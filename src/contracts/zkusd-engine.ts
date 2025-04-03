@@ -59,6 +59,7 @@ import {
 } from '../system/governance.js';
 import {
   NO_RESOLUTION_INDEX,
+  RollingBitSetPacked,
   YesItIsAFinalZkusdProtocolUpdateProof,
   ZkusdProtocolUpdateOperation,
   ZkusdUpdateMinaBlockchainState,
@@ -67,7 +68,6 @@ import {
   theUpdatePreconditionsMatchProtocolState,
 } from '../system/update.js';
 import { ZkusdProtocolUpdateProof } from '../system/update-proof.js';
-import { ZkusdEngineUpdateWitness, computeResolutionProofNullifier, getInitialZkusdResolutionNullifierTreeRoot } from '../system/engine-update-witness.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -86,6 +86,7 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
 }
 export const MinimalViableCollateralRatio: UInt8 = UInt8.from(115);
 export const MinimalViablePriceValidity: UInt8 = UInt8.one;
+
 
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
@@ -107,7 +108,7 @@ export function ZkUsdEngineContract(args: {
     @state(Field) configMerkleRoot = State<Field>(); // Merkle root of the contract offchain state. (not used yet)
 
     // -- government data --
-    @state(Field) govResolutionNullifierTreeRoot = State<Field>(); // Pins the tree of executed gov proofs.
+    @state(RollingBitSetPacked) govResolutionNullifierBitset = State<RollingBitSetPacked>(); // Rolling bitset to track used nullifiers)
 
     static ZKUSD_TOKEN_ADDRESS = zkUsdTokenAddress; // The address of the zkUSD token contract
     static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3); // The minimum number of valid oracle submissions required to update the price
@@ -172,8 +173,9 @@ export function ZkUsdEngineContract(args: {
           liquidationBonusRatio: args.liquidationBonusRatio,
         }).pack()
       );
-      this.govResolutionNullifierTreeRoot.set(getInitialZkusdResolutionNullifierTreeRoot());
-      Provable.log('ZkUsdEngine deployed',getInitialZkusdResolutionNullifierTreeRoot())
+      this.govResolutionNullifierBitset.set(
+        RollingBitSetPacked.empty()
+      );
     }
 
     //Blocks the updating of state of the token accounts
@@ -699,17 +701,16 @@ export function ZkUsdEngineContract(args: {
      */
     applyResolutionProof(
       resolutionProof: ZkusdProtocolUpdateProof,
-      resolutionWitness: ZkusdEngineUpdateWitness) {
-      const updateHashRoot = this.govResolutionNullifierTreeRoot.getAndRequireEquals();
+    ) {
+      const nullifierBitset = this.govResolutionNullifierBitset.getAndRequireEquals();
 
-      const newRootHash = computeResolutionProofNullifier(
+      const newNullifierBitSet = computeResolutionProofNullifier(
         resolutionProof,
-        resolutionWitness,
-        updateHashRoot);
+        nullifierBitset
+      );
+      Provable.log("New nullifier bitset root hash: ", newNullifierBitSet.rollingBitSetPacked);
 
-      Provable.log("New nullifier root hash: ", newRootHash);
-
-      this.govResolutionNullifierTreeRoot.set(newRootHash);
+      this.govResolutionNullifierBitset.set(newNullifierBitSet);
     }
 
 
@@ -722,7 +723,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
       resolutionProof: ZkusdProtocolUpdateProof,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ): Promise<{
       protocolDataBefore: ProtocolData;
       operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
@@ -732,7 +732,6 @@ export function ZkUsdEngineContract(args: {
       // 0. Has this been already used
       this.applyResolutionProof(
         resolutionProof,
-        resolutionWitness
       );
 
       // 1. Verify governance acceptance
@@ -786,7 +785,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
       resolutionProof: ZkusdProtocolUpdateProof,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Reuse the shared logic
       const {
@@ -798,7 +796,6 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
-        resolutionWitness
       );
 
       // Execute the update on the emergencyStop field
@@ -830,7 +827,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateValidPriceBlockCount')
@@ -843,7 +839,6 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
-        resolutionWitness
       );
 
       // Step 2: execute the collateral ratio update
@@ -879,7 +874,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateLiquidationBonusRatio')
@@ -892,7 +886,6 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
-        resolutionWitness,
       );
 
       // Step 2: execute the collateral ratio update
@@ -928,11 +921,9 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateCollateralRatio')
-      Provable.log('nullifierrott', this.govResolutionNullifierTreeRoot.getAndRequireEquals())
       Provable.log('resoltionIndex', resolutionProof.publicInput.govResolutionIndex)
       const {
         protocolDataBefore,
@@ -943,7 +934,6 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
-        resolutionWitness
       );
 
       // Step 2: execute the collateral ratio update
@@ -979,7 +969,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
       //Precondition
       const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
@@ -991,7 +980,6 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
-        resolutionWitness
       );
       // check if whitelist matches the proof
       const whitelisthash = Poseidon.hash(OracleWhitelist.toFields(whitelist));
@@ -1057,7 +1045,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof,
       resolutionProgramVk: VerificationKey,
       resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-      resolutionWitness: ZkusdEngineUpdateWitness
     ) {
 
       const {
@@ -1067,7 +1054,6 @@ export function ZkUsdEngineContract(args: {
         resolutionProgramVk,
         resolutionProgramVkhWitness,
         resolutionProof,
-        resolutionWitness
       );
 
       const oldConfigMerkleRoot = this.configMerkleRoot.getAndRequireEquals();
@@ -1270,4 +1256,32 @@ export function ZkUsdEngineContract(args: {
   }
 
   return ZkUsdEngine;
+}
+
+/**
+ * Ensures the provided update proof has not been used, marks it as used, and returns the updated bitset.
+ * It may so happen that the proof its gov resolution index is too small or too big to shift forward.
+ * Assume the following: `GovResolutionBufferCapacity = 4` and `GovResolutionShiftBufferStep = 2`,
+ * Resolutions with indices 0,1,x,3 were already set, and you setting one with index 5.
+ * After the operation the bitset buffer will contain: x,3,x,5.
+ * If you tried to set 6 it would have failed. 6 >= 4+2.
+ */
+export function computeResolutionProofNullifier(
+  resolutionProof: ZkusdProtocolUpdateProof,
+  currentBitset: RollingBitSetPacked,
+): RollingBitSetPacked {
+
+  const index = resolutionProof.publicInput.govResolutionIndex;
+
+  const rb = currentBitset.unpack();
+
+  rb.isTooSmall(index).assertFalse(
+    "The resolution index is too small to be used. Check the current nullifier buffer shift.");
+
+  rb.isTooBig(index).assertFalse(
+    "The resolution index is too big to be used. Check the current nullifier buffer shift.");
+
+  const ret = rb.setShiftOnOverflow(index).pack();
+
+  return ret;
 }

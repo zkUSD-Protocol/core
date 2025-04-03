@@ -1,4 +1,4 @@
-import { AccountUpdate, Poseidon, PrivateKey, Provable, Signature, UInt8 } from 'o1js';
+import { AccountUpdate, PrivateKey, Provable, Signature, UInt8 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 
@@ -17,13 +17,11 @@ import {
 import { UInt8Operation } from '../../../../system/update-operations.js';
 import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../proofs/gov/admin-signature.js';
 import { ZkusdProtocolUpdateProof } from '../../../../system/update-proof.js';
-import { Field } from 'o1js/dist/node/lib/provable/field.js';
-import { generateNextUpdateWitnessFromRoot } from '../../../../system/engine-update-witness.js';
+import { measurePerformance } from '../utils.js';
 
 describe('zkUSD Government Admin Signature Tests', () => {
   let testHelper: TestHelper<'local'>;
   let previousInput: ZkusdProtocolUpdateInput;
-  let previousRoot: Field;
   const newAdminKeypair = PrivateKey.randomKeypair();
 
   async function createSigProof(updateInput: any, privateKey: PrivateKey) {
@@ -35,7 +33,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
     const proofResult = await AdminSignatureZkusdProtocolUpdateProgram.create(
       updateInput,
       signature,
-      privateKey.toPublicKey(),
+      privateKey.toPublicKey()
     );
 
     return {
@@ -86,45 +84,51 @@ describe('zkUSD Government Admin Signature Tests', () => {
 
   it('should allow the update proof to change the collateral ratio', async () => {
     // Confirm the protocol is currently running
-    Provable.log('fetching engine account')
+    Provable.log('fetching engine account');
     await testHelper.mina.fetchMinaAccount(testHelper.engine.contract.address, {
       force: true,
     });
     let isStopped = testHelper.engine.contract.isEmergencyStopped().toBoolean();
     assert.equal(isStopped, false, 'Protocol should initially be running');
-    Provable.log('protocol is not stopped, able to continue')
+    Provable.log('protocol is not stopped, able to continue');
 
-    const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-    if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
-    Provable.log('resolution nullifier root', resolutionNullifierRoot);
-    previousRoot = resolutionNullifierRoot;
+    const govResolutionNullifierBitset =
+      await testHelper.engine.contract.govResolutionNullifierBitset.fetch();
+    if (!govResolutionNullifierBitset)
+      throw new Error('govResolutionNullifierTreeRoot is undefined');
+    Provable.log('resolution nullifier root', govResolutionNullifierBitset);
 
-    Provable.log('preparing update input')
+    Provable.log('preparing update input');
 
     const updateInput = mkProtocolUpdateInput(
       ZkusdProtocolUpdateOperation.collateralRatio(
         UInt8Operation.mkSetTo(UInt8.from(155))
       ),
-      { resolutionNullifierRoot }
+      { govResolutionNullifierBitset }
     );
     previousInput = updateInput;
 
-    Provable.log('creating the proof')
     const { sideLoadedProof, verificationKey, witness } =
-      await createAdminSigProof(updateInput);
+      await measurePerformance('Creating the proof', async () => {
+        return createAdminSigProof(updateInput);
+      });
 
-    Provable.log('including the transaction to change the collateral ratio')
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.engine.contract.govUpdateCollateralRatio(
-          sideLoadedProof,
-          verificationKey,
-          witness,
-          generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
-        );
-      },
-      { name: 'Alice changes the collateral ratio using an admin signature update' }
+    await measurePerformance(
+      'including the transaction to change the collateral ratio',
+      async () =>
+        await testHelper.includeTx(
+          testHelper.agents.alice.keys,
+          async () => {
+            await testHelper.engine.contract.govUpdateCollateralRatio(
+              sideLoadedProof,
+              verificationKey,
+              witness
+            );
+          },
+          {
+            name: 'Alice changes the collateral ratio using an admin signature update',
+          }
+        )
     );
 
     // Verify the new protocol ratio
@@ -132,11 +136,14 @@ describe('zkUSD Government Admin Signature Tests', () => {
       force: true,
     });
     const protocolData = await testHelper.engine.contract.getProtocolData();
-    assert.equal(protocolData.collateralRatio.toNumber(), 155, 'Collateral ratio should be 155');
+    assert.equal(
+      protocolData.collateralRatio.toNumber(),
+      155,
+      'Collateral ratio should be 155'
+    );
   });
 
-  it('should not allow to resuse the update proof', async () => {
-
+  it('should not allow to reuse the update proof', async () => {
     // Confirm the protocol is currently running
     await testHelper.mina.fetchMinaAccount(testHelper.engine.contract.address, {
       force: true,
@@ -144,56 +151,69 @@ describe('zkUSD Government Admin Signature Tests', () => {
     let isStopped = testHelper.engine.contract.isEmergencyStopped().toBoolean();
     assert.equal(isStopped, false, 'Protocol should initially be running');
 
-    const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-    if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
+    const govResolutionNullifierBitset =
+      await testHelper.engine.contract.govResolutionNullifierBitset.fetch();
+    if (!govResolutionNullifierBitset)
+      throw new Error('govResolutionNullifierTreeRoot is undefined');
 
     const { sideLoadedProof, verificationKey, witness } =
-      await createAdminSigProof(previousInput);
+      await measurePerformance('Creating the proof', async () =>
+        createAdminSigProof(previousInput)
+      );
 
     assert.rejects(async () => {
       // Execute transaction to change the  collateral ratio
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          await testHelper.engine.contract.govUpdateCollateralRatio(
-            sideLoadedProof,
-            verificationKey,
-            witness,
-            generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
-          );
-        },
-        { name: 'Alice tries to change the collateral ratio using the same admin signature update.' }
+      await measurePerformance(
+        'including the transaction to change the collateral ratio',
+        async () =>
+          await testHelper.includeTx(
+            testHelper.agents.alice.keys,
+            async () => {
+              await testHelper.engine.contract.govUpdateCollateralRatio(
+                sideLoadedProof,
+                verificationKey,
+                witness
+              );
+            },
+            {
+              name: 'Alice tries to change the collateral ratio using the same admin signature update.',
+            }
+          )
       );
     });
 
     // additionally it should try with the previous root as well
     assert.rejects(async () => {
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          await testHelper.engine.contract.govUpdateCollateralRatio(
-            sideLoadedProof,
-            verificationKey,
-            witness,
-            generateNextUpdateWitnessFromRoot(previousRoot)
-          );
-        },
-        { name: 'Alice tries again to change the collateral ratio using the same admin signature update.' }
+      await measurePerformance(
+        'including the transaction to change the collateral ratio',
+        async () =>
+          await testHelper.includeTx(
+            testHelper.agents.alice.keys,
+            async () => {
+              await testHelper.engine.contract.govUpdateCollateralRatio(
+                sideLoadedProof,
+                verificationKey,
+                witness
+              );
+            },
+            {
+              name: 'Alice tries again to change the collateral ratio using the same admin signature update.',
+            }
+          )
       );
     });
-
   });
 
   // it('should not allow the update proof without admin sig to change the collateral ratio', async () => {
 
-  //   const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-  //   if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
+  //   const govResolutionNullifierBitset = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
+  //   if (!govResolutionNullifierBitset) throw new Error('govResolutionNullifierTreeRoot is undefined');
 
   //   const updateInput = mkProtocolUpdateInput(
   //     ZkusdProtocolUpdateOperation.collateralRatio(
   //       UInt8Operation.mkSetTo(UInt8.from(150))
   //     ),
-  //     { resolutionNullifierRoot }
+  //     { govResolutionNullifierBitset }
   //   );
 
   //   const { sideLoadedProof, verificationKey, witness } =
@@ -208,7 +228,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
   //           sideLoadedProof,
   //           verificationKey,
   //           witness,
-  //           generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
+  //           generateNextUpdateWitnessFromRoot(govResolutionNullifierBitset)
   //         );
   //       },
   //       { name: 'Alice attepts to change the collateral ratio without admin signature' }
@@ -218,14 +238,14 @@ describe('zkUSD Government Admin Signature Tests', () => {
 
   // it('should not allow the update proof with malformed signature messagedata', async () => {
 
-  //   const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-  //   if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
+  //   const govResolutionNullifierBitset = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
+  //   if (!govResolutionNullifierBitset) throw new Error('govResolutionNullifierTreeRoot is undefined');
 
   //   const updateInput = mkProtocolUpdateInput(
   //     ZkusdProtocolUpdateOperation.collateralRatio(
   //       UInt8Operation.mkSetTo(UInt8.from(150))
   //     ),
-  //     { resolutionNullifierRoot }
+  //     { govResolutionNullifierBitset }
   //   );
 
   //   const { sideLoadedProof, verificationKey, witness } =
@@ -248,7 +268,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
   //           sideLoadedProof,
   //           verificationKey,
   //           witness,
-  //           generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
+  //           generateNextUpdateWitnessFromRoot(govResolutionNullifierBitset)
   //         );
   //       },
   //       { name: 'Alice attempts to change the collateral ratio with malformed signature' }
@@ -365,4 +385,3 @@ describe('zkUSD Government Admin Signature Tests', () => {
   //   });
   // });
 });
-

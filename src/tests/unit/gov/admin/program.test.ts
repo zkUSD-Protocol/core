@@ -59,7 +59,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     const proof = await AdminSignatureZkusdProtocolUpdateProgram.create(
       updateInput,
       validSignature,
-      adminPublicKey,
+      adminPublicKey
     );
     console.log('Proving complete.');
 
@@ -126,7 +126,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       const programx = await AdminSignatureZkusdProtocolUpdateProgram.create(
         updateInput,
         signatureForDifferentData,
-        adminPublicKey,
+        adminPublicKey
       );
       verify(programx.proof, verificationKey);
     });
@@ -148,7 +148,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       await AdminSignatureZkusdProtocolUpdateProgram.create(
         updateInput,
         validSignature,
-        wrongPublicKey,
+        wrongPublicKey
       );
     });
     console.log('Proof failed as expected.');
@@ -174,7 +174,7 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
       const program = await AdminSignatureZkusdProtocolUpdateProgram.create(
         updateInput,
         corruptedSignature,
-        adminPublicKey,
+        adminPublicKey
       );
       verify(program.proof, verificationKey);
     });

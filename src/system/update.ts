@@ -1,7 +1,6 @@
 import {
   Bool,
   Field,
-  MerkleWitness,
   Poseidon,
   Proof,
   Provable,
@@ -15,13 +14,20 @@ import {
   UInt8Operation,
 } from './update-operations.js';
 import { CurrentSlot } from 'o1js/dist/node/lib/mina/precondition.js';
-import { findNextResolutionIndexFromRoot } from './engine-update-witness.js';
+import { createRollingBitSetClasses } from './rolling-bitset.js';
 
 export const ZKUSD_UPDATE_TREE_HEIGHT = 32;
-
 export const NO_RESOLUTION_INDEX = UInt32.from(4200000000);
 
-export const ZkusdUpdateWitness = MerkleWitness(ZKUSD_UPDATE_TREE_HEIGHT);
+export const GovResolutionBufferCapacity = 150;
+export const GovResolutionShiftBufferStep = 50;
+const {
+  RollingBitSet: RollingBitSet_,
+  RollingBitSetPacked: RollingBitSetPacked_,
+} = createRollingBitSetClasses(GovResolutionBufferCapacity, GovResolutionShiftBufferStep);
+
+export class RollingBitSet extends RollingBitSet_ {}
+export class RollingBitSetPacked extends RollingBitSetPacked_ {}
 
 export class ValidityRangeUInt32 extends Struct({
   firstValidBlock: UInt32,
@@ -68,24 +74,38 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   }
 }
 
+export const generateNextResolutionIndexFromBitSet = (
+  rollingBitSet: RollingBitSet
+): number => {
+  // if rolling bit set empty return zero
+  if (rollingBitSet.counter.equals(UInt32.zero).toBoolean()) {
+    return 0;
+  }
+  const highestNumberSet = rollingBitSet.getHighestNumberSetOrMinimal();
+  const nextResolutionIndex = highestNumberSet.add(1).toBigint();
+  return Number(nextResolutionIndex);
+}
+
 export const mkProtocolUpdateInput = (
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
   args: {
     resolutionIndex?: number;
-    resolutionNullifierRoot?: Field;
+    govResolutionNullifierBitset?: RollingBitSetPacked;
     blockchainPreconditions?: MinaBlockchainPreconditions;
     protocolPreconditions?: ZkusdUpdatePreconditions;
-    // blockchainPreconditions?: MinaBlockchainPreconditions;
   }
 ): ZkusdProtocolUpdateInput => {
+
   let resolutionIndex: number;
 
   if (args.resolutionIndex !== undefined) {
     resolutionIndex = args.resolutionIndex;
-  } else if (args.resolutionNullifierRoot !== undefined) {
-    resolutionIndex = findNextResolutionIndexFromRoot(
-      args.resolutionNullifierRoot
-    );
+  } else if (args.govResolutionNullifierBitset !== undefined) {
+    if (args.govResolutionNullifierBitset.unpack().counter.greaterThan(UInt32.zero).toBoolean()) {
+      resolutionIndex = Number(args.govResolutionNullifierBitset.unpack().getHighestNumberSetOrMinimal().add(1).toBigint());
+    } else {
+      resolutionIndex = 0;
+    }
   } else {
     throw new Error(
       'Either resolutionIndex or resolutionNullifierRoot must be set'

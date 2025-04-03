@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { performance } from 'node:perf_hooks';
-import { Bool, Field, UInt32, ZkProgram } from 'o1js';
+import { Bool, Field, UInt32, UInt8, ZkProgram } from 'o1js';
 import { createRollingBitSetClasses } from '../../../system/rolling-bitset.js';
 
 // Create classes with specific params
@@ -16,40 +15,104 @@ const {
 // Helper: converts o1js Bool to JS boolean
 const b = (bool: Bool) => bool.toBoolean();
 
+test('getHighestNumberSetOrMinimal: no bits set => returns shift', () => {
+  const bs = new RollingBitSet({
+    counter: UInt32.from(0),
+    shift: UInt32.from(10),
+    highest: UInt8.from(0),
+    bitSet: Field.from(0),
+  });
+  const hnsom = bs.getHighestNumberSetOrMinimal();
+  assert.equal(hnsom.toBigint(), 10n, 'If no bits set, it should be shift itself');
+});
+
+test('getHighestNumberSetOrMinimal: single bit set => returns that bit', () => {
+  let bs = new RollingBitSet({
+    counter: UInt32.from(0),
+    shift: UInt32.from(10),
+    highest: UInt8.from(0),
+    bitSet: Field.from(0),
+  });
+  // set(15) => offset=5
+  bs = bs.set(UInt32.from(15));
+  const hnsom = bs.getHighestNumberSetOrMinimal();
+  assert.equal(hnsom.toBigint(), 15n, 'Should return the single bit set');
+});
+
+test('getHighestNumberSetOrMinimal: multiple bits => returns max set', () => {
+  let bs = new RollingBitSet({
+    counter: UInt32.from(0),
+    shift: UInt32.from(10),
+    highest: UInt8.from(0),
+    bitSet: Field.from(0),
+  });
+  // set(12) => offset=2
+  bs = bs.set(UInt32.from(12));
+  // set(17) => offset=7
+  bs = bs.set(UInt32.from(17));
+  // set(15) => offset=5
+  bs = bs.set(UInt32.from(15));
+  // The largest set is 17
+  const hnsom = bs.getHighestNumberSetOrMinimal();
+  assert.equal(hnsom.toBigint(), 17n, 'Highest should be the largest of {12,15,17}');
+});
+
+test('getHighestNumberSetOrMinimal: after shift => it updates correctly', () => {
+  let bs = RollingBitSet.empty()
+
+  bs = bs.set(UInt32.from(0));
+  bs = bs.set(UInt32.from(5));
+  assert.equal(bs.getHighestNumberSetOrMinimal().toBigint(), 5n);
+
+  bs = bs.setShiftOnOverflow(UInt32.from(150));
+
+  const hnsom1 = bs.getHighestNumberSetOrMinimal();
+  assert.equal(bs.shift.toBigint(), 50n);
+  assert.equal(hnsom1.toBigint(), 150n, 'After shift, no bits in [50..0], so highest offset=0 => absolute=shift=50');
+  assert.equal(bs.highest.value.toBigInt(), 100n, 'Highest should be 0 after shift');
+
+  bs = bs.set(UInt32.from(60));
+
+  const hnsom2 = bs.getHighestNumberSetOrMinimal();
+  assert.equal(hnsom2.toBigint(), 150n, 'Now the highest is still');
+});
+
+test('getHighestNumberSetOrMinimal: large shift but no bits => returns shift', () => {
+  const bs = new RollingBitSet({
+    counter: UInt32.from(0),
+    shift: UInt32.from(300), // Suppose we did multiple shift steps
+    highest: UInt8.from(0),
+    bitSet: Field.from(0),
+  });
+  // Because no bits set => highest=0 => result=shift=300
+  const hnsom = bs.getHighestNumberSetOrMinimal();
+  assert.equal(hnsom.toBigint(), 300n);
+});
+
+
 // --- Test: set() ---
 
 test('set: sets single bit in-range', () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
-
+  const bs = RollingBitSet.empty()
   const updated = bs.set(UInt32.from(149));
   assert.equal(updated.counter.toBigint(), 1n);
+  assert.equal(updated.getHighestNumberSetOrMinimal().toBigint(), 149n);
   assert.ok(b(updated.has(UInt32.from(149))));
   assert.ok(!b(updated.has(UInt32.from(6))));
 });
 
 test('set: sets 0', () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  const bs = RollingBitSet.empty()
 
   const updated = bs.set(UInt32.from(0));
   assert.equal(updated.counter.toBigint(), 1n);
+  assert.equal(updated.getHighestNumberSetOrMinimal().toBigint(), 0n);
   assert.ok(b(updated.has(UInt32.from(0))));
   assert.ok(!b(updated.has(UInt32.from(1))));
 });
 
 test('set: setting index 150 throws when shift = 0 and capacity = 150', () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  const bs = RollingBitSet.empty()
 
   assert.throws(() => {
     bs.set(UInt32.from(150)); // out of bounds: 0 + 150 = 150 (exclusive upper bound)
@@ -59,13 +122,11 @@ test('set: setting index 150 throws when shift = 0 and capacity = 150', () => {
 // --- Test: set() two bits ---
 
 test('set: sets two bits, same window', () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  const bs = RollingBitSet.empty()
 
   const updated = bs.set(UInt32.from(5)).set(UInt32.from(6));
+
+  assert.equal(updated.getHighestNumberSetOrMinimal().toBigint(), 6n);
 
   assert.equal(updated.counter.toBigint(), 2n);
   assert.ok(b(updated.has(UInt32.from(5))));
@@ -79,10 +140,12 @@ test('set: shifted window works', () => {
   const bs = new RollingBitSet({
     counter: UInt32.from(0),
     shift: UInt32.from(10),
+    highest: UInt8.from(0),
     bitSet: Field.from(0),
   });
 
   const updated = bs.set(UInt32.from(15)).set(UInt32.from(16));
+  assert.equal(updated.getHighestNumberSetOrMinimal().toBigint(), 16n);
 
   assert.equal(updated.counter.toBigint(), 2n);
   assert.ok(b(updated.has(UInt32.from(15))));
@@ -93,13 +156,11 @@ test('set: shifted window works', () => {
 // --- Test: setShiftOnOverflow does not shift when not needed ---
 
 test('setShiftOnOverflow: in range, no shift occurs', () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  const bs = RollingBitSet.empty()
 
   const updated = bs.setShiftOnOverflow(UInt32.from(149));
+
+  assert.equal(updated.getHighestNumberSetOrMinimal().toBigint(), 149n);
 
   assert.ok(b(updated.has(UInt32.from(149))));
   assert.equal(updated.shift.toBigint(), 0n);
@@ -112,11 +173,15 @@ test('setShiftOnOverflow: shifts window when out of range', () => {
   const bs = new RollingBitSet({
     counter: UInt32.from(0),
     shift: UInt32.from(150),
+    highest: UInt8.from(0),
     bitSet: Field.from(0),
   });
+  assert.equal(bs.getHighestNumberSetOrMinimal().toBigint(), 150n);
 
   // Use a number far enough to guarantee shifting occurs
-  const updated = bs.setShiftOnOverflow(UInt32.from(310)); // 310 + 50 - 1 = 359 > 150 + 201 = 351
+  const updated = bs.setShiftOnOverflow(UInt32.from(310));
+
+  assert.equal(updated.getHighestNumberSetOrMinimal().toBigint(), 310n);
 
   assert.ok(b(updated.has(UInt32.from(310))));
   assert.ok(updated.shift.toBigint() > 150n);
@@ -126,17 +191,15 @@ test('setShiftOnOverflow: shifts window when out of range', () => {
 // --- Test: multiple setShiftOnOverflow calls across shifts ---
 
 test('setShiftOnOverflow: handles multiple shift-triggering inserts', () => {
-  let bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  let bs = RollingBitSet.empty()
 
   bs = bs.setShiftOnOverflow(UInt32.from(150));
+  assert.equal(bs.getHighestNumberSetOrMinimal().toBigint(), 150n);
   const shift1 = bs.shift.toBigint();
   assert.ok(b(bs.has(UInt32.from(150))));
 
   bs = bs.setShiftOnOverflow(UInt32.from(200)); // Triggers another shift
+  assert.equal(bs.getHighestNumberSetOrMinimal().toBigint(), 200n);
   const shift2 = bs.shift.toBigint();
   assert.ok(b(bs.has(UInt32.from(200))));
   assert.ok(shift2 > shift1);
@@ -146,11 +209,7 @@ test('setShiftOnOverflow: handles multiple shift-triggering inserts', () => {
 test('setShiftOnOverflow: throws if index is still out of bounds after one shift', () => {
   const { RollingBitSet } = createRollingBitSetClasses(150, 50);
 
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  let bs = RollingBitSet.empty()
 
   // Index 201 is out of range even after a single shift (max is 200)
   assert.throws(() => {
@@ -166,6 +225,7 @@ test('pack/unpack roundtrip preserves data', () => {
   let bs = new RollingBitSet({
     counter: UInt32.from(2),
     shift: UInt32.from(100),
+    highest: UInt8.from(0),
     bitSet: Field.from(0),
   });
 
@@ -178,16 +238,13 @@ test('pack/unpack roundtrip preserves data', () => {
   assert.ok(b(unpacked.has(UInt32.from(105))));
   assert.equal(unpacked.counter.toBigint(), bs.counter.toBigint());
   assert.equal(unpacked.shift.toBigint(), bs.shift.toBigint());
+  assert.ok(unpacked.highest.value.equals(bs.highest.value).toBoolean());
+  assert.ok(unpacked.getHighestNumberSetOrMinimal().equals(bs.getHighestNumberSetOrMinimal()).toBoolean());
 });
 // --- Test: pack of default struct is consistent ---
 
 test('pack: default struct produces a Field with expected bit length', () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
-
+  const bs = RollingBitSet.empty()
   const packed = bs.pack().rollingBitSetPacked;
 
   // There should be exactly 254 meaningful bits encoded (32 + 31 + 150)
@@ -198,11 +255,7 @@ test('pack: default struct produces a Field with expected bit length', () => {
 // --- Test: unpack of packed empty struct matches original ---
 
 test('unpack: round-trip for default struct matches original', () => {
-  const original = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  const original = RollingBitSet.empty()
 
   const packed = original.pack();
   const unpacked = packed.unpack();
@@ -215,11 +268,7 @@ test('unpack: round-trip for default struct matches original', () => {
 // --- Test: pack/unpack after multiple .set() calls ---
 
 test('pack/unpack: after multiple set calls retains bits', () => {
-  let bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  let bs = RollingBitSet.empty()
 
   bs = bs.set(UInt32.from(5)).set(UInt32.from(6)).set(UInt32.from(10));
   const packed = bs.pack();
@@ -239,6 +288,7 @@ test('pack/unpack: custom shift + counter preserved', () => {
     counter: UInt32.from(42),
     shift: UInt32.from(77),
     bitSet: Field.from(2 ** 5), // only bit 5 set
+    highest: UInt8.from(77 + 2 ** 5)
   });
 
   const packed = bs.pack();
@@ -258,6 +308,7 @@ test('pack/unpack: last valid bit in range is preserved', () => {
     counter: UInt32.from(0),
     shift: UInt32.from(0),
     bitSet: Field.from(0),
+    highest: UInt8.from(0)
   }).set(lastBit);
 
   const packed = bs.pack();
@@ -317,11 +368,8 @@ const timed = async (label: string, fn: () => Promise<any>) => {
 
 // ✅ Test proving normal .set()
 test('zkprogram: set: sets single bit in-range', async () => {
-  const bs = new RollingBitSet({
-    counter: UInt32.from(0),
-    shift: UInt32.from(0),
-    bitSet: Field.from(0),
-  });
+  const bs = RollingBitSet.empty()
+
   const bsp = bs.pack();
 
   const proof = await timed('Proving set()', () =>
@@ -341,8 +389,10 @@ test('zkprogram: setShiftOnOverflow shifts & proves correctly', async () => {
   const bs = new RollingBitSet({
     counter: UInt32.from(0),
     shift: UInt32.from(100),
+    highest: UInt8.from(0),
     bitSet: Field.from(0),
   });
+
   const bsp = bs.pack();
 
   // Use a number guaranteed to trigger a shift

@@ -1,4 +1,4 @@
-import { Struct, Field, UInt32, Bool, Provable } from 'o1js';
+import { Struct, Field, UInt32, Bool, Provable, UInt8 } from 'o1js';
 import { Gadgets } from 'o1js';
 
 /**
@@ -14,7 +14,8 @@ export function createRollingBitSetClasses(bitsetCapacity: number, shiftStep: nu
   // Validate constraints
   const counterBits = 32;
   const shiftBits = 31;
-  const maxBitsetBits = 254 - counterBits - shiftBits; // total bits in a Field minus overhead
+  const highestNumberSetBits = 8;
+  const maxBitsetBits = 254 - counterBits - shiftBits - highestNumberSetBits; // total bits in a Field minus overhead
 
   if (bitsetCapacity > maxBitsetBits) {
     throw new Error(`Bitset capacity exceeds maximum of ${maxBitsetBits} bits`);
@@ -27,17 +28,29 @@ export function createRollingBitSetClasses(bitsetCapacity: number, shiftStep: nu
   class RollingBitSetClass extends Struct({
     counter: UInt32,
     shift: UInt32,
+    highest: UInt8,
     bitSet: Field,
   }) {
     static COUNTER_BITS = counterBits;
     static SHIFT_BITS = shiftBits;
+    static HIGHEST_BITS = highestNumberSetBits;
     static BITSET_BITS = bitsetCapacity;
     static SHIFT_STEP = shiftStep;
+
+    static empty(): RollingBitSetClass {
+      return new RollingBitSetClass({
+        counter: UInt32.from(0),
+        shift: UInt32.from(0),
+        highest: UInt8.from(0),
+        bitSet: Field.from(0),
+      });
+    }
 
     packField(): Field {
       return Field.fromBits([
         ...this.counter.value.toBits(RollingBitSetClass.COUNTER_BITS),
         ...this.shift.value.toBits(RollingBitSetClass.SHIFT_BITS),
+        ...this.highest.value.toBits(RollingBitSetClass.HIGHEST_BITS),
         ...this.bitSet.toBits(RollingBitSetClass.BITSET_BITS),
       ]);
     }
@@ -64,26 +77,28 @@ export function createRollingBitSetClasses(bitsetCapacity: number, shiftStep: nu
 
       const counterBitsArr = readBits(RollingBitSetClass.COUNTER_BITS);
       const shiftBitsArr = readBits(RollingBitSetClass.SHIFT_BITS);
+      const highestBitsArr = readBits(RollingBitSetClass.HIGHEST_BITS);
       const bitSetBitsArr = readBits(RollingBitSetClass.BITSET_BITS);
 
       const counter = UInt32.Unsafe.fromField(Field.fromBits(counterBitsArr));
       const shift = UInt32.Unsafe.fromField(Field.fromBits(shiftBitsArr));
+      const highest = UInt8.Unsafe.fromField(Field.fromBits(highestBitsArr));
       const bitSet = Field.fromBits(bitSetBitsArr);
 
-      return new RollingBitSetClass({ counter, shift, bitSet });
+      return new RollingBitSetClass({ counter, shift, highest, bitSet });
     }
 
     has(n: UInt32): Bool {
       const max = this.shift.add(RollingBitSetClass.BITSET_BITS).sub(1);
       n.assertLessThanOrEqual(
         max,
-        'Index ${n} out of bounds. Current maximum ${max}'
+        'The number is too high. Consult the bitset shift.'
       );
 
       const min = this.shift;
       n.assertGreaterThanOrEqual(
         min,
-        'Index ${n} out of bounds. Current minimum ${min}'
+        'The number is too low. Consult the bitset shift.'
       );
 
       const offset = n.sub(min);
@@ -132,11 +147,46 @@ export function createRollingBitSetClasses(bitsetCapacity: number, shiftStep: nu
       const newBitSet = Gadgets.or(this.bitSet, setMask, RollingBitSetClass.BITSET_BITS);
       const newCounter = this.counter.add(1);
 
+      const maybeNewHighest = n.sub(this.shift);
+
+      const highest = Provable.if(
+        maybeNewHighest.greaterThan(this.highest.toUInt32()),
+        maybeNewHighest,
+        this.highest.toUInt32()
+      );
+      highest.assertLessThan(
+        UInt32.from(RollingBitSetClass.BITSET_BITS),
+        "This is most likely a bug. The highest number set is out of bounds. Please report this issue."
+      );
+
       return new RollingBitSetClass({
         counter: newCounter,
+        highest: UInt8.Unsafe.fromField(highest.value),
         shift: this.shift,
         bitSet: newBitSet,
       });
+    }
+
+
+
+    isTooBig(n: UInt32): Bool {
+      const capacity = this.shift.add(RollingBitSetClass.BITSET_BITS).add(RollingBitSetClass.SHIFT_STEP);
+      return n.greaterThanOrEqual(capacity);
+    }
+
+    isTooSmall(n: UInt32): Bool {
+      const capacity = this.shift;
+      return n.lessThan(capacity);
+    }
+
+    /**
+     * getHighestNumberSetOrMinimal():
+     * Returns the highest number set or the minimal value of the current window,
+     * whichever is greater.
+     */
+    getHighestNumberSetOrMinimal(): UInt32 {
+      // current shift plus the highest
+      return this.shift.add(this.highest.toUInt32());
     }
 
     /**
@@ -161,9 +211,20 @@ export function createRollingBitSetClasses(bitsetCapacity: number, shiftStep: nu
       const shiftedBitSet = Gadgets.leftShift32(this.bitSet, step);
       const finalBitSet = Provable.if(outOfRange, shiftedBitSet, this.bitSet);
 
+      // the step is known to be less than 200
+      // so we can safely use UInt8
+      // if the current highest index is lower than the step
+      // we just zero it.
+      const newHighest = UInt8.Unsafe.fromField(Provable.if(
+        this.highest.greaterThan(UInt8.from(step)),
+        this.highest.value.sub(step),
+        Field.from(0)
+      ));
+
       const interim = new RollingBitSetClass({
         counter: this.counter,
         shift: UInt32.Unsafe.fromField(newShiftValue),
+        highest: newHighest,
         bitSet: finalBitSet,
       });
 
@@ -175,6 +236,10 @@ export function createRollingBitSetClasses(bitsetCapacity: number, shiftStep: nu
   class RollingBitSetPackedClass extends Struct({
     rollingBitSetPacked: Field,
   }) {
+    static empty(): RollingBitSetPackedClass {
+      return RollingBitSetClass.empty().pack();
+    }
+
     /**
      * Unpack -> instance of RollingBitSetClass
      */
