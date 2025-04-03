@@ -37,11 +37,12 @@ export function getInitialZkusdResolutionNullifierTreeRoot(): Field {
  * Ensures the provided update proof has not been used, marks it as used, and returns the updated Merkle root.
  * Enforces strict sequential usage (e.g., index 2 only after index 1 is used).
  */
-export function applyResolutionProof(
+export function computeResolutionProofNullifier(
   resolutionProof: ZkusdProtocolUpdateProof,
   resolutionWitness: ZkusdEngineUpdateWitness,
   currentRoot: Field
 ): Field {
+  Provable.log('computeResolutionProofNullifier enter');
   const previousIndex = resolutionWitness.previousWitness.calculateIndex();
   const currentIndex = resolutionWitness.currentWitness.calculateIndex();
 
@@ -49,43 +50,19 @@ export function applyResolutionProof(
   previousIndex.assertLessThanOrEqual(maxValidPreviousIndex);
 
   currentIndex.assertEquals(previousIndex.add(1));
-
   resolutionProof.publicInput.govResolutionIndex.value.assertEquals(currentIndex);
 
   Provable.log('check if current root matches previousIndexWitness');
   resolutionWitness.previousWitness.calculateRoot(Field(1)).assertEquals(currentRoot);
   Provable.log('current root does match previousIndexWitness, check the current');
   resolutionWitness.currentWitness.calculateRoot(Field(0)).assertEquals(currentRoot);
-  Provable.log('current root does match currentWitness, update the tree');
+  Provable.log('current root does match currentWitness');
 
-  return resolutionWitness.currentWitness.calculateRoot(Field(1));
+  const ret =  resolutionWitness.currentWitness.calculateRoot(Field(1));
+  Provable.log('computeResolutionProofNullifier exit');
+  return ret;
 }
 
-/**
- * Finds the next unused resolution index based solely on the Merkle root,
- * assuming the tree has a contiguous sequence of 1s starting at index 0.
- */
-export function findNextResolutionIndexFromRoot(root: Field): number {
-  const maxLeaves = 2 ** (ZKUSD_UPDATE_TREE_HEIGHT - 1);
-  let low = 1;
-  let high = maxLeaves - 1;
-
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const testTree = createZkusdResolutionNullifierTree(mid);
-    const testRoot = testTree.getRoot();
-
-    if (testRoot.equals(root)) {
-      return mid;
-    } else if (testRoot.lessThan(root)) {
-      low = mid + 1;
-    } else {
-      high = mid - 1;
-    }
-  }
-
-  throw new Error('Unable to resolve Merkle root to a valid next resolution index.');
-}
 
 /**
  * Generates the next valid ZkusdEngineUpdateWitness using only the current Merkle root.
@@ -101,4 +78,38 @@ export function generateNextUpdateWitnessFromRoot(root: Field): ZkusdEngineUpdat
     previousWitness: new ZkusdResolutionWitness(previousWitness),
     currentWitness: new ZkusdResolutionWitness(currentWitness),
   });
+}
+
+const MAX_LEAVES = 1 << (ZKUSD_UPDATE_TREE_HEIGHT - 1);
+
+/**
+ * Finds the next unused resolution index based solely on the Merkle root,
+ * assuming the tree has a contiguous sequence of 1s starting at index 0.
+ */
+export function findNextResolutionIndexFromRoot(root: Field): number {
+  console.log('findNextResolutionIndexFromRootLinear enter');
+
+  // Create an empty Merkle tree
+  const tree = new MerkleTree(ZKUSD_UPDATE_TREE_HEIGHT);
+
+  // Mark the 0th leaf as used, which corresponds to "next index" = 1.
+  tree.setLeaf(BigInt(0), Field(1));
+  if (tree.getRoot().equals(root)) {
+    console.log('findNextResolutionIndexFromRootLinear 1 exit');
+    return 1;
+  }
+
+  // Check subsequent indices: i in [2..(MAX_LEAVES)]
+  // Each “i” corresponds to marking leaf (i-1) as used.
+  for (let i = 2; i <= MAX_LEAVES; i++) {
+    // Mark leaf (i-1) as used
+    tree.setLeaf(BigInt(i - 1), Field(1));
+
+    if (tree.getRoot().equals(root)) {
+      console.log(`findNextResolutionIndexFromRootLinear ${i} exit`);
+      return i;
+    }
+  }
+
+  throw new Error('Unable to resolve Merkle root to a valid next resolution index.');
 }

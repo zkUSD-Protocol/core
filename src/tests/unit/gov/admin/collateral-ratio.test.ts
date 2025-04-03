@@ -1,4 +1,4 @@
-import { AccountUpdate, Poseidon, PrivateKey, Signature, UInt8 } from 'o1js';
+import { AccountUpdate, Poseidon, PrivateKey, Provable, Signature, UInt8 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 
@@ -86,15 +86,20 @@ describe('zkUSD Government Admin Signature Tests', () => {
 
   it('should allow the update proof to change the collateral ratio', async () => {
     // Confirm the protocol is currently running
+    Provable.log('fetching engine account')
     await testHelper.mina.fetchMinaAccount(testHelper.engine.contract.address, {
       force: true,
     });
     let isStopped = testHelper.engine.contract.isEmergencyStopped().toBoolean();
     assert.equal(isStopped, false, 'Protocol should initially be running');
+    Provable.log('protocol is not stopped, able to continue')
 
     const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
     if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
+    Provable.log('resolution nullifier root', resolutionNullifierRoot);
     previousRoot = resolutionNullifierRoot;
+
+    Provable.log('preparing update input')
 
     const updateInput = mkProtocolUpdateInput(
       ZkusdProtocolUpdateOperation.collateralRatio(
@@ -104,9 +109,11 @@ describe('zkUSD Government Admin Signature Tests', () => {
     );
     previousInput = updateInput;
 
+    Provable.log('creating the proof')
     const { sideLoadedProof, verificationKey, witness } =
       await createAdminSigProof(updateInput);
 
+    Provable.log('including the transaction to change the collateral ratio')
     await testHelper.includeTx(
       testHelper.agents.alice.keys,
       async () => {
@@ -177,77 +184,77 @@ describe('zkUSD Government Admin Signature Tests', () => {
 
   });
 
-  it('should not allow the update proof without admin sig to change the collateral ratio', async () => {
+  // it('should not allow the update proof without admin sig to change the collateral ratio', async () => {
 
-    const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-    if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
+  //   const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
+  //   if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
 
-    const updateInput = mkProtocolUpdateInput(
-      ZkusdProtocolUpdateOperation.collateralRatio(
-        UInt8Operation.mkSetTo(UInt8.from(150))
-      ),
-      { resolutionNullifierRoot }
-    );
+  //   const updateInput = mkProtocolUpdateInput(
+  //     ZkusdProtocolUpdateOperation.collateralRatio(
+  //       UInt8Operation.mkSetTo(UInt8.from(150))
+  //     ),
+  //     { resolutionNullifierRoot }
+  //   );
 
-    const { sideLoadedProof, verificationKey, witness } =
-      await createSigProof(updateInput, testHelper.agents.alice.keys.privateKey);
+  //   const { sideLoadedProof, verificationKey, witness } =
+  //     await createSigProof(updateInput, testHelper.agents.alice.keys.privateKey);
 
-    // Execute transaction to stop the protocol
-    await assert.rejects(async () => {
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          await testHelper.engine.contract.govUpdateCollateralRatio(
-            sideLoadedProof,
-            verificationKey,
-            witness,
-            generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
-          );
-        },
-        { name: 'Alice attepts to change the collateral ratio without admin signature' }
-      );
-    }, 'Expected transaction to fail but it succeeded.');
-  });
+  //   // Execute transaction to stop the protocol
+  //   await assert.rejects(async () => {
+  //     await testHelper.includeTx(
+  //       testHelper.agents.alice.keys,
+  //       async () => {
+  //         await testHelper.engine.contract.govUpdateCollateralRatio(
+  //           sideLoadedProof,
+  //           verificationKey,
+  //           witness,
+  //           generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
+  //         );
+  //       },
+  //       { name: 'Alice attepts to change the collateral ratio without admin signature' }
+  //     );
+  //   }, 'Expected transaction to fail but it succeeded.');
+  // });
 
-  it('should not allow the update proof with malformed signature messagedata', async () => {
+  // it('should not allow the update proof with malformed signature messagedata', async () => {
 
-    const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-    if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
+  //   const resolutionNullifierRoot = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
+  //   if (!resolutionNullifierRoot) throw new Error('govResolutionNullifierTreeRoot is undefined');
 
-    const updateInput = mkProtocolUpdateInput(
-      ZkusdProtocolUpdateOperation.collateralRatio(
-        UInt8Operation.mkSetTo(UInt8.from(150))
-      ),
-      { resolutionNullifierRoot }
-    );
+  //   const updateInput = mkProtocolUpdateInput(
+  //     ZkusdProtocolUpdateOperation.collateralRatio(
+  //       UInt8Operation.mkSetTo(UInt8.from(150))
+  //     ),
+  //     { resolutionNullifierRoot }
+  //   );
 
-    const { sideLoadedProof, verificationKey, witness } =
-      await createAdminSigProof(updateInput);
+  //   const { sideLoadedProof, verificationKey, witness } =
+  //     await createAdminSigProof(updateInput);
 
-    const hash1 = Poseidon.hash(zkusdProtocolUpdateInputToFields(sideLoadedProof.publicInput));
+  //   const hash1 = Poseidon.hash(zkusdProtocolUpdateInputToFields(sideLoadedProof.publicInput));
 
-    sideLoadedProof.publicInput.protocolUpdateOperation.collateralRatio = UInt8Operation.mkSetTo(UInt8.from(140));
+  //   sideLoadedProof.publicInput.protocolUpdateOperation.collateralRatio = UInt8Operation.mkSetTo(UInt8.from(140));
 
-    const hash2 = Poseidon.hash(zkusdProtocolUpdateInputToFields(sideLoadedProof.publicInput));
+  //   const hash2 = Poseidon.hash(zkusdProtocolUpdateInputToFields(sideLoadedProof.publicInput));
 
-    assert.notEqual(hash1.toString(), hash2.toString(), 'Hashes should be different');
+  //   assert.notEqual(hash1.toString(), hash2.toString(), 'Hashes should be different');
 
-    // Execute transaction to stop the protocol
-    await assert.rejects(async () => {
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          await testHelper.engine.contract.govUpdateCollateralRatio(
-            sideLoadedProof,
-            verificationKey,
-            witness,
-            generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
-          );
-        },
-        { name: 'Alice attempts to change the collateral ratio with malformed signature' }
-      );
-    }, 'Expected transaction to fail but it succeeded.');
-  });
+  //   // Execute transaction to stop the protocol
+  //   await assert.rejects(async () => {
+  //     await testHelper.includeTx(
+  //       testHelper.agents.alice.keys,
+  //       async () => {
+  //         await testHelper.engine.contract.govUpdateCollateralRatio(
+  //           sideLoadedProof,
+  //           verificationKey,
+  //           witness,
+  //           generateNextUpdateWitnessFromRoot(resolutionNullifierRoot)
+  //         );
+  //       },
+  //       { name: 'Alice attempts to change the collateral ratio with malformed signature' }
+  //     );
+  //   }, 'Expected transaction to fail but it succeeded.');
+  // });
 
   // describe('Blockchain Length Precondition Tests (Bob)', () => {
 

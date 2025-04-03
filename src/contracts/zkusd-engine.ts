@@ -67,7 +67,7 @@ import {
   theUpdatePreconditionsMatchProtocolState,
 } from '../system/update.js';
 import { ZkusdProtocolUpdateProof } from '../system/update-proof.js';
-import { ZkusdEngineUpdateWitness, applyResolutionProof, getInitialZkusdResolutionNullifierTreeRoot } from '../system/engine-update-witness.js';
+import { ZkusdEngineUpdateWitness, computeResolutionProofNullifier, getInitialZkusdResolutionNullifierTreeRoot } from '../system/engine-update-witness.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -173,6 +173,7 @@ export function ZkUsdEngineContract(args: {
         }).pack()
       );
       this.govResolutionNullifierTreeRoot.set(getInitialZkusdResolutionNullifierTreeRoot());
+      Provable.log('ZkUsdEngine deployed',getInitialZkusdResolutionNullifierTreeRoot())
     }
 
     //Blocks the updating of state of the token accounts
@@ -701,10 +702,12 @@ export function ZkUsdEngineContract(args: {
       resolutionWitness: ZkusdEngineUpdateWitness) {
       const updateHashRoot = this.govResolutionNullifierTreeRoot.getAndRequireEquals();
 
-      const newRootHash = applyResolutionProof(
+      const newRootHash = computeResolutionProofNullifier(
         resolutionProof,
         resolutionWitness,
         updateHashRoot);
+
+      Provable.log("New nullifier root hash: ", newRootHash);
 
       this.govResolutionNullifierTreeRoot.set(newRootHash);
     }
@@ -725,6 +728,7 @@ export function ZkUsdEngineContract(args: {
       operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
       resolutionProof: ZkusdProtocolUpdateProof; // we may need to return it to mark as executed
     }> {
+      Provable.log('runGovUpdateCommon');
       // 0. Has this been already used
       this.applyResolutionProof(
         resolutionProof,
@@ -774,6 +778,7 @@ export function ZkUsdEngineContract(args: {
       const operation = resolutionProof.publicInput.protocolUpdateOperation;
 
       // Return all we need for the actual update
+      Provable.log('runGovUpdateCommon done.');
       return { protocolDataBefore, operation, resolutionProof };
     }
 
@@ -927,6 +932,8 @@ export function ZkUsdEngineContract(args: {
     ) {
       // Step 1: perform common checks
       Provable.log('govUpdateCollateralRatio')
+      Provable.log('nullifierrott', this.govResolutionNullifierTreeRoot.getAndRequireEquals())
+      Provable.log('resoltionIndex', resolutionProof.publicInput.govResolutionIndex)
       const {
         protocolDataBefore,
         operation,
@@ -965,7 +972,7 @@ export function ZkUsdEngineContract(args: {
           newRatio: newCollateralRatio,
         })
       );
-      Provable.log('done.');
+      Provable.log('govUpdateCollateralRatio done')
     }
 
     @method async govUpdateOracleWhitelist(whitelist: OracleWhitelist,
