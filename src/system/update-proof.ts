@@ -1,4 +1,6 @@
-import { DynamicProof } from 'o1js';
+import {
+  DynamicProof,
+} from 'o1js';
 import {
   ZkusdProtocolUpdateInput,
   ZkusdProtocolUpdateOutput,

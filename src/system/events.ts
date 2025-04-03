@@ -1,4 +1,13 @@
-import { Struct, PublicKey, UInt64, Field, Bool, UInt32, UInt8, VerificationKey } from 'o1js';
+import {
+  Struct,
+  PublicKey,
+  UInt64,
+  Field,
+  Bool,
+  UInt32,
+  UInt8,
+  VerificationKey,
+} from 'o1js';
 
 export class VaultOwnerUpdatedEvent extends Struct({
   vaultAddress: PublicKey,

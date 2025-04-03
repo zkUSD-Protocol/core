@@ -4,7 +4,9 @@ import { ZkusdProtocolUpdateProof } from './update-proof.js';
 // NOTE: Tree height = 16 → 2^(16 - 1) = 32,768 leaves
 const ZKUSD_UPDATE_TREE_HEIGHT = 16; // Allows 32,768 updates
 
-export class ZkusdResolutionWitness extends MerkleWitness(ZKUSD_UPDATE_TREE_HEIGHT) {}
+export class ZkusdResolutionWitness extends MerkleWitness(
+  ZKUSD_UPDATE_TREE_HEIGHT
+) {}
 
 export class ZkusdEngineUpdateWitness extends Struct({
   previousWitness: ZkusdResolutionWitness,
@@ -15,7 +17,9 @@ export class ZkusdEngineUpdateWitness extends Struct({
  * Creates a Merkle tree of resolution nullifiers.
  * All leaves before `nextUpdateIndex` are set to 1 (used), the rest are 0 (unused).
  */
-export function createZkusdResolutionNullifierTree(nextUpdateIndex: number): MerkleTree {
+export function createZkusdResolutionNullifierTree(
+  nextUpdateIndex: number
+): MerkleTree {
   const tree = new MerkleTree(ZKUSD_UPDATE_TREE_HEIGHT);
   const maxLeaves = 2 ** (ZKUSD_UPDATE_TREE_HEIGHT - 1);
 
@@ -46,28 +50,39 @@ export function computeResolutionProofNullifier(
   const previousIndex = resolutionWitness.previousWitness.calculateIndex();
   const currentIndex = resolutionWitness.currentWitness.calculateIndex();
 
-  const maxValidPreviousIndex = Field.from(2 ** (ZKUSD_UPDATE_TREE_HEIGHT - 1) - 2);
+  const maxValidPreviousIndex = Field.from(
+    2 ** (ZKUSD_UPDATE_TREE_HEIGHT - 1) - 2
+  );
   previousIndex.assertLessThanOrEqual(maxValidPreviousIndex);
 
   currentIndex.assertEquals(previousIndex.add(1));
-  resolutionProof.publicInput.govResolutionIndex.value.assertEquals(currentIndex);
+  resolutionProof.publicInput.govResolutionIndex.value.assertEquals(
+    currentIndex
+  );
 
   Provable.log('check if current root matches previousIndexWitness');
-  resolutionWitness.previousWitness.calculateRoot(Field(1)).assertEquals(currentRoot);
-  Provable.log('current root does match previousIndexWitness, check the current');
-  resolutionWitness.currentWitness.calculateRoot(Field(0)).assertEquals(currentRoot);
+  resolutionWitness.previousWitness
+    .calculateRoot(Field(1))
+    .assertEquals(currentRoot);
+  Provable.log(
+    'current root does match previousIndexWitness, check the current'
+  );
+  resolutionWitness.currentWitness
+    .calculateRoot(Field(0))
+    .assertEquals(currentRoot);
   Provable.log('current root does match currentWitness');
 
-  const ret =  resolutionWitness.currentWitness.calculateRoot(Field(1));
+  const ret = resolutionWitness.currentWitness.calculateRoot(Field(1));
   Provable.log('computeResolutionProofNullifier exit');
   return ret;
 }
 
-
 /**
  * Generates the next valid ZkusdEngineUpdateWitness using only the current Merkle root.
  */
-export function generateNextUpdateWitnessFromRoot(root: Field): ZkusdEngineUpdateWitness {
+export function generateNextUpdateWitnessFromRoot(
+  root: Field
+): ZkusdEngineUpdateWitness {
   const nextIndex = findNextResolutionIndexFromRoot(root);
   const tree = createZkusdResolutionNullifierTree(nextIndex);
 
@@ -111,5 +126,7 @@ export function findNextResolutionIndexFromRoot(root: Field): number {
     }
   }
 
-  throw new Error('Unable to resolve Merkle root to a valid next resolution index.');
+  throw new Error(
+    'Unable to resolve Merkle root to a valid next resolution index.'
+  );
 }

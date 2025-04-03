@@ -127,7 +127,6 @@ export class UInt8Operation extends Struct({
   }
 }
 
-
 /**
  * @notice Operations for updating a Field state, with the following codes:
  *  0 => set

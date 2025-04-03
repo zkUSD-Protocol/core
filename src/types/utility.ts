@@ -42,9 +42,9 @@ export function singleDefault<K extends string, V>(
   } as WithDefault<K, V, K>;
 }
 
-export type SizedArray<T, L extends number> = [T, ...T[]] & { length: L };
+export type SizedArray<T, L> = [T, ...T[]] & { length: L };
 
-export function createSizedArray<T, L extends number>(
+export function createSizedArray<T, L>(
   data: T[],
   expectedLength: L = data.length as L // Auto-infer length if possible
 ): SizedArray<T, L> {

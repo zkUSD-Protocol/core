@@ -9,7 +9,11 @@ import {
   UInt32,
 } from 'o1js';
 import { BooleanPrecondition } from './preconditions.js';
-import { BoolOperation, FieldOperation, UInt8Operation } from './update-operations.js';
+import {
+  BoolOperation,
+  FieldOperation,
+  UInt8Operation,
+} from './update-operations.js';
 import { CurrentSlot } from 'o1js/dist/node/lib/mina/precondition.js';
 import { findNextResolutionIndexFromRoot } from './engine-update-witness.js';
 
@@ -74,15 +78,18 @@ export const mkProtocolUpdateInput = (
     // blockchainPreconditions?: MinaBlockchainPreconditions;
   }
 ): ZkusdProtocolUpdateInput => {
-
   let resolutionIndex: number;
 
   if (args.resolutionIndex !== undefined) {
     resolutionIndex = args.resolutionIndex;
   } else if (args.resolutionNullifierRoot !== undefined) {
-    resolutionIndex = findNextResolutionIndexFromRoot(args.resolutionNullifierRoot);
+    resolutionIndex = findNextResolutionIndexFromRoot(
+      args.resolutionNullifierRoot
+    );
   } else {
-    throw new Error('Either resolutionIndex or resolutionNullifierRoot must be set');
+    throw new Error(
+      'Either resolutionIndex or resolutionNullifierRoot must be set'
+    );
   }
 
   const blockchainPreconditions =
@@ -184,7 +191,9 @@ export class ZkusdProtocolUpdateInput extends Struct({
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {}
 
-export function zkusdProtocolUpdateInputHash(updateInput: ZkusdProtocolUpdateInput): Field {
+export function zkusdProtocolUpdateInputHash(
+  updateInput: ZkusdProtocolUpdateInput
+): Field {
   return Poseidon.hash(zkusdProtocolUpdateInputToFields(updateInput));
 }
 
