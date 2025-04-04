@@ -1,4 +1,12 @@
-import { PrivateKey, Provable, Signature, UInt8 } from 'o1js';
+import {
+  Field,
+  PrivateKey,
+  Provable,
+  Signature,
+  UInt32,
+  UInt8,
+  VerificationKey,
+} from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 
@@ -12,13 +20,20 @@ import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../proofs/gov
 import { measurePerformance } from '../utils.js';
 import { ZkusdProtocolUpdateInput } from '../../../../system/update/input.js';
 import { ZkusdProtocolUpdateProof } from '../../../../system/update/proof.js';
-import { BoolPrecondition } from '../../../../system/update/simple-preconditions.js';
+import { UInt8Precondition } from '../../../../system/update/simple-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../../../../system/update/protocol-preconditions.js';
 import { ZkusdProtocolUpdateOperation } from '../../../../system/update/operation.js';
 import { UInt8Operation } from '../../../../system/update/simple-operations.js';
+import { MinaChainPreconditions } from '../../../../system/update/blockchain-preconditions.js';
 
 describe('zkUSD Government Admin Signature Tests', () => {
   let testHelper: TestHelper<'local'>;
+
+  let previousProofData: {
+    sideLoadedProof: ZkusdProtocolUpdateProof;
+    verificationKey: VerificationKey;
+    witness: ZkusdGovResolutionProgramWitness;
+  };
 
   async function createSigProof(updateInput: any, privateKey: PrivateKey) {
     const signature = Signature.create(privateKey, updateInput.toFields());
@@ -37,6 +52,28 @@ describe('zkUSD Government Admin Signature Tests', () => {
       ),
     };
   }
+  async function createInvalidSigProof(
+    updateInput: any,
+    privateKey: PrivateKey
+  ) {
+    const signature = Signature.create(privateKey, updateInput.toFields());
+    signature.r = signature.r.add(Field.from(1));
+
+    const proofResult = await AdminSignatureZkusdProtocolUpdateProgram.create(
+      updateInput,
+      signature,
+      privateKey.toPublicKey()
+    );
+
+    return {
+      sideLoadedProof: ZkusdProtocolUpdateProof.fromProof(proofResult.proof),
+      verificationKey: verificationKeys.adminSigProgram,
+      witness: new ZkusdGovResolutionProgramWitness(
+        mkZkusdGovResolutionProgramTree().getWitness(0n)
+      ),
+    };
+  }
+
   async function createAdminSigProof(updateInput: any) {
     const { protocolAdmin } = testHelper.networkKeys;
     return createSigProof(updateInput, protocolAdmin.privateKey);
@@ -70,7 +107,7 @@ describe('zkUSD Government Admin Signature Tests', () => {
       }),
       {
         protocolPreconditions: ZkusdProtocolPreconditions.create({
-          emergencyStop: BoolPrecondition.mkMustEqual(false),
+          collateralRatio: UInt8Precondition.mkDifferentThan(UInt8.from(155)),
         }),
       }
     );
@@ -79,6 +116,8 @@ describe('zkUSD Government Admin Signature Tests', () => {
       await measurePerformance('Creating the proof', async () => {
         return createAdminSigProof(updateInput);
       });
+
+    previousProofData = { sideLoadedProof, verificationKey, witness };
 
     await measurePerformance(
       'including the transaction to change the collateral ratio',
@@ -97,7 +136,6 @@ describe('zkUSD Government Admin Signature Tests', () => {
           }
         )
     );
-
     // Verify the new protocol ratio
     await testHelper.mina.fetchMinaAccount(testHelper.engine.contract.address, {
       force: true,
@@ -110,184 +148,165 @@ describe('zkUSD Government Admin Signature Tests', () => {
     );
   });
 
-  // it('should not allow the update proof without admin sig to change the collateral ratio', async () => {
+  it('should not allow to reuse proof because preconditions have changed.', async () => {
+    await assert.rejects(
+      async () =>
+        await measurePerformance(
+          'including the transaction to change the collateral ratio',
+          async () =>
+            await testHelper.includeTx(
+              testHelper.agents.alice.keys,
+              async () => {
+                await testHelper.engine.contract.govUpdateCollateralRatio(
+                  previousProofData.sideLoadedProof,
+                  previousProofData.verificationKey,
+                  previousProofData.witness
+                );
+              },
+              {
+                name: 'Alice changes the collateral ratio using an admin signature update',
+              }
+            )
+        )
+    );
+  });
 
-  //   const govResolutionNullifierBitset = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-  //   if (!govResolutionNullifierBitset) throw new Error('govResolutionNullifierTreeRoot is undefined');
+  it('should not allow to update with tampered data.', async () => {
+    const updateInput = ZkusdProtocolUpdateInput.singleOperation(
+      1,
+      ZkusdProtocolUpdateOperation.mkFromPartial({
+        collateralRatio: UInt8Operation.mkSetTo(UInt8.from(150)),
+      }),
+      {
+        protocolPreconditions: ZkusdProtocolPreconditions.create({
+          collateralRatio: UInt8Precondition.mkEqual(UInt8.from(155)),
+        }),
+      }
+    );
 
-  //   const updateInput = mkProtocolUpdateInput(
-  //     ZkusdProtocolUpdateOperation.collateralRatio(
-  //       UInt8Operation.mkSetTo(UInt8.from(150))
-  //     ),
-  //     { govResolutionNullifierBitset }
-  //   );
+    const { sideLoadedProof, verificationKey, witness } =
+      await measurePerformance('Creating the proof', async () => {
+        return createAdminSigProof(updateInput);
+      });
 
-  //   const { sideLoadedProof, verificationKey, witness } =
-  //     await createSigProof(updateInput, testHelper.agents.alice.keys.privateKey);
+    // change the data - the signature will become invalid
+    sideLoadedProof.publicInput.govResolutionIndex = UInt32.from(0);
 
-  //   // Execute transaction to stop the protocol
-  //   await assert.rejects(async () => {
-  //     await testHelper.includeTx(
-  //       testHelper.agents.alice.keys,
-  //       async () => {
-  //         await testHelper.engine.contract.govUpdateCollateralRatio(
-  //           sideLoadedProof,
-  //           verificationKey,
-  //           witness,
-  //           generateNextUpdateWitnessFromRoot(govResolutionNullifierBitset)
-  //         );
-  //       },
-  //       { name: 'Alice attepts to change the collateral ratio without admin signature' }
-  //     );
-  //   }, 'Expected transaction to fail but it succeeded.');
-  // });
+    await assert.rejects(
+      async () =>
+        await measurePerformance(
+          'including the transaction to change the collateral ratio',
+          async () =>
+            await testHelper.includeTx(
+              testHelper.agents.alice.keys,
+              async () => {
+                await testHelper.engine.contract.govUpdateCollateralRatio(
+                  sideLoadedProof,
+                  verificationKey,
+                  witness
+                );
+              },
+              {
+                name: 'Alice tries to tamper the proof data',
+              }
+            )
+        )
+    );
+    // Verify the new protocol ratio
+    await testHelper.mina.fetchMinaAccount(testHelper.engine.contract.address, {
+      force: true,
+    });
+    const protocolData = await testHelper.engine.contract.getProtocolData();
+    assert.equal(
+      protocolData.collateralRatio.toNumber(),
+      155,
+      'Collateral ratio should be 155'
+    );
+  });
 
-  // it('should not allow the update proof with malformed signature messagedata', async () => {
+  it('should not allow to update with tampered signature', async () => {
+    const updateInput = ZkusdProtocolUpdateInput.singleOperation(
+      1,
+      ZkusdProtocolUpdateOperation.mkFromPartial({
+        collateralRatio: UInt8Operation.mkSetTo(UInt8.from(150)),
+      }),
+      {
+        protocolPreconditions: ZkusdProtocolPreconditions.create({
+          collateralRatio: UInt8Precondition.mkEqual(UInt8.from(155)),
+        }),
+      }
+    );
 
-  //   const govResolutionNullifierBitset = await testHelper.engine.contract.govResolutionNullifierTreeRoot.fetch();
-  //   if (!govResolutionNullifierBitset) throw new Error('govResolutionNullifierTreeRoot is undefined');
+    await assert.rejects(
+      async () =>
+        await measurePerformance('Creating the proof', async () => {
+          return createInvalidSigProof(
+            updateInput,
+            testHelper.networkKeys.protocolAdmin.privateKey
+          );
+        })
+    );
+  });
 
-  //   const updateInput = mkProtocolUpdateInput(
-  //     ZkusdProtocolUpdateOperation.collateralRatio(
-  //       UInt8Operation.mkSetTo(UInt8.from(150))
-  //     ),
-  //     { govResolutionNullifierBitset }
-  //   );
+  describe('Blockchain Length Precondition Tests (Bob)', () => {
+    // Suppose we require the chain length to be >= 1010 to start
+    const requiredChainLength = 1010;
 
-  //   const { sideLoadedProof, verificationKey, witness } =
-  //     await createAdminSigProof(updateInput);
+    it("Bob can't use proof if the blockchain length precondition fails", async () => {
+      const updateInput = ZkusdProtocolUpdateInput.singleOperation(
+        1,
+        ZkusdProtocolUpdateOperation.mkFromPartial({
+          collateralRatio: UInt8Operation.mkSetTo(UInt8.from(150)),
+        }),
+        {
+          blockchainPreconditions: MinaChainPreconditions.blockchainLength(
+            UInt32.from(requiredChainLength)
+          ),
+        }
+      );
 
-  //   const hash1 = Poseidon.hash(zkusdProtocolUpdateInputToFields(sideLoadedProof.publicInput));
+      // Create the proof signed by the actual protocol admin
+      const { sideLoadedProof, verificationKey, witness } =
+        await createAdminSigProof(updateInput);
 
-  //   sideLoadedProof.publicInput.protocolUpdateOperation.collateralRatio = UInt8Operation.mkSetTo(UInt8.from(140));
+      previousProofData = { sideLoadedProof, verificationKey, witness };
 
-  //   const hash2 = Poseidon.hash(zkusdProtocolUpdateInputToFields(sideLoadedProof.publicInput));
+      // Bob includes the transaction, but if the blockchain length is < requiredChainLength,
+      // the transaction should fail due to the unmet precondition
+      await assert.rejects(async () => {
+        await testHelper.includeTx(
+          testHelper.agents.bob.keys, // Bob is the sender
+          async () => {
+            await testHelper.engine.contract.govToggleEmergencyStop(
+              verificationKey,
+              witness,
+              sideLoadedProof
+            );
+          },
+          {
+            name: "Bob attempts to change collateral ratio with proof but is not valid yet",
+          }
+        );
+      }, 'Expected transaction to fail but it succeeded.');
+    });
 
-  //   assert.notEqual(hash1.toString(), hash2.toString(), 'Hashes should be different');
-
-  //   // Execute transaction to stop the protocol
-  //   await assert.rejects(async () => {
-  //     await testHelper.includeTx(
-  //       testHelper.agents.alice.keys,
-  //       async () => {
-  //         await testHelper.engine.contract.govUpdateCollateralRatio(
-  //           sideLoadedProof,
-  //           verificationKey,
-  //           witness,
-  //           generateNextUpdateWitnessFromRoot(govResolutionNullifierBitset)
-  //         );
-  //       },
-  //       { name: 'Alice attempts to change the collateral ratio with malformed signature' }
-  //     );
-  //   }, 'Expected transaction to fail but it succeeded.');
-  // });
-
-  // describe('Blockchain Length Precondition Tests (Bob)', () => {
-
-  //   // Suppose we require the chain length to be >= 1010 to start
-  //   const requiredChainLength = 1010;
-
-  //   it("Bob can't start the protocol if the blockchain length is below the required threshold", async () => {
-  //     // Confirm the protocol is still stopped from previous tests
-  //     await testHelper.mina.fetchMinaAccount(
-  //       testHelper.engine.contract.address,
-  //       { force: true }
-  //     );
-  //     let isStopped = testHelper.engine.contract
-  //       .isEmergencyStopped()
-  //       .toBoolean();
-  //     assert.equal(isStopped, true, 'Protocol should currently be stopped');
-
-  //     // Create an update input that tries to start the protocol (set emergencyStop = false)
-  //     // but also requires the current blockchain length to be >= requiredChainLength
-  //     const updateInput = updateProtocolEmergencyStop({
-  //       // these fields might differ based on your updateProtocolEmergencyStop signature
-  //       blockchainPreconditions: MinaChainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
-  //       emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-  //       protocolPreconditions: ZkusdProtocolPreconditions.create({
-  //         // Protocol is currently stopped => mustEqual(true)
-  //         emergencyStop: BoolPrecondition.mkMustEqual(true),
-  //       }),
-  //     });
-
-  //     // Create the proof signed by the actual protocol admin
-  //     const { sideLoadedProof, verificationKey, witness } =
-  //       await createAdminSigProof(updateInput);
-
-  //     // Bob includes the transaction, but if the blockchain length is < requiredChainLength,
-  //     // the transaction should fail due to the unmet precondition
-  //     await assert.rejects(
-  //       async () => {
-  //         await testHelper.includeTx(
-  //           testHelper.agents.bob.keys, // Bob is the sender
-  //           async () => {
-  //             await testHelper.engine.contract.govToggleEmergencyStop(
-  //               verificationKey,
-  //               witness,
-  //               sideLoadedProof
-  //             );
-  //           },
-  //           {
-  //             name: "Bob attempts to start protocol but blockchain length hasn't reached the threshold",
-  //           }
-  //         );
-  //       },
-  //       'Expected transaction to fail but it succeeded.'
-  //     );
-
-  //     // The protocol should remain stopped
-  //     await testHelper.mina.fetchMinaAccount(
-  //       testHelper.engine.contract.address,
-  //       { force: true }
-  //     );
-  //     isStopped = testHelper.engine.contract.isEmergencyStopped().toBoolean();
-  //     assert.equal(isStopped, true, 'Protocol should remain stopped');
-  //   });
-
-  //   it('Bob can start the protocol once the blockchain length threshold is reached', async () => {
-  //     // Move the chain forward until we satisfy the required length (from previous test).
-  //     // If we started at 1000, and need 1010, move 10 blocks forward:
-  //     await testHelper.mina.moveChainForward(10);
-
-  //     // The same updateInput from the previous test can be reused,
-  //     // or you can recreate it for clarity:
-  //     const updateInput = updateProtocolEmergencyStop({
-  //       emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-  //       blockchainPreconditions: MinaChainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
-  //       protocolPreconditions: ZkusdProtocolPreconditions.create({
-  //         // protocol is currently stopped => mustEqual(true)
-  //         emergencyStop: BoolPrecondition.mkMustEqual(true),
-  //         // blockchainLength: NumericPrecondition.mkMustBeGreaterOrEqual(1010),
-  //       }),
-  //     });
-
-  //     const { sideLoadedProof, verificationKey, witness } =
-  //       await createAdminSigProof(updateInput);
-
-  //     // Now the chain length should be >= 1010, so the transaction ought to succeed
-  //     await testHelper.includeTx(
-  //       testHelper.agents.bob.keys,
-  //       async () => {
-  //         await testHelper.engine.contract.govToggleEmergencyStop(
-  //           verificationKey,
-  //           witness,
-  //           sideLoadedProof
-  //         );
-  //       },
-  //       {
-  //         name: 'Bob successfully starts protocol after blockchain length threshold is met',
-  //       }
-  //     );
-
-  //     // Verify the protocol is now running
-  //     await testHelper.mina.fetchMinaAccount(
-  //       testHelper.engine.contract.address,
-  //       { force: true }
-  //     );
-  //     const isStopped = testHelper.engine.contract
-  //       .isEmergencyStopped()
-  //       .toBoolean();
-  //     assert.equal(isStopped, false, 'Protocol should now be running');
-  //   });
-  // });
+    it('Bob can use proof if the blockchain length precondition fails', async () => {
+      // Bob includes the transaction, but if the blockchain length is < requiredChainLength,
+      // the transaction should fail due to the unmet precondition
+      await testHelper.mina.moveChainForward(11);
+        await testHelper.includeTx(
+          testHelper.agents.bob.keys, // Bob is the sender
+          async () => {
+            await testHelper.engine.contract.govToggleEmergencyStop(
+              previousProofData.verificationKey,
+              previousProofData.witness,
+              previousProofData.sideLoadedProof
+            );
+          },
+          {
+            name: "Bob attempts to changet collateral ratio with proof once its valid.",
+          }
+        );
+    });
+  });
 });

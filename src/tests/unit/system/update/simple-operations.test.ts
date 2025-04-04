@@ -6,7 +6,12 @@ import {
   Provable,
   UInt8,
 } from 'o1js';
-import { BoolOperation, FieldMax, UInt8Operation } from '../../../system/update/simple-operations';
+import {
+  BoolOperation,
+  FieldMax,
+  FieldOperation,
+  UInt8Operation,
+} from '../../../../system/update/simple-operations.js';
 
 describe('Operation Classes Test Suite', () => {
   //
@@ -14,10 +19,12 @@ describe('Operation Classes Test Suite', () => {
   //
   let initialBool: Bool;
   let initialUInt8: UInt8;
+  let initialField: Field;
 
   beforeEach(() => {
     initialBool = Bool(false); // reset for each test
     initialUInt8 = UInt8.from(50);
+    initialField = Field(100);
   });
 
   //
@@ -49,18 +56,25 @@ describe('Operation Classes Test Suite', () => {
 
     it('should no-op the state if operation=3 (mkNoop)', () => {
       const op = BoolOperation.mkNoop();
-      // This returns 3 => we do not change the state
       const newState = op.execute(Bool(true));
       assert.strictEqual(newState.toBoolean(), true, 'No-op should not change state');
       const newState2 = op.execute(initialBool);
       assert.strictEqual(newState2.toBoolean(), false, 'No-op should not change state');
     });
 
-    it('should throw on invalid operation', () => {
+    it('should throw on invalid operation (> 3)', () => {
       const op = new BoolOperation({ operation: Field(10) });
       assert.throws(() => {
         op.execute(initialBool);
       });
+    });
+
+    it('should correctly identify isNoop vs. non-noop', () => {
+      const noop = BoolOperation.mkNoop();
+      assert.strictEqual(noop.isNoop().toBoolean(), true, 'Expected isNoop === true');
+
+      const setTo = BoolOperation.mkSetTo(Bool(true));
+      assert.strictEqual(setTo.isNoop().toBoolean(), false, 'Expected isNoop === false');
     });
   });
 
@@ -70,6 +84,7 @@ describe('Operation Classes Test Suite', () => {
   describe('UInt8Operation', () => {
     it('should set state using mkSetTo', () => {
       const op = UInt8Operation.mkSetTo(UInt8.from(123));
+      // Just to illustrate the structure:
       Provable.log(op);
       const newState = op.execute(initialUInt8);
       assert.strictEqual(newState.value.toBigInt(), 123n, 'State should be set to 123');
@@ -109,8 +124,8 @@ describe('Operation Classes Test Suite', () => {
       });
     });
 
-    it('should treat invalid operation code as no-op', () => {
-      // If operation code is > 3, your code ends up in the final else => no-op 
+    it('should treat invalid operation code as >3 => throw', () => {
+      // If operation code is > 3, we throw (assertLessThanOrEqual(3))
       const op = new UInt8Operation({
         operation: Field(99),
         value: UInt8.from(123),
@@ -120,14 +135,67 @@ describe('Operation Classes Test Suite', () => {
       });
     });
 
-    it('should throw if provided with unsupported operation', () => {
-      // Checking that FieldMax isn't used in the code directly except as a reference,
-      // we can e.g. do an operation with FieldMax
+    it('should correctly identify isNoop vs. non-noop', () => {
+      const noop = UInt8Operation.mkNoop();
+      assert.strictEqual(noop.isNoop().toBoolean(), true, 'Expected isNoop === true');
+
+      const addOp = UInt8Operation.mkAdd(UInt8.from(1));
+      assert.strictEqual(addOp.isNoop().toBoolean(), false, 'Expected isNoop === false');
+    });
+
+    it('should throw if provided with unsupported operation in BoolOperation test', () => {
+      // Just ensuring coverage of FieldMax usage
       const op = new BoolOperation({ operation: FieldMax });
-      // FieldMax >> 3 => default branch => no-op
       assert.throws(() => {
         op.execute(Bool(true));
       });
+    });
+  });
+
+  //
+  // Tests for FieldOperation
+  //
+  describe('FieldOperation', () => {
+    it('should set state using mkSetTo', () => {
+      const op = FieldOperation.mkSetTo(Field(999));
+      const newState = op.execute(initialField); // 100 -> 999
+      assert.strictEqual(newState.toBigInt(), 999n);
+    });
+
+    it('should add using mkAdd', () => {
+      const op = FieldOperation.mkAdd(Field(20));
+      const newState = op.execute(initialField); // 100 + 20 => 120
+      assert.strictEqual(newState.toBigInt(), 120n);
+    });
+
+    it('should subtract using mkSub', () => {
+      const op = FieldOperation.mkSub(Field(50));
+      const newState = op.execute(initialField); // 100 - 50 => 50
+      assert.strictEqual(newState.toBigInt(), 50n);
+    });
+
+    it('should do no-op using mkNoop', () => {
+      const op = FieldOperation.mkNoop();
+      const newState = op.execute(initialField); // 100 => 100
+      assert.strictEqual(newState.toBigInt(), 100n);
+    });
+
+    it('should throw on invalid operation (> 3)', () => {
+      const op = new FieldOperation({
+        operation: Field(10),
+        value: Field(500),
+      });
+      assert.throws(() => {
+        op.execute(initialField);
+      });
+    });
+
+    it('should correctly identify isNoop vs. non-noop', () => {
+      const noop = FieldOperation.mkNoop();
+      assert.strictEqual(noop.isNoop().toBoolean(), true, 'Expected isNoop === true');
+
+      const setOp = FieldOperation.mkSetTo(Field(123));
+      assert.strictEqual(setOp.isNoop().toBoolean(), false, 'Expected isNoop === false');
     });
   });
 });
