@@ -6,7 +6,7 @@ import {
   Provable,
   UInt8,
 } from 'o1js';
-import { BoolOperation, FieldMax, UInt8Operation } from '../../../system/update-operations.js';
+import { BoolOperation, FieldMax, UInt8Operation } from '../../../system/update/simple-operations';
 
 describe('Operation Classes Test Suite', () => {
   //

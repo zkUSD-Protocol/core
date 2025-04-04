@@ -6,22 +6,13 @@ import {
   Signature,
   verify /* assuming verify function for proofs exists */,
   VerificationKey,
-  UInt8,
 } from 'o1js';
-import {
-  YesItIsAFinalZkusdProtocolUpdateProof,
-  ZkusdProtocolUpdateInput,
-  zkusdProtocolUpdateInputToFields,
-} from '../../../../system/update.js';
-import {
-  BoolOperation,
-  FieldOperation,
-  UInt8Operation,
-} from '../../../../system/update-operations.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSampleUpdateInput } from '../utils.js';
 import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../proofs/gov/admin-signature.js';
+import { ZkusdProtocolUpdateInput } from '../../../../system/update/input.js';
+import { YesItIsAFinalZkusdProtocolUpdateProof } from '../../../../system/update/output.js';
+import { BoolOperation } from '../../../../system/update/simple-operations.js';
 
 // --- Test Suite ---
 
@@ -39,8 +30,8 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
     adminPublicKey = adminPrivateKey.toPublicKey();
 
     // Create a sample input
-    updateInput = createSampleUpdateInput(); // Use your helper function
-    updateInputFields = zkusdProtocolUpdateInputToFields(updateInput);
+    updateInput = ZkusdProtocolUpdateInput.empty();
+    updateInputFields = updateInput.toFields();
 
     console.log('Compiling ZkProgram...');
     const { verificationKey: vk } =
@@ -93,19 +84,10 @@ describe('AdminSignatureZkusdProtocolUpdateProgram', () => {
   // Test Case 2: Invalid Signature (Doesn't Match Data)
   it('should fail proof generation if the signature is for different data', async () => {
     // 1. Create different input data/fields
-    const differentInput = createSampleUpdateInput(); // Use helper
-    differentInput.protocolUpdateOperation = {
-      emergencyStop: BoolOperation.mkFlip(),
-      collateralRatio: UInt8Operation.mkSetTo(UInt8.zero),
-      validPriceBlockCount: UInt8Operation.mkSetTo(UInt8.one),
-      liquidationBonusRatio: UInt8Operation.mkSetTo(UInt8.zero),
-      configMerkleRoot: FieldOperation.mkNoop(),
-      oracleWhitelistHash: FieldOperation.mkNoop(),
-      newVerificationKey: FieldOperation.mkNoop(),
-      fieldBitMask: Field.from(2),
-    };
-    const differentInputFields =
-      zkusdProtocolUpdateInputToFields(differentInput);
+    const differentInput = ZkusdProtocolUpdateInput.empty();
+    differentInput.protocolUpdateOperation.emergencyStop =
+      BoolOperation.mkFlip();
+    const differentInputFields = differentInput.toFields();
 
     const fields1hash = Poseidon.hash(updateInputFields);
     const fields2hash = Poseidon.hash(differentInputFields);

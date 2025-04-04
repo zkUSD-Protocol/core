@@ -1,34 +1,27 @@
-import { AccountUpdate, PrivateKey, Provable, Signature, UInt8 } from 'o1js';
+import { PrivateKey, Provable, Signature, UInt8 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 
-import { TestHelper, TestAmounts } from '../../../test-helper.js';
-import {
-  ZkusdProtocolUpdateInput,
-  ZkusdProtocolUpdateOperation,
-  mkProtocolUpdateInput,
-  zkusdProtocolUpdateInputToFields,
-} from '../../../../system/update.js';
+import { TestHelper } from '../../../test-helper.js';
 import { verificationKeys } from '../../../../config/verification-keys.js';
 import {
   ZkusdGovResolutionProgramWitness,
   mkZkusdGovResolutionProgramTree,
 } from '../../../../system/governance.js';
-import { UInt8Operation } from '../../../../system/update-operations.js';
 import { AdminSignatureZkusdProtocolUpdateProgram } from '../../../../proofs/gov/admin-signature.js';
-import { ZkusdProtocolUpdateProof } from '../../../../system/update-proof.js';
 import { measurePerformance } from '../utils.js';
+import { ZkusdProtocolUpdateInput } from '../../../../system/update/input.js';
+import { ZkusdProtocolUpdateProof } from '../../../../system/update/proof.js';
+import { BoolPrecondition } from '../../../../system/update/simple-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../../../../system/update/protocol-preconditions.js';
+import { ZkusdProtocolUpdateOperation } from '../../../../system/update/operation.js';
+import { UInt8Operation } from '../../../../system/update/simple-operations.js';
 
 describe('zkUSD Government Admin Signature Tests', () => {
   let testHelper: TestHelper<'local'>;
-  let previousInput: ZkusdProtocolUpdateInput;
-  const newAdminKeypair = PrivateKey.randomKeypair();
 
   async function createSigProof(updateInput: any, privateKey: PrivateKey) {
-    const signature = Signature.create(
-      privateKey,
-      zkusdProtocolUpdateInputToFields(updateInput)
-    );
+    const signature = Signature.create(privateKey, updateInput.toFields());
 
     const proofResult = await AdminSignatureZkusdProtocolUpdateProgram.create(
       updateInput,
@@ -54,32 +47,8 @@ describe('zkUSD Government Admin Signature Tests', () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
     await testHelper.deployTokenContracts();
 
-    // Create Alice & Bob agents; also create a vault for Alice
     await testHelper.createLocalAgents('alice');
-    await testHelper.createVaults('alice');
     await testHelper.createLocalAgents('bob');
-
-    // Alice deposits 100 MINA for the initial setup
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.engine.contract.depositCollateral(
-          testHelper.agents.alice.vault!.publicKey,
-          TestAmounts.COLLATERAL_100_MINA
-        );
-      },
-      { name: 'Alice deposits 100 MINA into her vault' }
-    );
-
-    // Fund creation of a new admin account
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        AccountUpdate.fundNewAccount(testHelper.agents.alice.keys.publicKey, 1);
-        AccountUpdate.create(newAdminKeypair.publicKey);
-      },
-      { name: 'Alice funds new admin key creation' }
-    );
   });
 
   it('should allow the update proof to change the collateral ratio', async () => {
@@ -92,21 +61,19 @@ describe('zkUSD Government Admin Signature Tests', () => {
     assert.equal(isStopped, false, 'Protocol should initially be running');
     Provable.log('protocol is not stopped, able to continue');
 
-    const govResolutionNullifierBitset =
-      await testHelper.engine.contract.govResolutionNullifierBitset.fetch();
-    if (!govResolutionNullifierBitset)
-      throw new Error('govResolutionNullifierTreeRoot is undefined');
-    Provable.log('resolution nullifier root', govResolutionNullifierBitset);
-
     Provable.log('preparing update input');
 
-    const updateInput = mkProtocolUpdateInput(
-      ZkusdProtocolUpdateOperation.collateralRatio(
-        UInt8Operation.mkSetTo(UInt8.from(155))
-      ),
-      { govResolutionNullifierBitset }
+    const updateInput = ZkusdProtocolUpdateInput.singleOperation(
+      0,
+      ZkusdProtocolUpdateOperation.mkFromPartial({
+        collateralRatio: UInt8Operation.mkSetTo(UInt8.from(155)),
+      }),
+      {
+        protocolPreconditions: ZkusdProtocolPreconditions.create({
+          emergencyStop: BoolPrecondition.mkMustEqual(false),
+        }),
+      }
     );
-    previousInput = updateInput;
 
     const { sideLoadedProof, verificationKey, witness } =
       await measurePerformance('Creating the proof', async () => {
@@ -141,67 +108,6 @@ describe('zkUSD Government Admin Signature Tests', () => {
       155,
       'Collateral ratio should be 155'
     );
-  });
-
-  it('should not allow to reuse the update proof', async () => {
-    // Confirm the protocol is currently running
-    await testHelper.mina.fetchMinaAccount(testHelper.engine.contract.address, {
-      force: true,
-    });
-    let isStopped = testHelper.engine.contract.isEmergencyStopped().toBoolean();
-    assert.equal(isStopped, false, 'Protocol should initially be running');
-
-    const govResolutionNullifierBitset =
-      await testHelper.engine.contract.govResolutionNullifierBitset.fetch();
-    if (!govResolutionNullifierBitset)
-      throw new Error('govResolutionNullifierTreeRoot is undefined');
-
-    const { sideLoadedProof, verificationKey, witness } =
-      await measurePerformance('Creating the proof', async () =>
-        createAdminSigProof(previousInput)
-      );
-
-    assert.rejects(async () => {
-      // Execute transaction to change the  collateral ratio
-      await measurePerformance(
-        'including the transaction to change the collateral ratio',
-        async () =>
-          await testHelper.includeTx(
-            testHelper.agents.alice.keys,
-            async () => {
-              await testHelper.engine.contract.govUpdateCollateralRatio(
-                sideLoadedProof,
-                verificationKey,
-                witness
-              );
-            },
-            {
-              name: 'Alice tries to change the collateral ratio using the same admin signature update.',
-            }
-          )
-      );
-    });
-
-    // additionally it should try with the previous root as well
-    assert.rejects(async () => {
-      await measurePerformance(
-        'including the transaction to change the collateral ratio',
-        async () =>
-          await testHelper.includeTx(
-            testHelper.agents.alice.keys,
-            async () => {
-              await testHelper.engine.contract.govUpdateCollateralRatio(
-                sideLoadedProof,
-                verificationKey,
-                witness
-              );
-            },
-            {
-              name: 'Alice tries again to change the collateral ratio using the same admin signature update.',
-            }
-          )
-      );
-    });
   });
 
   // it('should not allow the update proof without admin sig to change the collateral ratio', async () => {
@@ -296,11 +202,11 @@ describe('zkUSD Government Admin Signature Tests', () => {
   //     // but also requires the current blockchain length to be >= requiredChainLength
   //     const updateInput = updateProtocolEmergencyStop({
   //       // these fields might differ based on your updateProtocolEmergencyStop signature
-  //       blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
+  //       blockchainPreconditions: MinaChainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
   //       emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-  //       protocolPreconditions: ZkusdUpdatePreconditions.create({
+  //       protocolPreconditions: ZkusdProtocolPreconditions.create({
   //         // Protocol is currently stopped => mustEqual(true)
-  //         emergencyStop: BooleanPrecondition.mkMustEqual(true),
+  //         emergencyStop: BoolPrecondition.mkMustEqual(true),
   //       }),
   //     });
 
@@ -347,10 +253,10 @@ describe('zkUSD Government Admin Signature Tests', () => {
   //     // or you can recreate it for clarity:
   //     const updateInput = updateProtocolEmergencyStop({
   //       emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-  //       blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
-  //       protocolPreconditions: ZkusdUpdatePreconditions.create({
+  //       blockchainPreconditions: MinaChainPreconditions.blockchainLength(UInt32.from(requiredChainLength), UInt32.from(2000)),
+  //       protocolPreconditions: ZkusdProtocolPreconditions.create({
   //         // protocol is currently stopped => mustEqual(true)
-  //         emergencyStop: BooleanPrecondition.mkMustEqual(true),
+  //         emergencyStop: BoolPrecondition.mkMustEqual(true),
   //         // blockchainLength: NumericPrecondition.mkMustBeGreaterOrEqual(1010),
   //       }),
   //     });

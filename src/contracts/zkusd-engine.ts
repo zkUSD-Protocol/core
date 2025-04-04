@@ -54,20 +54,15 @@ import {
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 import {
+  NO_RESOLUTION_INDEX,
   ZkUsdGovernmentPocConstructor,
   ZkusdGovResolutionProgramWitness,
 } from '../system/governance.js';
-import {
-  NO_RESOLUTION_INDEX,
-  RollingBitSetPacked,
-  YesItIsAFinalZkusdProtocolUpdateProof,
-  ZkusdProtocolUpdateOperation,
-  ZkusdUpdateMinaBlockchainState,
-  ZkusdUpdatedProtocolState,
-  requireBlockchainPreconditions,
-  theUpdatePreconditionsMatchProtocolState,
-} from '../system/update.js';
-import { ZkusdProtocolUpdateProof } from '../system/update-proof.js';
+import { ZkusdProtocolUpdateProof } from '../system/update/proof.js';
+import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
+import { YesItIsAFinalZkusdProtocolUpdateProof } from '../system/update/output.js';
+import { ZkusdUpdateMinaBlockchainState, requireBlockchainPreconditions } from '../system/update/blockchain-state.js';
+import { ZkusdUpdatedProtocolState } from '../system/update/protocol-state.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -108,7 +103,6 @@ export function ZkUsdEngineContract(args: {
     @state(Field) configMerkleRoot = State<Field>(); // Merkle root of the contract offchain state. (not used yet)
 
     // -- government data --
-    @state(RollingBitSetPacked) govResolutionNullifierBitset = State<RollingBitSetPacked>(); // Rolling bitset to track used nullifiers)
 
     static ZKUSD_TOKEN_ADDRESS = zkUsdTokenAddress; // The address of the zkUSD token contract
     static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3); // The minimum number of valid oracle submissions required to update the price
@@ -172,9 +166,6 @@ export function ZkUsdEngineContract(args: {
           collateralRatio: args.collateralRatio,
           liquidationBonusRatio: args.liquidationBonusRatio,
         }).pack()
-      );
-      this.govResolutionNullifierBitset.set(
-        RollingBitSetPacked.empty()
       );
     }
 
@@ -696,25 +687,6 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * Ensures the provided update proof has not been used, marks it as used, and returns the updated Merkle root.
-     * Enforces strict sequential usage (e.g., index 2 only after index 1 is used).
-     */
-    applyResolutionProof(
-      resolutionProof: ZkusdProtocolUpdateProof,
-    ) {
-      const nullifierBitset = this.govResolutionNullifierBitset.getAndRequireEquals();
-
-      const newNullifierBitSet = computeResolutionProofNullifier(
-        resolutionProof,
-        nullifierBitset
-      );
-      Provable.log("New nullifier bitset root hash: ", newNullifierBitSet.rollingBitSetPacked);
-
-      this.govResolutionNullifierBitset.set(newNullifierBitSet);
-    }
-
-
-    /**
      * @notice Shared function that checks governance acceptance, verifies the proof,
      *         ensures preconditions, and returns the existing protocol data + operation.
      */
@@ -729,10 +701,6 @@ export function ZkUsdEngineContract(args: {
       resolutionProof: ZkusdProtocolUpdateProof; // we may need to return it to mark as executed
     }> {
       Provable.log('runGovUpdateCommon');
-      // 0. Has this been already used
-      this.applyResolutionProof(
-        resolutionProof,
-      );
 
       // 1. Verify governance acceptance
       const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);
@@ -757,6 +725,7 @@ export function ZkUsdEngineContract(args: {
 
       // 4. Check blockchain-level preconditions (time, block length, etc.)
       const blockchainState = await this.buildBlockchainState();
+
       requireBlockchainPreconditions({
         preconditions: resolutionProof.publicInput.blockchainPreconditions,
         blockchainState,
@@ -764,10 +733,9 @@ export function ZkUsdEngineContract(args: {
 
       // 5. Check protocol-level preconditions
       const protocolState = await this.buildProtocolState();
-      theUpdatePreconditionsMatchProtocolState({
-        preconditions: resolutionProof.publicInput.protocolUpdatePreconditions,
-        protocolState: protocolState,
-      }).assertTrue();
+      protocolState.isValidForPreconditions(
+        resolutionProof.publicInput.protocolUpdatePreconditions,
+      ).assertTrue();
 
       // 6. Fetch the old on-chain protocol data
       const packedData = this.protocolDataPacked.getAndRequireEquals();
@@ -1234,6 +1202,11 @@ export function ZkUsdEngineContract(args: {
       );
       return new ZkusdUpdatedProtocolState({
         emergencyStop: protocolData.emergencyStop,
+        collateralRatio: protocolData.collateralRatio,
+        liquidationBonusRatio: protocolData.liquidationBonusRatio,
+        validPriceBlockCount: protocolData.validPriceBlockCount,
+        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
+        configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
       });
     }
 
@@ -1256,32 +1229,4 @@ export function ZkUsdEngineContract(args: {
   }
 
   return ZkUsdEngine;
-}
-
-/**
- * Ensures the provided update proof has not been used, marks it as used, and returns the updated bitset.
- * It may so happen that the proof its gov resolution index is too small or too big to shift forward.
- * Assume the following: `GovResolutionBufferCapacity = 4` and `GovResolutionShiftBufferStep = 2`,
- * Resolutions with indices 0,1,x,3 were already set, and you setting one with index 5.
- * After the operation the bitset buffer will contain: x,3,x,5.
- * If you tried to set 6 it would have failed. 6 >= 4+2.
- */
-export function computeResolutionProofNullifier(
-  resolutionProof: ZkusdProtocolUpdateProof,
-  currentBitset: RollingBitSetPacked,
-): RollingBitSetPacked {
-
-  const index = resolutionProof.publicInput.govResolutionIndex;
-
-  const rb = currentBitset.unpack();
-
-  rb.isTooSmall(index).assertFalse(
-    "The resolution index is too small to be used. Check the current nullifier buffer shift.");
-
-  rb.isTooBig(index).assertFalse(
-    "The resolution index is too big to be used. Check the current nullifier buffer shift.");
-
-  const ret = rb.setShiftOnOverflow(index).pack();
-
-  return ret;
 }

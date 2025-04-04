@@ -7,12 +7,8 @@ import {
   Signature,
   ZkProgram,
 } from 'o1js';
-import {
-  YesItIsAFinalZkusdProtocolUpdateProof,
-  ZkusdProtocolUpdateInput,
-  ZkusdProtocolUpdateOutput,
-  zkusdProtocolUpdateInputToFields,
-} from '../../system/update.js';
+import { ZkusdProtocolUpdateInput } from '../../system/update/input.js';
+import { YesItIsAFinalZkusdProtocolUpdateProof, ZkusdProtocolUpdateOutput } from '../../system/update/output.js';
 
 /** Generic admin signature zkusd protocol update program */
 export const AdminSignatureZkusdProtocolUpdateProgram = ZkProgram({
@@ -38,9 +34,11 @@ export const AdminSignatureZkusdProtocolUpdateProgram = ZkProgram({
         rightProof.verify();
 
         Poseidon.hash(
-          zkusdProtocolUpdateInputToFields(leftProof.publicInput)
+          leftProof.publicInput.toFields()
         ).assertEquals(
-          Poseidon.hash(zkusdProtocolUpdateInputToFields(publicInput))
+          Poseidon.hash(
+          rightProof.publicInput.toFields()
+          )
         );
         leftProof.publicOutput.protocolUpdateHash.assertEquals(
           rightProof.publicOutput.protocolUpdateHash
@@ -56,7 +54,7 @@ export const AdminSignatureZkusdProtocolUpdateProgram = ZkProgram({
         updateSignature: Signature,
         signaturePublicKey: PublicKey,
       ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
-        const proofDataFields = zkusdProtocolUpdateInputToFields(publicInput);
+        const proofDataFields = publicInput.toFields();
         const protocolUpdateHash = Poseidon.hash(proofDataFields);
 
         updateSignature
@@ -80,6 +78,6 @@ export const AdminSignatureZkusdProtocolUpdateProgram = ZkProgram({
   },
 });
 
-export const AdminSigFeautureFlags = await FeatureFlags.fromZkProgram(
+export const AdminSigFeatureFlags = await FeatureFlags.fromZkProgram(
   AdminSignatureZkusdProtocolUpdateProgram
 );

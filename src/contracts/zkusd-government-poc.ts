@@ -14,16 +14,12 @@ import {
   Permissions,
   state,
 } from 'o1js';
-import {
-  ZkusdProtocolUpdateGovContractProof,
-  ZkusdProtocolUpdateInput,
-  zkusdProtocolUpdateInputToFields,
-} from '../system/update.js';
 
 import { ZkusdGovResolutionProgramWitness } from '../system/governance.js';
 import { ZkUsdEngineMethodCodes } from '../system/engine.js';
 import { AdminSignatureZkusdProtocolUpdateProgram } from '../proofs/gov/admin-signature.js';
-import { ZkusdProtocolUpdateProof } from '../system/update-proof.js';
+import { ZkusdProtocolUpdateGovContractProof, ZkusdProtocolUpdateProof } from '../system/update/proof.js';
+import { ZkusdProtocolUpdateInput } from '../system/update/input.js';
 
 export class ZkUsdGovernmentPoc extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
@@ -154,7 +150,7 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
   ): Promise<ZkusdProtocolUpdateGovContractProof> {
     const signature = Signature.create(
       adminPrivateKey,
-      zkusdProtocolUpdateInputToFields(input)
+      input.toFields(),
     );
     return this.createProtocolUpdate(input, signature);
   }

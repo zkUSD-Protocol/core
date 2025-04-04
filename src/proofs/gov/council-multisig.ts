@@ -10,13 +10,8 @@ import {
   UInt8,
   ZkProgram,
 } from 'o1js';
-import {
-  NotAFinalZkusdProtocolUpdateProof,
-  YesItIsAFinalZkusdProtocolUpdateProof,
-  ZkusdProtocolUpdateInput,
-  ZkusdProtocolUpdateOutput,
-  zkusdProtocolUpdateInputToFields,
-} from '../../system/update.js';
+import { ZkusdProtocolUpdateInput } from '../../system/update/input';
+import { NotAFinalZkusdProtocolUpdateProof, YesItIsAFinalZkusdProtocolUpdateProof, ZkusdProtocolUpdateOutput } from '../../system/update/output';
 
 // --------------- Council
 
@@ -56,10 +51,10 @@ export function MultiSigZkusdProtocolUpdateProgram(minVotes: UInt8) {
 
           // assert public inputs matches the earlier proof
           Poseidon.hash(
-            zkusdProtocolUpdateInputToFields(publicInput)
+            publicInput.toFields()
           ).assertEquals(
             Poseidon.hash(
-              zkusdProtocolUpdateInputToFields(earlierProof.publicInput)
+              earlierProof.publicInput.toFields()
             ),
             'Public inputs do not match the earlier proof'
           );
@@ -90,22 +85,22 @@ export function MultiSigZkusdProtocolUpdateProgram(minVotes: UInt8) {
           leftProof.verify();
           rightProof.verify();
 
+          const currentInputHash = Poseidon.hash(
+            publicInput.toFields()
+          );
           // assert public inputs matches the earlier proof
-          Poseidon.hash(
-            zkusdProtocolUpdateInputToFields(publicInput)
-          ).assertEquals(
-            Poseidon.hash(
-              zkusdProtocolUpdateInputToFields(leftProof.publicInput)
+          currentInputHash.assertEquals(
+            Poseidon.hash
+            (
+              leftProof.publicInput.toFields()
             ),
             'Public inputs do not match the left proof'
           );
 
           // assert public inputs matches the earlier proof
-          Poseidon.hash(
-            zkusdProtocolUpdateInputToFields(publicInput)
-          ).assertEquals(
+          currentInputHash.assertEquals(
             Poseidon.hash(
-              zkusdProtocolUpdateInputToFields(rightProof.publicInput)
+              rightProof.publicInput.toFields()
             ),
             'Public inputs do not match the left proof'
           );
@@ -155,7 +150,7 @@ export function MultiSigZkusdProtocolUpdateProgram(minVotes: UInt8) {
             'Council member index out of bounds'
           );
           // verify the vote (signature)
-          const proofDataFields = zkusdProtocolUpdateInputToFields(publicInput);
+          const proofDataFields = publicInput.toFields();
           updateSignature.verify(signaturePublicKey, proofDataFields);
           // ---
 

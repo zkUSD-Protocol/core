@@ -4,8 +4,8 @@
 
 // import { TestHelper, TestAmounts } from '../../../test-helper.js';
 // import {
-//   MinaBlockchainPreconditions,
-//   ZkusdUpdatePreconditions,
+//   MinaChainPreconditions,
+//   ZkusdProtocolPreconditions,
 //   zkusdProtocolUpdateInputToFields,
 // } from '../../../../system/update.js';
 // import { verificationKeys } from '../../../../config/verification-keys.js';
@@ -16,7 +16,7 @@
 // import { toggleEmergencyStop, updateProtocolEmergencyStop } from '../utils.js';
 // import { BoolOperation } from '../../../../system/update-operations.js';
 // import {
-//   BooleanPrecondition,
+//   BoolPrecondition,
 //   // If you have a numeric precondition for block slots, import it here:
 //   // NumericPrecondition
 // } from '../../../../system/preconditions.js';
@@ -131,8 +131,8 @@
 //     // now we can create the proof of admin signature
 //     const updateInput = updateProtocolEmergencyStop({
 //       emergencyStopOperation: BoolOperation.mkFlip(),
-//       protocolPreconditions: ZkusdUpdatePreconditions.create({
-//         emergencyStop: BooleanPrecondition.mkMustEqual(false), // it requires the protocol to be running, but it's not
+//       protocolPreconditions: ZkusdProtocolPreconditions.create({
+//         emergencyStop: BoolPrecondition.mkMustEqual(false), // it requires the protocol to be running, but it's not
 //       }),
 //     });
 
@@ -182,14 +182,14 @@
 //       // but also requires the current blockchain length to be >= requiredChainLength
 //       const updateInput = updateProtocolEmergencyStop({
 //         // these fields might differ based on your updateProtocolEmergencyStop signature
-//         blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(
+//         blockchainPreconditions: MinaChainPreconditions.blockchainLength(
 //           UInt32.from(requiredChainLength),
 //           UInt32.from(2000)
 //         ),
 //         emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-//         protocolPreconditions: ZkusdUpdatePreconditions.create({
+//         protocolPreconditions: ZkusdProtocolPreconditions.create({
 //           // Protocol is currently stopped => mustEqual(true)
-//           emergencyStop: BooleanPrecondition.mkMustEqual(true),
+//           emergencyStop: BoolPrecondition.mkMustEqual(true),
 //         }),
 //       });
 
@@ -233,13 +233,13 @@
 //       // or you can recreate it for clarity:
 //       const updateInput = updateProtocolEmergencyStop({
 //         emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-//         blockchainPreconditions: MinaBlockchainPreconditions.blockchainLength(
+//         blockchainPreconditions: MinaChainPreconditions.blockchainLength(
 //           UInt32.from(requiredChainLength),
 //           UInt32.from(2000)
 //         ),
-//         protocolPreconditions: ZkusdUpdatePreconditions.create({
+//         protocolPreconditions: ZkusdProtocolPreconditions.create({
 //           // protocol is currently stopped => mustEqual(true)
-//           emergencyStop: BooleanPrecondition.mkMustEqual(true),
+//           emergencyStop: BoolPrecondition.mkMustEqual(true),
 //           // blockchainLength: NumericPrecondition.mkMustBeGreaterOrEqual(1010),
 //         }),
 //       });
@@ -300,9 +300,9 @@
 //   //       firstSlotIndex: requiredSlot,
 //   //       lastSlotIndex: 1000,
 //   //       emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
-//   //       protocolPreconditions: ZkusdUpdatePreconditions.create({
+//   //       protocolPreconditions: ZkusdProtocolPreconditions.create({
 //   //         // protocol is currently stopped => mustEqual(true)
-//   //         emergencyStop: BooleanPrecondition.mkMustEqual(true),
+//   //         emergencyStop: BoolPrecondition.mkMustEqual(true),
 //   //         // This numeric precondition is hypothetical; adapt to your code if needed
 //   //         // blockSlot: NumericPrecondition.mkMustBeGreaterOrEqual(requiredSlot),
 //   //       }),
@@ -350,9 +350,9 @@
 //   //       emergencyStopOperation: BoolOperation.mkSetTo(Bool(false)),
 //   //       firstSlotIndex: 10,
 //   //       lastSlotIndex: 1000,
-//   //       protocolPreconditions: ZkusdUpdatePreconditions.create({
+//   //       protocolPreconditions: ZkusdProtocolPreconditions.create({
 //   //         // protocol is currently stopped => mustEqual(true)
-//   //         emergencyStop: BooleanPrecondition.mkMustEqual(true),
+//   //         emergencyStop: BoolPrecondition.mkMustEqual(true),
 //   //       }),
 //   //     });
 

@@ -1,4 +1,4 @@
-import { Field, MerkleTree, MerkleWitness, PublicKey, Struct } from 'o1js';
+import { Field, MerkleTree, MerkleWitness, PublicKey, Struct, UInt32 } from 'o1js';
 import { ZkUsdGovernmentPoc } from '../contracts/zkusd-government-poc';
 
 // TODO
@@ -19,3 +19,6 @@ export const mkZkusdGovResolutionProgramTree = () =>
 export type ZkUsdGovernmentPocConstructor = new (
   address: PublicKey
 ) => ZkUsdGovernmentPoc;
+
+
+export const NO_RESOLUTION_INDEX = UInt32.from(4200000000);
