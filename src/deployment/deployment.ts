@@ -1,15 +1,14 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, Provable, UInt8, VerificationKey } from 'o1js';
+import { AccountUpdate, Bool, Field, Provable, UInt8, VerificationKey } from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
-import { ZkUsdAdminSignatureContract } from '../contracts/zkusd-government-poc.js';
-import { AdminSignatureZkusdProtocolUpdateProgram } from '../proofs/gov/admin-signature.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -32,7 +31,7 @@ export class DeploymentService {
   private _networkKeys: NetworkKeyPairs;
   private _token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  private _gov: ContractInstance<ZkUsdAdminSignatureContract>;
+  private _gov: ContractInstance<ZkusdGoverningCouncilContract>;
   private _oracleAggregationVk: VerificationKey;
   private _adminSigProgramVk: VerificationKey;
 
@@ -87,8 +86,9 @@ export class DeploymentService {
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
-    const adminSigProgramCompiled = await AdminSignatureZkusdProtocolUpdateProgram.compile()
-    this._adminSigProgramVk = adminSigProgramCompiled.verificationKey;
+    const adminSigProgramCompiled = undefined as unknown as VerificationKey;
+    throw new Error('Admin signature program not implemented yet');
+    this._adminSigProgramVk = adminSigProgramCompiled;
 
     this.updateVerificationKeys();
 
@@ -96,13 +96,13 @@ export class DeploymentService {
       zkUsdTokenAddress: this._networkKeys.token.publicKey,
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
       zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
-      GovernmentClass: ZkUsdAdminSignatureContract
+      GovernmentClass: ZkusdGoverningCouncilContract
     });
 
     if (this._mina.proofsEnabled) {
       await ZkUsdEngine.compile();
       await ZkUsdEngine.FungibleToken.compile();
-      await ZkUsdAdminSignatureContract.compile();
+      await ZkusdGoverningCouncilContract.compile();
     }
 
     this._token = {
@@ -116,7 +116,7 @@ export class DeploymentService {
     };
 
     this._gov = {
-      contract: new ZkUsdAdminSignatureContract(this._networkKeys.government.publicKey),
+      contract: new ZkusdGoverningCouncilContract(this._networkKeys.government.publicKey),
     };
 
     console.timeEnd('Compiling Contracts');
@@ -229,8 +229,8 @@ export class DeploymentService {
           AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
           await this._gov.contract.deploy();
           await this._gov.contract.initialize(
-            this._networkKeys.protocolAdmin.publicKey,
-            this._adminSigProgramVk.hash
+            Field.from(0),
+            UInt8.from(0),
           );
         },
         {

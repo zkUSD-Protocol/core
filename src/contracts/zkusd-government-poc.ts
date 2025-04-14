@@ -1,30 +1,28 @@
 import {
-  AccountUpdate,
   Bool,
   Field,
   Poseidon,
-  PrivateKey,
   Provable,
-  PublicKey,
-  Signature,
   SmartContract,
   State,
-  VerificationKey,
   method,
   Permissions,
   state,
+  UInt8,
+  Struct,
+  MerkleMapWitness,
+  Gadgets,
 } from 'o1js';
 
-import { ZkusdGovResolutionProgramWitness } from '../system/governance.js';
-import { ZkUsdEngineMethodCodes } from '../system/engine.js';
-import { AdminSignatureZkusdProtocolUpdateProgram } from '../proofs/gov/admin-signature.js';
-import { ZkusdProtocolUpdateGovContractProof, ZkusdProtocolUpdateProof } from '../system/update/proof.js';
-import { ZkusdProtocolUpdateInput } from '../system/update/input.js';
-
+import { ZkusdGovUpdateWitness } from '../system/governance.js';
+import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
+import { MAX_ZKUSD_COUNCIL_SIZE } from '../proofs/gov/council-multisig.js';
+import { ZkusdGoverningCouncilVoteProof } from '../system/update/proof.js';
 export class ZkUsdGovernmentPoc extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
 
   // // it is debatable if we need to store this in the on-chain state as we won't need to verify it most likely.
+
   // // if we want to save the space, we can use event to alert about the root ipns mirrors and changes.
   // // but it will make some operations more complex and expensive.
   // @state(IpnsAddr) zkusdProtocolDataRootIpns = State<IpnsAddr>(); // IPNS address of the protocol data root. (not used yet)
@@ -32,9 +30,8 @@ export class ZkUsdGovernmentPoc extends SmartContract {
   @method.returns(Bool)
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
-    _resolutionProgramVk: VerificationKey,
-    _resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-    _resolutionProof: ZkusdProtocolUpdateProof
+    resolutionUpdateSpec: ZkusdProtocolUpdateSpec,
+    resolutionWitness: ZkusdGovUpdateWitness,
   ) {
     Provable.log('base method called');
     return Bool(false);
@@ -56,13 +53,30 @@ type ZkUsdDeployArgs = {
   };
 };
 
-export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
-  @state(PublicKey) adminPublicKey = State<PublicKey>();
-  @state(Field) stopProtocolVkHash = State<Field>();
+export class ProposalData extends Struct({
+  proposedUpdate: ZkusdProtocolUpdateSpec,
+  proposalVoteBitArray: Field,
+}) {
+  toFields(): Field[] {
+    return [
+      ...this.proposedUpdate.toFields(),
+      this.proposalVoteBitArray,
+    ];
+  }
+}
 
-  async initialize(adminPublicKey: PublicKey, stopProtocolVkHash: Field) {
-    this.adminPublicKey.set(adminPublicKey);
-    this.stopProtocolVkHash.set(stopProtocolVkHash);
+export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
+
+  @state(Field) councilMembersMerkleRoot = State<Field>();
+  @state(Field) proposalsMerkleMapRoot = State<Field>();
+  @state(Field) resolutionsMerkleRoot = State<Field>();
+  @state(UInt8) standardProposalPassTreshold = State<UInt8>();
+
+  async initialize(initialMembersRoot: Field, standardProposalPassTreshold: UInt8) {
+    // this.adminPublicKey.set(adminPublicKey);
+    // this.stopProtocolVkHash.set(stopProtocolVkHash);
+    this.councilMembersMerkleRoot.set(initialMembersRoot);
+    this.standardProposalPassTreshold.set(standardProposalPassTreshold);
   }
 
   async deploy(args?: ZkUsdDeployArgs): Promise<void> {
@@ -78,16 +92,206 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
     });
   }
 
-  async ensureAdminSignature(): Promise<AccountUpdate> {
-    const admin = this.adminPublicKey.getAndRequireEquals();
-    return AccountUpdate.createSigned(admin);
+  // async createProposal(
+  //   proposalHash: Field,
+  //   proposalWitness: MerkleMapWitness,
+  //   memberWitness: ZkusdCouncilMemberWitness,
+  //   memberSignature: Signature,
+  //   memberPubkey: PublicKey,
+  // ) {
+  //   // ---- Verify that the given proposal path is not used yet
+  //   const proposalMerkleRoot = this.proposalsMerkleMapRoot.getAndRequireEquals();
+
+  //   // the value should be zero
+  //   const currentValue = Field.from(0)
+  //   const [rootBefore, computedKey] = proposalWitness.computeRootAndKey(
+  //     currentValue,
+  //   );
+
+  //   // the root and key should match
+  //   rootBefore.assertEquals(
+  //     proposalMerkleRoot,
+  //     'Invalid proposal witness'
+  //   );
+  //   // the computed key should match the proposal key
+  //   computedKey.assertEquals(
+  //     proposalHash,
+  //     'Invalid proposal witness'
+  //   );
+
+  //   // ----
+
+  //   // ---- Verify member witness, index and compute its field value
+  //   const councilMembersMerkleRoot = this.councilMembersMerkleRoot.getAndRequireEquals();
+  //   memberWitness.calculateRoot(
+  //     Poseidon.hash(memberPubkey.toFields())
+  //   ).assertEquals(
+  //     councilMembersMerkleRoot,
+  //     'Invalid member witness'
+  //   );
+  //   // the public key is now verified to be in the council tree
+
+  //   const memberSeatIndex = memberWitness.calculateIndex();
+
+  //   // make sure that the index is below the max council size
+  //   memberSeatIndex.assertLessThan(
+  //     Field.from(MAX_ZKUSD_COUNCIL_SIZE),
+  //     'Council member index out of bounds'
+  //   );
+
+  //   // Compute the proposalVoteBitArray (1 vote) value
+  //   // TODO find more optimized way to set the bit in the bit array:
+  //   let index = Field.from(0);
+  //   const bits = Field.from(0).toBits();
+  //   for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
+  //     bits[i] = Provable.if(
+  //       index.equals(memberSeatIndex),
+  //       Bool(true),
+  //       Bool(false)
+  //     )
+  //     index = index.add(1);
+  //   }
+  //   const proposalVoteBitArray = Field.fromBits(bits);
+
+  //   // ---- Verify the member signature
+  //   memberSignature.verify(
+  //     memberPubkey,
+  //     [proposalHash]
+  //   ).assertTrue()
+  //   // now we know that a council member has signed the proposal
+  //   // as it is given in the input of the method
+
+  //   // ---- Update the value for the proposal key with the vote
+
+  //   const [newProposalsRoot] = proposalWitness.computeRootAndKey(
+  //     proposalVoteBitArray,
+  //   );
+
+  //   // set the root and thus enable voting on the proposal
+  //   this.proposalsMerkleMapRoot.set(newProposalsRoot);
+
+  //   // TODO emit new event
+  // }
+
+
+  async passProposal(
+    updateSpec: ZkusdProtocolUpdateSpec,
+    proposalWitness: MerkleMapWitness,
+    proposalCurrentVoteBitArray: Field,
+    resolutionWitness: ZkusdGovUpdateWitness,
+  ) {
+
+    // get the current proposal vote bit array
+    // the witness should account for the current state of things
+    const proposalMerkleRoot = this.proposalsMerkleMapRoot.getAndRequireEquals();
+    const [proposalRootBefore, computedKey] = proposalWitness.computeRootAndKey(
+      proposalCurrentVoteBitArray,
+    );
+    // the root and key should match
+    proposalRootBefore.assertEquals(
+      proposalMerkleRoot,
+      'Invalid proposal witness or the vote bit array is not up-to-date'
+    );
+    // the computed key should match the proposal key
+    computedKey.assertEquals(
+      Poseidon.hash(updateSpec.toFields()),
+      'Invalid proposal witness or the vote bit array is not up-to-date'
+    );
+
+    // check if resolution index is not already used
+    const resolutionsMerkleRoot = this.resolutionsMerkleRoot.getAndRequireEquals();
+    const computedResolutionIndex = resolutionWitness.calculateIndex();
+    computedResolutionIndex.assertEquals(updateSpec.govResolutionIndex.value, 'Invalid resolution witness');
+    const proposalHash = Poseidon.hash(updateSpec.toFields());
+    resolutionWitness.calculateRoot(Field.from(0)).assertEquals(
+      resolutionsMerkleRoot,
+      'Invalid resolution witness'
+    );
+
+    // now check if the vote count is above the treshold
+    const treshold = this.standardProposalPassTreshold.getAndRequireEquals();
+    const bits = proposalCurrentVoteBitArray.toBits();
+    let voteCount = Field.from(0);
+    for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
+      voteCount = Provable.if(
+        bits[i],
+        voteCount.add(1),
+        voteCount
+      );
+    }
+    // voteCount should be equal to or above the treshold
+    voteCount.assertGreaterThanOrEqual(
+      treshold.value,
+      'Vote count is below the treshold'
+    );
+
+    // recompute the root and set it and thus enable executing the resolution
+    const newResolutionRoot = resolutionWitness.calculateRoot(proposalHash);
+
+    this.resolutionsMerkleRoot.set(newResolutionRoot);
   }
 
+
+
   @method
-  async changeAdmin(newAdmin: PublicKey) {
-    await this.ensureAdminSignature();
-    this.adminPublicKey.set(newAdmin);
+  async supportProposal(
+    voteProof: ZkusdGoverningCouncilVoteProof,
+    proposalWitness: MerkleMapWitness,
+    proposalCurrentVoteBitArray: Field,
+    resolutionWitness: ZkusdGovUpdateWitness,
+  ) {
+
+    voteProof.verify();
+
+    const { proposalHash, councilMemberMerkleRoot, cummulatedVoteBitArray } = voteProof.publicOutput;
+
+    // verify the root of the council member tree
+    const councilMembersMerkleRoot = this.councilMembersMerkleRoot.getAndRequireEquals();
+    councilMemberMerkleRoot.assertEquals(
+      councilMembersMerkleRoot,
+      'Invalid member witness'
+    );
+
+    // get the current proposal vote bit array
+    // the witness should account for the current state of things
+    const proposalMerkleRoot = this.proposalsMerkleMapRoot.getAndRequireEquals();
+    const [proposalRootBefore, computedKey] = proposalWitness.computeRootAndKey(
+      proposalCurrentVoteBitArray,
+    );
+    // the root and key should match
+    proposalRootBefore.assertEquals(
+      proposalMerkleRoot,
+      'Invalid proposal witness or the vote bit array is not up-to-date'
+    );
+    // the computed key should match the proposal key
+    computedKey.assertEquals(
+      proposalHash,
+      'Invalid proposal witness or the vote bit array is not up-to-date'
+    );
+
+    const newVoteBitArray = Gadgets.or(proposalCurrentVoteBitArray, cummulatedVoteBitArray,MAX_ZKUSD_COUNCIL_SIZE);
+
+    // recompute the root
+    const [newProposalsRoot] = proposalWitness.computeRootAndKey(
+      newVoteBitArray,
+    );
+
+    // check if resolution index is not already used
+    // technically it is not necessary but allows to fail early and avoid voting on a broken resolution
+    const resolutionsMerkleRoot = this.resolutionsMerkleRoot.getAndRequireEquals();
+    const computedResolutionIndex = resolutionWitness.calculateIndex();
+    computedResolutionIndex.assertEquals(voteProof.publicInput.govResolutionIndex.value, 'Invalid resolution witness');
+    resolutionWitness.calculateRoot(Field.from(0)).assertEquals(
+      resolutionsMerkleRoot,
+      'Invalid resolution witness'
+    );
+
+    // set the root and thus enable voting on the proposal
+    this.proposalsMerkleMapRoot.set(newProposalsRoot);
+
+    // TODO emit new event
   }
+
 
   /** Admin signature proofs can be executed iff:
       the vk key matches one pinned to the on-chain state of this contract.
@@ -98,76 +302,87 @@ export class ZkUsdAdminSignatureContract extends ZkUsdGovernmentPoc {
   @method.returns(Bool)
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
-    resolutionProgramVk: VerificationKey,
-    resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness,
-    resolutionProof: ZkusdProtocolUpdateProof
+    updateSpec: ZkusdProtocolUpdateSpec,
+    resolutionWitness: ZkusdGovUpdateWitness,
   ) {
-    // the method is allowed:
-    // some methods may have different verification requirements.
-    const methodAllowed = zkEngineMethodCode
-      .equals(ZkUsdEngineMethodCodes.GovStopProtocol)
-      .or(
-        zkEngineMethodCode.equals(
-          ZkUsdEngineMethodCodes.GovUpdateCollateralRatio
-        )
-      );
-    methodAllowed.assertTrue('Method not allowed');
 
-    // verify the verification key against the on-chain state.
-    const vkh = this.stopProtocolVkHash.getAndRequireEquals();
-
-    Provable.log('resolutionProgramVk', resolutionProgramVk.hash, vkh);
-    vkh.assertEquals(resolutionProgramVk.hash);
-
-    resolutionProof.verify(resolutionProgramVk);
-    Provable.log('proof verified');
-
-    Provable.log(
-      'resolutionIndex',
-      resolutionProof.publicInput.govResolutionIndex
+    // check if the resolution is present in the currently pinned resolutions tree
+    const resolutionsMerkleRoot = this.resolutionsMerkleRoot.getAndRequireEquals();
+    const computedResolutionIndex = resolutionWitness.calculateIndex();
+    computedResolutionIndex.assertEquals(updateSpec.govResolutionIndex.value, 'Invalid resolution witness');
+    resolutionWitness.calculateRoot(Poseidon.hash(updateSpec.toFields())).assertEquals(
+      resolutionsMerkleRoot,
+      'Invalid resolution witness'
     );
-
-    // verify the proof's admin key against the on-chain state.
-    const currentAdminHash = Poseidon.hash(
-      this.adminPublicKey.getAndRequireEquals().toFields()
-    );
-    const proofAdminHash = resolutionProof.publicOutput.auxilliaryOutput[0];
-
-    Provable.log('admin keys hashes', currentAdminHash, proofAdminHash);
-
-    currentAdminHash.assertEquals(
-      proofAdminHash,
-      'Admin public key does not match the proof'
-    );
-    Provable.log('return true');
-
     return Bool(true);
   }
+  //     // the method is allowed:
+  //     // some methods may have different verification requirements.
+  //     const methodAllowed = zkEngineMethodCode
+  //       .equals(ZkUsdEngineMethodCodes.GovStopProtocol)
+  //       .or(
+  //         zkEngineMethodCode.equals(
+  //           ZkUsdEngineMethodCodes.GovUpdateCollateralRatio
+  //         )
+  //       );
+  //     methodAllowed.assertTrue('Method not allowed');
 
-  public async signAndCreateProtocolUpdate(
-    input: ZkusdProtocolUpdateInput,
-    adminPrivateKey: PrivateKey
-  ): Promise<ZkusdProtocolUpdateGovContractProof> {
-    const signature = Signature.create(
-      adminPrivateKey,
-      input.toFields(),
-    );
-    return this.createProtocolUpdate(input, signature);
-  }
+  //     const updateSpecHash = Poseidon.hash(updateSpec.toFields());
 
-  public async createProtocolUpdate(
-    input: ZkusdProtocolUpdateInput,
-    signature: Signature
-  ): Promise<ZkusdProtocolUpdateGovContractProof> {
-    const adminPublicKey = this.adminPublicKey.getAndRequireEquals();
-    const proof = await AdminSignatureZkusdProtocolUpdateProgram.create(
-      input,
-      signature,
-      adminPublicKey,
-    );
-    return proof.proof;
-  }
+
+  //     resolutionProof.verify(resolutionProgramVk);
+  //     Provable.log('proof verified');
+
+  //     Provable.log(
+  //       'resolutionIndex',
+  //       resolutionProof.publicInput.govResolutionIndex
+  //     );
+
+  //     // verify the proof's admin key against the on-chain state.
+  //     const currentAdminHash = Poseidon.hash(
+  //       this.adminPublicKey.getAndRequireEquals().toFields()
+  //     );
+  //     const proofAdminHash = resolutionProof.publicOutput.auxilliaryOutput[];
+
+  //     Provable.log('admin keys hashes', currentAdminHash, proofAdminHash);
+
+  //     currentAdminHash.assertEquals(
+  //       proofAdminHash,
+  //       'Admin public key does not match the proof'
+  //     );
+  //     Provable.log('return true');
+
+  //     return Bool(true);
+  //   }
+
+  //   public async signAndCreateProtocolUpdate(
+  //     input: ZkusdProtocolUpdateSpec,
+  //     adminPrivateKey: PrivateKey
+  //   ): Promise<ZkusdProtocolUpdateGovContractProof> {
+  //     const signature = Signature.create(
+  //       adminPrivateKey,
+  //       input.toFields(),
+  //     );
+  //     return this.createProtocolUpdate(input, signature);
+  //   }
+
+  //   public async createProtocolUpdate(
+  //     input: ZkusdProtocolUpdateSpec,
+  //     signature: Signature
+  //   ): Promise<ZkusdProtocolUpdateGovContractProof> {
+  //     const adminPublicKey = this.adminPublicKey.getAndRequireEquals();
+  //     const proof = await AdminSignatureZkusdProtocolUpdateProgram.create(
+  //       input,
+  //       signature,
+  //       adminPublicKey,
+  //     );
+  //     return proof.proof;
+  //   }
+  // }
+
+
+
+
+  // export class ZkUsdCouncilMultiSigContract extends ZkUsdGovernmentPoc {
+  // }
 }
-
-
-

@@ -40,7 +40,7 @@ import {
   RejectedOnReceive,
   mkStatusFailedBeforeSending,
 } from './status.js';
-import { ZkUsdAdminSignatureContract } from '../contracts/zkusd-government-poc.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
 
 export {
   CompilationConfig,
@@ -126,7 +126,7 @@ async function compileContracts(
     zkUsdTokenAddress: config.tokenPublicKey,
     minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
     zkUsdGovernmentAddress: config.governmentPublicKey,
-    GovernmentClass: ZkUsdAdminSignatureContract
+    GovernmentClass: ZkusdGoverningCouncilContract
   });
 
   // 3. Extract FungibleToken class from ZkUsdEngine

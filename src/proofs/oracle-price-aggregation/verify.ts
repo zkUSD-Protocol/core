@@ -31,7 +31,7 @@ const verifyMinaPriceInput = async (args: {
   );
 
   input.proof.publicInput.currentBlockHeight.assertEquals(currentBlockHeight);
-
+  
   input.proof.verify();
 };
 

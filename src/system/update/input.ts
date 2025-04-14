@@ -3,15 +3,15 @@ import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
 import { MinaChainPreconditions } from './blockchain-preconditions.js';
 import { ZkusdProtocolUpdateOperation } from './operation.js';
 
-export class ZkusdProtocolUpdateInput extends Struct({
+export class ZkusdProtocolUpdateSpec extends Struct({
   govResolutionIndex: UInt32,
   protocolUpdatePreconditions: ZkusdProtocolPreconditions,
   blockchainPreconditions: MinaChainPreconditions,
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {
 
-  static empty(): ZkusdProtocolUpdateInput {
-    return new ZkusdProtocolUpdateInput({
+  static empty(): ZkusdProtocolUpdateSpec {
+    return new ZkusdProtocolUpdateSpec({
       govResolutionIndex: UInt32.zero,
       protocolUpdatePreconditions: ZkusdProtocolPreconditions.create(),
       blockchainPreconditions: MinaChainPreconditions.always(),
@@ -26,7 +26,7 @@ export class ZkusdProtocolUpdateInput extends Struct({
       blockchainPreconditions?: MinaChainPreconditions;
       protocolPreconditions?: ZkusdProtocolPreconditions;
     }
-  ): ZkusdProtocolUpdateInput {
+  ): ZkusdProtocolUpdateSpec {
     return mkProtocolUpdateInput(resolutionIndex, protocolUpdateOperation, args);
   }
 
@@ -47,7 +47,7 @@ function mkProtocolUpdateInput(
     blockchainPreconditions?: MinaChainPreconditions;
     protocolPreconditions?: ZkusdProtocolPreconditions;
   }
-): ZkusdProtocolUpdateInput {
+): ZkusdProtocolUpdateSpec {
 
   const blockchainPreconditions =
     args?.blockchainPreconditions ?? MinaChainPreconditions.always();
@@ -56,7 +56,7 @@ function mkProtocolUpdateInput(
     args?.protocolPreconditions ??
     ZkusdProtocolPreconditions.create();
 
-  return new ZkusdProtocolUpdateInput({
+  return new ZkusdProtocolUpdateSpec({
     govResolutionIndex: UInt32.from(resolutionIndex),
     protocolUpdateOperation,
     protocolUpdatePreconditions,
