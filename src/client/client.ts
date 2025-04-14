@@ -8,7 +8,7 @@ import {
   TransactionManager,
   TransactionOptions,
 } from '../transaction/manager.js';
-import { blockchain } from '../types/utility.js';
+import { blockchain, KeyPair } from '../types/utility.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { verificationKeys } from '../config/verification-keys.js';
@@ -26,7 +26,7 @@ interface ZKUSDClientConfig {
 }
 
 interface TransactionContext {
-  sender: PublicKey;
+  sender: PublicKey | KeyPair;
   vaultAddress: string;
   amount?: UInt64;
   minaPriceInput?: MinaPriceInput;
@@ -83,14 +83,17 @@ export class ZKUSDClient {
    * @returns Transaction handle for tracking status
    */
   async createVault(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultPrivateKey: PrivateKey,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
-    const zkusdTokenAccount = await this.txMgr.mina.fetchMinaAccount(sender, {
-      tokenId: this.token.deriveTokenId(),
-      force: true,
-    });
+    const zkusdTokenAccount = await this.txMgr.mina.fetchMinaAccount(
+      sender instanceof PublicKey ? sender : sender.publicKey,
+      {
+        tokenId: this.token.deriveTokenId(),
+        force: true,
+      }
+    );
 
     const newAccounts = zkusdTokenAccount ? 1 : 2;
 
@@ -117,7 +120,7 @@ export class ZKUSDClient {
    * Deposits collateral into a vault
    */
   async depositCollateral(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     options?: TransactionOptions
@@ -138,7 +141,7 @@ export class ZKUSDClient {
    * Withdraws collateral from a vault
    */
   async redeemCollateral(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     minaPriceInput: MinaPriceInput,
@@ -160,7 +163,7 @@ export class ZKUSDClient {
    * Mints zkUSD tokens
    */
   async mintZkUsd(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     minaPriceInput: MinaPriceInput,
@@ -182,7 +185,7 @@ export class ZKUSDClient {
    * Burns zkUSD tokens
    */
   async burnZkUsd(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     options?: TransactionOptions
@@ -203,7 +206,7 @@ export class ZKUSDClient {
    * Liquidates a vault
    */
   async liquidateVault(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
