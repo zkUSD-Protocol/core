@@ -1,7 +1,7 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, Field, Provable, UInt8, VerificationKey } from 'o1js';
+import { AccountUpdate, Bool, Provable, UInt8, VerificationKey } from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
@@ -9,6 +9,7 @@ import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
+import { MAX_ZKUSD_COUNCIL_SIZE, MultiSigZkusdProtocolUpdateProgram } from '../proofs/gov/council-multisig.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -16,8 +17,14 @@ import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  gov: ZkusdGoverningCouncilContract;
   oracleAggregationVk: VerificationKey;
 }
+
+
+/** A proposal is considered valid if the ratio of votes in favor is greater than this value.
+    E.g. for 4 council seats a ratio of 2/3 would require 2 votes, 3 votes for 5 seats. */
+const CouncilVoteThresholdRatio = 2 / 3;
 
 /**
  * Service responsible for deploying and initializing the zkUSD protocol contracts.
@@ -33,7 +40,7 @@ export class DeploymentService {
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
   private _gov: ContractInstance<ZkusdGoverningCouncilContract>;
   private _oracleAggregationVk: VerificationKey;
-  private _adminSigProgramVk: VerificationKey;
+  private _councilMultisigProgramVk: VerificationKey;
 
   private constructor(txMgr: TransactionManager<any>) {
     this._txMgr = txMgr;
@@ -64,7 +71,7 @@ export class DeploymentService {
   private updateVerificationKeys() {
     updateVerificationKeys({
       oracleAggregationVk: this._oracleAggregationVk,
-      adminSigProgramVk: this._adminSigProgramVk,
+      councilMultiSigProgramVk: this._councilMultisigProgramVk,
     });
   }
 
@@ -86,9 +93,8 @@ export class DeploymentService {
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
-    const adminSigProgramCompiled = undefined as unknown as VerificationKey;
-    throw new Error('Admin signature program not implemented yet');
-    this._adminSigProgramVk = adminSigProgramCompiled;
+    const councilMultiSigProgramCompiled = await MultiSigZkusdProtocolUpdateProgram.compile();
+    this._councilMultisigProgramVk = councilMultiSigProgramCompiled.verificationKey;
 
     this.updateVerificationKeys();
 
@@ -221,6 +227,18 @@ export class DeploymentService {
     }
 
     if (!govAccount || force) {
+
+      const councilKeys = this._networkKeys.council?.map((key) => key.publicKey);
+      if(!councilKeys || councilKeys.length == 0) {
+        throw new Error('Council keys not found in the network keys');
+      }
+      const threshold = Math.floor(CouncilVoteThresholdRatio * councilKeys?.length);
+      if (threshold > MAX_ZKUSD_COUNCIL_SIZE){
+        throw new Error(
+          `Council size exceeds the maximum size of ${MAX_ZKUSD_COUNCIL_SIZE}`
+        );
+      }
+
       if (!force) console.log('Gov contracts dont exist deploying');
       else console.log('Forcing contracts deployment....');
       const txHandle = await this._txMgr.tx(
@@ -228,9 +246,9 @@ export class DeploymentService {
         async () => {
           AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
           await this._gov.contract.deploy();
-          await this._gov.contract.initialize(
-            Field.from(0),
-            UInt8.from(0),
+          await this._gov.contract.initializeWithKeys(
+            councilKeys,
+            UInt8.from(threshold)
           );
         },
         {
@@ -285,6 +303,7 @@ export class DeploymentService {
       token: this._token,
       engine: this._engine,
       oracleAggregationVk: this._oracleAggregationVk,
+      gov: this._gov.contract,
     };
   }
 }

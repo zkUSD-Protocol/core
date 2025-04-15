@@ -55,6 +55,7 @@ import { ProtocolData } from '../system/engine.js';
 import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -137,6 +138,7 @@ export class TestHelper<E extends string> {
 
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  council: ZkusdGoverningCouncilContract;
   vaultVerificationKeyHash?: Field;
   oracleAggregationVk: VerificationKey;
   whitelist: OracleWhitelist = new OracleWhitelist({
@@ -397,6 +399,7 @@ export class TestHelper<E extends string> {
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
     this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
+    this.council = deployedContracts.gov;
 
     if (['local', 'lightnet'].includes(this.mina.network.chainId)) {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {

@@ -4,16 +4,16 @@ import path from 'path';
 
 export async function updateVerificationKeys(args: {
   oracleAggregationVk: VerificationKey;
-  adminSigProgramVk: VerificationKey;
+  councilMultiSigProgramVk: VerificationKey;
 }) {
   const keys = {
     oracleAggregation: {
       data: args.oracleAggregationVk.data,
       hash: args.oracleAggregationVk.hash.toString(),
     },
-    adminSigProgram: {
-      data: args.adminSigProgramVk.data,
-      hash: args.adminSigProgramVk.hash.toString(),
+    councilMultiSigProgram: {
+      data: args.councilMultiSigProgramVk.data,
+      hash: args.councilMultiSigProgramVk.hash.toString(),
     },
   };
 
@@ -23,15 +23,15 @@ import { Field, VerificationKey } from 'o1js';
 
 export const verificationKeys: {
   oracleAggregation: VerificationKey;
-  adminSigProgram: VerificationKey;
+  councilMultiSigProgram: VerificationKey;
 } = {
 oracleAggregation: {
     data: "${keys.oracleAggregation.data}",
     hash: Field("${keys.oracleAggregation.hash}")
   },
-adminSigProgram: {
-    data: "${keys.adminSigProgram.data}",
-    hash: Field("${keys.adminSigProgram.hash}")
+councilMultiSigProgram:{
+    data: "${keys.councilMultiSigProgram.data}",
+    hash: Field("${keys.councilMultiSigProgram.hash}")
   },
 } as const;
 `;

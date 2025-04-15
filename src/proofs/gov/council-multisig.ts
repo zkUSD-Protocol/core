@@ -3,20 +3,19 @@ import {
   Gadgets,
   MerkleWitness,
   Poseidon,
-  Proof,
   PublicKey,
   SelfProof,
   Signature,
   ZkProgram,
 } from 'o1js';
-import { ZkusdProtocolUpdateSpec } from '../../system/update/input';
-import { ZkusdProtocolUpdateOutput } from '../../system/update/output';
+import { ZkusdProtocolUpdateSpec } from '../../system/update/input.js';
+import { ZkusdProtocolUpdateOutput } from '../../system/update/output.js';
 
 // --------------- Council
 
 export const MAX_ZKUSD_COUNCIL_SIZE = 240; // so that we get bitwise operations which cap at 240 bits per field (more (up to 254) may result in potential underconstraint issues in the circuit)
 export const MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE: bigint = 2n ** BigInt(MAX_ZKUSD_COUNCIL_SIZE);
-export const ZKUSD_COUNCIL_TREE_HEIGHT = 8; // will fit the 240 council members
+export const ZKUSD_COUNCIL_TREE_HEIGHT = 9; // will fit the 240 council members
 
 export class ZkusdCouncilMemberWitness extends MerkleWitness(
   ZKUSD_COUNCIL_TREE_HEIGHT
@@ -105,17 +104,27 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
 
         councilMemberTreeIndexFieldValue.assertLessThan(
           Field.from(MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE));
+        const x = councilMemberTreeIndexFieldValue;
+
+        x.assertGreaterThan(Field(0));
+        let xMinus1 = x.sub(Field(1));
+
+        let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
+        andValue.assertEquals(Field(0));
 
         // verify the vote (signature)
         const proofDataFields = publicInput.toFields();
         updateSignature.verify(signaturePublicKey, proofDataFields).assertTrue();
+
+        // probably not needed, just as an extra check
+        signaturePublicKey.isEmpty().assertFalse('Empty public key not allowed.');
 
         // verify the public key is in the council tree
         // include the index field value.
         // this assumes that it was provided in the merkle tree and is valid
         // if yes, then we can skip the index value computation as you cannot cheat it.
         const computedRoot = councilMemberWitness.calculateRoot(
-          Poseidon.hash([councilMemberTreeIndexFieldValue, ...signaturePublicKey.toFields()]));
+          pubkeyToCouncilSeatLeaf_(signaturePublicKey, councilMemberTreeIndexFieldValue));
 
         councilMemberMerkleRoot.assertEquals(
           computedRoot,
@@ -133,3 +142,36 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
     },
   },
 });
+
+export function pubkeyToCouncilSeatLeaf(
+  councilKey: PublicKey,
+  index: number,
+): Field {
+  const indexFieldValue = Field.from(2n ** BigInt(index));
+  return pubkeyToCouncilSeatLeaf_(
+    councilKey,
+    indexFieldValue
+  );
+}
+
+function pubkeyToCouncilSeatLeaf_(
+  councilKey: PublicKey,
+  indexFieldValue: Field,
+): Field {
+  return Poseidon.hash([indexFieldValue, ...councilKey.toFields()]);
+}
+
+
+function assertOneBitSet(x: Field) {
+  // we want to check: x != 0, and (x & (x - 1)) == 0
+  x.assertGreaterThan(Field(0));
+  let xMinus1 = x.sub(Field(1));
+
+  let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
+  andValue.assertEquals(Field(0));
+}
+
+
+export class ZkusdGoverningCouncilVoteProof extends ZkProgram.Proof(MultiSigZkusdProtocolUpdateProgram)
+{
+}

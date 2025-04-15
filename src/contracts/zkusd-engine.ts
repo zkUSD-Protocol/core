@@ -59,7 +59,10 @@ import {
   ZkusdGovUpdateWitness,
 } from '../system/governance.js';
 import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
-import { ZkusdUpdateMinaBlockchainState, requireBlockchainPreconditions } from '../system/update/blockchain-state.js';
+import {
+  ZkusdUpdateMinaBlockchainState,
+  requireBlockchainPreconditions,
+} from '../system/update/blockchain-state.js';
 import { ZkusdUpdatedProtocolState } from '../system/update/protocol-state.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 
@@ -81,17 +84,13 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
 export const MinimalViableCollateralRatio: UInt8 = UInt8.from(115);
 export const MinimalViablePriceValidity: UInt8 = UInt8.one;
 
-
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
   zkUsdGovernmentAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
   GovernmentClass: ZkUsdGovernmentPocConstructor;
 }) {
-  const {
-    zkUsdTokenAddress,
-    minaPriceInputZkProgramVkHash,
-  } = args;
+  const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
     // -- on-chain data --
     @state(Field) oracleWhitelistHash = State<Field>(); // Poseidon hash of the oracle whitelist
@@ -692,7 +691,7 @@ export function ZkUsdEngineContract(args: {
     async runGovUpdateCommon(
       methodCode: Field,
       resolutionSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness,
+      resolutionWitness: ZkusdGovUpdateWitness
     ): Promise<{
       protocolDataBefore: ProtocolData;
       operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
@@ -718,9 +717,9 @@ export function ZkUsdEngineContract(args: {
 
       // Check protocol-level preconditions
       const protocolState = await this.buildProtocolState();
-      protocolState.isValidForPreconditions(
-        resolutionSpec.protocolUpdatePreconditions,
-      ).assertTrue();
+      protocolState
+        .isValidForPreconditions(resolutionSpec.protocolUpdatePreconditions)
+        .assertTrue();
 
       // Fetch the current on-chain protocol data
       const packedData = this.protocolDataPacked.getAndRequireEquals();
@@ -735,16 +734,13 @@ export function ZkUsdEngineContract(args: {
 
     @method async govToggleEmergencyStop(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness,
+      resolutionWitness: ZkusdGovUpdateWitness
     ) {
       // Reuse the shared logic
-      const {
-        protocolDataBefore,
-        operation,
-      } = await this.runGovUpdateCommon(
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovStopProtocol,
         updateSpec,
-        resolutionWitness,
+        resolutionWitness
       );
 
       // Execute the update on the emergencyStop field
@@ -774,13 +770,10 @@ export function ZkUsdEngineContract(args: {
 
     @method async govUpdateValidPriceBlockCount(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness,
+      resolutionWitness: ZkusdGovUpdateWitness
     ) {
-      Provable.log('govUpdateValidPriceBlockCount')
-      const {
-        protocolDataBefore,
-        operation,
-      } = await this.runGovUpdateCommon(
+      Provable.log('govUpdateValidPriceBlockCount');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
         resolutionWitness
@@ -790,7 +783,9 @@ export function ZkUsdEngineContract(args: {
         protocolDataBefore.validPriceBlockCount
       );
 
-      newValidPriceBlockCount.assertGreaterThanOrEqual(MinimalViablePriceValidity);
+      newValidPriceBlockCount.assertGreaterThanOrEqual(
+        MinimalViablePriceValidity
+      );
 
       const updatedProtocolData = ProtocolData.new({
         admin: protocolDataBefore.admin,
@@ -814,14 +809,11 @@ export function ZkUsdEngineContract(args: {
 
     @method async govUpdateLiquidationBonusRatio(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness,
+      resolutionWitness: ZkusdGovUpdateWitness
     ) {
       // perform common checks
-      Provable.log('govUpdateLiquidationBonusRatio')
-      const {
-        protocolDataBefore,
-        operation,
-      } = await this.runGovUpdateCommon(
+      Provable.log('govUpdateLiquidationBonusRatio');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
         resolutionWitness
@@ -832,7 +824,9 @@ export function ZkUsdEngineContract(args: {
         protocolDataBefore.liquidationBonusRatio
       );
 
-      newLiquidationBonusRatio.assertGreaterThanOrEqual(MinimalViablePriceValidity);
+      newLiquidationBonusRatio.assertGreaterThanOrEqual(
+        MinimalViablePriceValidity
+      );
 
       // store the updated data
       const updatedProtocolData = ProtocolData.new({
@@ -861,11 +855,8 @@ export function ZkUsdEngineContract(args: {
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
       // perform common checks
-      Provable.log('govUpdateCollateralRatio')
-      const {
-        protocolDataBefore,
-        operation,
-      } = await this.runGovUpdateCommon(
+      Provable.log('govUpdateCollateralRatio');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
         resolutionWitness
@@ -897,19 +888,18 @@ export function ZkUsdEngineContract(args: {
           newRatio: newCollateralRatio,
         })
       );
-      Provable.log('govUpdateCollateralRatio done')
+      Provable.log('govUpdateCollateralRatio done');
     }
 
-    @method async govUpdateOracleWhitelist(whitelist: OracleWhitelist,
+    @method async govUpdateOracleWhitelist(
+      whitelist: OracleWhitelist,
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
       //Precondition
       const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
 
-      const {
-        operation,
-      } = await this.runGovUpdateCommon(
+      const { operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
         resolutionWitness
@@ -920,14 +910,14 @@ export function ZkUsdEngineContract(args: {
       const oldWhitelistHash = this.oracleWhitelistHash.getAndRequireEquals();
 
       // Step 2: execute the collateral ratio update
-      const proofWhitelistHash = operation.oracleWhitelistHash.execute(
-        oldWhitelistHash
-      );
+      const proofWhitelistHash =
+        operation.oracleWhitelistHash.execute(oldWhitelistHash);
       whitelisthash.assertEquals(proofWhitelistHash);
 
       this.oracleWhitelistHash.set(whitelisthash);
 
-      this.emitEvent('OracleWhitelistUpdated',
+      this.emitEvent(
+        'OracleWhitelistUpdated',
         new OracleWhitelistUpdatedEvent({
           resolutionIndex: updateSpec.govResolutionIndex,
           previousHash,
@@ -980,10 +970,7 @@ export function ZkUsdEngineContract(args: {
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
-
-      const {
-        operation,
-      } = await this.runGovUpdateCommon(
+      const { operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
         updateSpec,
         resolutionWitness
@@ -992,13 +979,13 @@ export function ZkUsdEngineContract(args: {
       const oldConfigMerkleRoot = this.configMerkleRoot.getAndRequireEquals();
 
       // Step 2: execute the collateral ratio update
-      const newConfigRoot = operation.configMerkleRoot.execute(
-        oldConfigMerkleRoot
-      );
+      const newConfigRoot =
+        operation.configMerkleRoot.execute(oldConfigMerkleRoot);
 
       this.configMerkleRoot.set(newConfigRoot);
 
-      this.emitEvent('ConfigMerkleRootUpdated',
+      this.emitEvent(
+        'ConfigMerkleRootUpdated',
         new ConfigMerkleRootUpdatedEvent({
           resolutionIndex: updateSpec.govResolutionIndex,
           oldRoot: oldConfigMerkleRoot,
@@ -1006,7 +993,6 @@ export function ZkUsdEngineContract(args: {
         })
       );
     }
-
 
     /**
      * @notice  Updates the oracle whitelist merkle root
@@ -1024,7 +1010,8 @@ export function ZkUsdEngineContract(args: {
       );
       this.oracleWhitelistHash.set(updatedWhitelistHash);
 
-      this.emitEvent('OracleWhitelistUpdated',
+      this.emitEvent(
+        'OracleWhitelistUpdated',
         new OracleWhitelistUpdatedEvent({
           resolutionIndex: NO_RESOLUTION_INDEX,
           previousHash,
@@ -1059,7 +1046,8 @@ export function ZkUsdEngineContract(args: {
       protocolData.validPriceBlockCount = count;
       this.protocolDataPacked.set(protocolData.pack());
 
-      this.emitEvent('ValidPriceBlockCountUpdated',
+      this.emitEvent(
+        'ValidPriceBlockCountUpdated',
         new ValidPriceBlockCountUpdatedEvent({
           resolutionIndex: NO_RESOLUTION_INDEX,
           previousCount: previousCount,
@@ -1160,8 +1148,7 @@ export function ZkUsdEngineContract(args: {
       return Bool(true);
     }
 
-    async buildProtocolState(
-    ): Promise<ZkusdUpdatedProtocolState> {
+    async buildProtocolState(): Promise<ZkusdUpdatedProtocolState> {
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
@@ -1175,8 +1162,7 @@ export function ZkUsdEngineContract(args: {
       });
     }
 
-    async buildBlockchainState(
-    ): Promise<ZkusdUpdateMinaBlockchainState> {
+    async buildBlockchainState(): Promise<ZkusdUpdateMinaBlockchainState> {
       return {
         currentSlot: this.currentSlot,
         blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
