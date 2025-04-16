@@ -118,12 +118,12 @@ export class ZKUSDClient {
   }
 
   //Get the engine contract instance
-  getEngine() {
+  getEngine(): InstanceType<ReturnType<typeof ZkUsdEngineContract>> {
     return this.engine;
   }
 
   //Get the token contract instance
-  getToken() {
+  getToken(): InstanceType<ReturnType<typeof FungibleTokenContract>> {
     return this.token;
   }
 
