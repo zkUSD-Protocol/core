@@ -16,7 +16,7 @@ import {
   HttpClientProver,
   ITransactionExecutor,
 } from '../../index.node.js';
-import { KeyPair } from '../../types/utility.js';
+import { blockchain, KeyPair } from '../../types/utility.js';
 import dotenv from 'dotenv';
 import Client from 'mina-signer';
 import {
@@ -32,6 +32,8 @@ import {
   TransactionArgs,
   ZkusdEngineTransactionType,
 } from '../../system/transaction.js';
+import { ZKUSDClient } from '../../client/client.js';
+import { getOracles, Oracle } from '../../config/oracles.js';
 
 const client = new Client({
   network: 'testnet',
@@ -42,37 +44,22 @@ dotenv.config();
 const VAULT_TO_LIQUIDATE =
   'B62qo81uqMWNqbcrRM6s7gXJm6Dmau3ERDaRbr3n5JTxvixEQsCcbwg';
 
-const ORACLES = [
-  {
-    publicKey: PublicKey.fromBase58(
-      'B62qrYmswnMHuSg8wzeQBYu3fFC2bY2QN8G9d3x4unTkA33oC917nbF'
-    ),
-    endpoint: 'http://localhost:3335/api/price',
-  },
-  {
-    publicKey: PublicKey.fromBase58(
-      'B62qjnCpbdT1yP3SPTczLkM4QwKu2y5GxonpYm2kjkvTQ38Ck2Lhmeo'
-    ),
-    endpoint: 'http://localhost:3336/api/price',
-  },
-  {
-    publicKey: PublicKey.fromBase58(
-      'B62qrrhbuYP5UxWbhdL9FHTGfeAERjx8ofCjQPUVS9cfQ9ijR8PrvAk'
-    ),
-    endpoint: 'http://localhost:3337/api/price',
-  },
-];
-const ORACLE_DUMMY_PRIVATE_KEY = process.env.DEVNET_ORACLE_DUMMY_PRIVATE_KEY!;
-const ORACLE_DUMMY_PUBLIC_KEY = process.env.DEVNET_ORACLE_DUMMY_PUBLIC_KEY!;
-
 const LIQUIDATOR: KeyPair = {
   privateKey: PrivateKey.fromBase58(process.env.DEVNET_LIQUIDATOR_PRIVATE_KEY!),
   publicKey: PublicKey.fromBase58(process.env.DEVNET_LIQUIDATOR_PUBLIC_KEY!),
 };
 
+const isRealOracle = (oracle: KeyPair | Oracle): oracle is Oracle => {
+  return 'endpoint' in oracle;
+};
+
 const buildPriceInput = async () => {
   const latestBlock = await fetchLastBlock();
   const blockHeight = latestBlock.blockchainLength;
+
+  const oracleConfig = getOracles('devnet');
+
+  const oracles = oracleConfig.oracles;
 
   const submissions = await Promise.all(
     Array.from({
@@ -83,13 +70,13 @@ const buildPriceInput = async () => {
       let isDummy: Bool;
       let publicKey: PublicKey;
 
-      if (index < ORACLES.length) {
-        const response = await fetch(ORACLES[index].endpoint);
+      if (isRealOracle(oracles[index])) {
+        const response = await fetch(oracles[index].endpoint!);
         const oracleResponse = await response.json();
 
         price = UInt64.from(oracleResponse.signed.data.price);
         signature = Signature.fromBase58(oracleResponse.signed.signature);
-        publicKey = ORACLES[index].publicKey;
+        publicKey = oracles[index].publicKey;
         isDummy = Bool(false);
 
         const validSig: Bool = signature.verify(publicKey, [
@@ -105,11 +92,11 @@ const buildPriceInput = async () => {
         price = UInt64.MAXINT(); //dummy price
         const dummySigned = client.signFields(
           [price.toBigInt(), blockHeight.toBigint()],
-          ORACLE_DUMMY_PRIVATE_KEY
+          oracleConfig.dummyOracleKey.toBase58()
         );
         signature = Signature.fromBase58(dummySigned.signature);
         isDummy = Bool(true);
-        publicKey = PublicKey.fromBase58(ORACLE_DUMMY_PUBLIC_KEY);
+        publicKey = oracleConfig.dummyOracleKey.toPublicKey();
       }
 
       return new PriceSubmission({
@@ -126,17 +113,7 @@ const buildPriceInput = async () => {
 
   const oracleAggregationVk = await AggregateOraclePrices.compile();
 
-  const oracleWhitelist = new OracleWhitelist({
-    addresses: Array.from({ length: OracleWhitelist.MAX_PARTICIPANTS }).map(
-      (_, index) => {
-        if (index < ORACLES.length) {
-          return ORACLES[index].publicKey;
-        } else {
-          return PublicKey.fromBase58(ORACLE_DUMMY_PUBLIC_KEY);
-        }
-      }
-    ),
-  });
+  const oracleWhitelist = oracleConfig.oracleWhitelist;
 
   const oracleWhitelistHash = OracleWhitelist.hash(oracleWhitelist);
 

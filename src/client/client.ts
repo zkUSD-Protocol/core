@@ -1,4 +1,4 @@
-import { PrivateKey, PublicKey, UInt64 } from 'o1js';
+import { AccountUpdate, PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';
@@ -19,6 +19,7 @@ import {
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
 import { getContractKeys } from '../config/keys.js';
+import { calculateHealthFactor, calculateLTV } from '../utils/loan.js';
 
 interface ZKUSDClientConfig {
   chain: blockchain;
@@ -114,6 +115,16 @@ export class ZKUSDClient {
         extraSigners: [...(options?.extraSigners || []), vaultPrivateKey],
       }
     );
+  }
+
+  //Get the engine contract instance
+  getEngine() {
+    return this.engine;
+  }
+
+  //Get the token contract instance
+  getToken() {
+    return this.token;
   }
 
   /**
@@ -255,6 +266,57 @@ export class ZKUSDClient {
     );
 
     return vaultAccount;
+  }
+
+  /**
+   * Calculates the health factor of a vault
+   * @param vaultAddress The address of the vault
+   * @param minaPrice The current MINA price input
+   * @returns The health factor as a number (higher is better, < 100 is liquidatable)
+   */
+  async getVaultHealthFactor(
+    vaultAddress: string,
+    minaPrice: MinaPriceInput
+  ): Promise<number> {
+    // Get the current vault state
+    const vaultState = await this.getVaultState(vaultAddress);
+
+    // Extract values from the state and price input
+    const collateralAmount = vaultState.collateralAmount.toBigInt();
+    const debtAmount = vaultState.debtAmount.toBigInt();
+    const priceValue =
+      minaPrice.proof.publicOutput.minaPrice.priceNanoUSD.toBigInt();
+
+    // Calculate and return the health factor
+    return calculateHealthFactor(collateralAmount, debtAmount, priceValue);
+  }
+
+  /**
+   * Calculates the collateralization ratio of a vault
+   * @param vaultAddress The address of the vault
+   * @param minaPrice The current MINA price input
+   * @returns The collateralization ratio as a percentage (e.g., 200 means 200%)
+   */
+  async getVaultCollateralizationRatio(
+    vaultAddress: string,
+    minaPrice: MinaPriceInput
+  ): Promise<number> {
+    // Get the current vault state
+    const vaultState = await this.getVaultState(vaultAddress);
+
+    // Extract values from the state and price input
+    const collateralAmount = vaultState.collateralAmount.toBigInt();
+    const debtAmount = vaultState.debtAmount.toBigInt();
+    const priceValue =
+      minaPrice.proof.publicOutput.minaPrice.priceNanoUSD.toBigInt();
+
+    // Calculate LTV (Loan-to-Value ratio)
+    const ltv = calculateLTV(collateralAmount, debtAmount, priceValue);
+
+    // Convert LTV to collateralization ratio
+    // LTV is debt/collateral, collateralization ratio is collateral/debt (inverse)
+    // If LTV is 0, return a very high value to represent infinite collateralization
+    return ltv === 0 ? Number.MAX_SAFE_INTEGER : (100 / ltv) * 100;
   }
 
   public getTokenId(kind: 'token' | 'engine') {
