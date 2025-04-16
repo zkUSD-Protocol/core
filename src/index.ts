@@ -67,6 +67,15 @@ import {
   TransactionPhase,
   TransactionPhaseStatus,
 } from './transaction/lifecycle.js';
+import {
+  getActiveOracles,
+  getOraclePublicKeys,
+  getOracles,
+  getMaxOraclesCount,
+  Oracle,
+  OracleConfig,
+} from './config/oracles.js';
+import { VaultState } from './system/vault.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -94,6 +103,7 @@ export {
   blockchain,
   KeyPair,
   fetchMinaAccount,
+  VaultState,
 };
 
 //export events
@@ -143,3 +153,13 @@ export type {
 export { proveTransaction };
 
 export { ZKUSDClient };
+
+//export oracle config
+export {
+  getActiveOracles,
+  getOraclePublicKeys,
+  getOracles,
+  getMaxOraclesCount,
+  Oracle,
+  OracleConfig,
+};
