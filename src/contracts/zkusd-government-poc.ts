@@ -244,12 +244,12 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
     // the root and key should match
     proposalRootBefore.assertEquals(
       proposalMerkleRoot,
-      'Invalid proposal witness or the vote bit array is not up-to-date'
+      'Invalid proposal witness or the vote bit array is not up-to-date. Computed root mismatch.'
     );
     // the computed key should match the proposal key
     computedKey.assertEquals(
       Poseidon.hash(updateSpec.toFields()),
-      'Invalid proposal witness or the vote bit array is not up-to-date'
+      'Invalid proposal witness or the vote bit array is not up-to-date. Computed key mismatch.'
     );
 
     // check if resolution index is not already used

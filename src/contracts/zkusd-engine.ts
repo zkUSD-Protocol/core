@@ -928,43 +928,41 @@ export function ZkUsdEngineContract(args: {
 
     // This must use a different UpdateSpec that contains
     // the engine vk in its inputs.
-    // @method async govCRITICALUpdateEngineVerificationKey (
-    //   newVerificationKey: VerificationKey,
-    //   resolutionProof: ZkusdProtocolUpdateProof,
-    //   resolutionProgramVk: VerificationKey,
-    //   resolutionProgramVkhWitness: ZkusdGovResolutionProgramWitness) {
-    //   //Precondition
+    @method async govUpdateEngineVerificationKey (
+      newVerificationKey: VerificationKey,
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+      ) {
+      //Precondition
 
-    //   // TODO maybe we could save the old vkh in the state to then
-    //   // verify the precondition
+      // TODO maybe we could save the old vkh in the state to then
+      // verify the precondition
 
-    //   const {
-    //     operation,
-    //   } = await this.runGovUpdateCommon(
-    //     ZkUsdEngineMethodCodes.GovCRITICALUpdateVerificationKey,
-    //     resolutionProgramVk,
-    //     resolutionProgramVkhWitness,
-    //     resolutionProof
-    //   );
+      const {
+        operation,
+      } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovCRITICALUpdateVerificationKey,
+        updateSpec,
+        resolutionWitness
+      );
 
-    //   // this is fine, the operation will ignore its argument
-    //   const newProofsVKH = operation.newVerificationKey.execute(
-    //     Field.from(0)
-    //   );
-    //   newProofsVKH.assertNotEquals(Field.from(0));
+      // this is fine, the operation will ignore its argument
+      const newProofsVKH = operation.newVerificationKey.execute(
+        Field.from(0)
+      );
+      newProofsVKH.assertNotEquals(Field.from(0));
 
-    //   // CRITICAL TODO is this even secure assert vk hash matches the proof
-    //   newVerificationKey.hash.assertEquals(newProofsVKH);
+      newVerificationKey.hash.assertEquals(newProofsVKH);
 
-    //   this.account.verificationKey.set(newVerificationKey);
+      this.account.verificationKey.set(newVerificationKey);
 
-    //   this.emitEvent('VerificationKeyUpdated',
-    //     new VerificationKeyUpdatedEvent({
-    //       resolutionIndex: resolutionProof.publicInput.govResolutionIndex,
-    //       newVerificationKeyHash: newProofsVKH,
-    //     })
-    //   );
-    // }
+      this.emitEvent('VerificationKeyUpdated',
+        new VerificationKeyUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          newVerificationKeyHash: newProofsVKH,
+        })
+      );
+    }
 
     @method async govUpdateConfigMerkleRoot(
       updateSpec: ZkusdProtocolUpdateSpec,
