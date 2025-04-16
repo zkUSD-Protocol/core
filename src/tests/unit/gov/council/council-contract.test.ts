@@ -1,4 +1,4 @@
-import { AccountUpdate, Field, MerkleMap, MerkleTree, Poseidon, Signature, UInt32 } from 'o1js';
+import { Field, MerkleMap, MerkleTree, Poseidon, Provable, Signature, UInt32 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 
@@ -15,6 +15,7 @@ import {
   ZkusdGovUpdateWitness,
 } from '../../../../system/governance.js';
 import { countBits } from '../../../../contracts/zkusd-government-poc.js';
+import { CouncilProposalPassedEvent, CouncilProposalSupportChangeEvent, getNewCouncilMembers } from '../../../../system/council-events.js';
 
 async function prepareCouncilMembers(th: TestHelper<'local'>) {
   if (
@@ -79,21 +80,24 @@ describe('zkUSD Multisig Council Test Suite', () => {
         council.map((keypair) => keypair.publicKey)
       );
   });
+  it('should be possible to rebuild council merkle tree from emitted events', async () => {
 
-  it('should be able to build a merkle tree that matches the merkle root', async () => {
+    const contractEvents = await testHelper.council.fetchEvents();
 
-    console.log(councilMerkleTree.getRoot().toString());
+    const councilKeys = getNewCouncilMembers(contractEvents);
 
-    const councilContractRoot =
-      await testHelper.council.councilMembersMerkleRoot.fetch();
-    if (!councilContractRoot) {
-      throw new Error('Council contract root is undefined');
-    }
+    console.log('Council keys from network kes:');
+    council.forEach((key) => {
+      Provable.log(key);
+    });
 
-    assert.ok(
-      councilMerkleTree.getRoot().equals(councilContractRoot).toBoolean(),
-      'Merkle root does not match'
-    );
+    console.log('Council keys from events:');
+    councilKeys.forEach((key) => {
+      Provable.log(key);
+    });
+    const councilMerkleTreeFromEvents = testHelper.council.buildAndVerifyCouncilMerkleTree(councilKeys);
+
+    assert.ok(councilMerkleTreeFromEvents.getRoot().equals(councilMerkleTree.getRoot()).toBoolean());
   });
 
   it('should be possible for a council member to create a proposal', async () => {
@@ -115,6 +119,11 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     const { proposalWitness, proposalCurrentVoteBitArray, resolutionWitness } =
       supportProposalHelper(voteProof, proposalMerkleMap, resolutionMerkleTree);
+
+    const contractEventsBefore = await testHelper.council.fetchEvents();
+
+    const [rootBefore] = proposalWitness.computeRootAndKey(proposalCurrentVoteBitArray);
+
     await testHelper.includeTx(
       testHelper.agents.alice.keys,
       async () => {
@@ -138,6 +147,27 @@ describe('zkUSD Multisig Council Test Suite', () => {
     assert.ok(newRoot.equals(actualRoot).toBoolean(), 'Proposal root does not match');
     // update the tree to match the root
     proposalMerkleMap.set(voteProof.publicOutput.proposalHash, voteBitArray)
+
+    const contractEventsAfter = await testHelper.council.fetchEvents();
+
+    //length of events should differ by 1
+    assert.strictEqual(
+      contractEventsAfter.length,
+      contractEventsBefore.length + 1
+    );
+
+    const lastEvent = contractEventsAfter[0];
+
+    assert.strictEqual(lastEvent.type, 'ProposalSupported');
+
+    const eventData = lastEvent.event.data as unknown as CouncilProposalSupportChangeEvent;
+
+    // check if the eventData matches the expected values
+    assert.ok(eventData.proposalTreeRootBefore.equals(rootBefore).toBoolean());
+    assert.ok(eventData.acceptedVoteBitArray.equals(voteBitArray).toBoolean());
+    assert.ok(eventData.proposalHash.equals(Poseidon.hash(proposalSpec.toFields())).toBoolean());
+    assert.ok(eventData.resolutionIndex.equals(proposalSpec.govResolutionIndex).toBoolean());
+
   });
 
   it('should not be possible to pass a proposal with unsufficient amount of votes', async () => {
@@ -155,6 +185,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     voteThreshold?.assertGreaterThan(countBits(proposalCurrentVoteBitArray));
 
+    const contractEventsBefore = await testHelper.council.fetchEvents();
     await assert.rejects(async () => {
       await testHelper.includeTx(
         testHelper.agents.alice.keys,
@@ -164,6 +195,13 @@ describe('zkUSD Multisig Council Test Suite', () => {
         { name: 'Alice tries to pass a proposal without it passing the threshold of votes.' }
       );
     });
+    const contractEventsAfter = await testHelper.council.fetchEvents();
+
+    //length of events should be the same
+    assert.strictEqual(
+      contractEventsAfter.length,
+      contractEventsBefore.length
+    );
   });
 
   it('should not be possible to add a second vote using the same seat', async () => {
@@ -188,6 +226,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
     );
     proposalSpec = voteProof.publicInput;
 
+    const contractEventsBefore = await testHelper.council.fetchEvents();
     await testHelper.includeTx(
       testHelper.agents.alice.keys,
       async () => {
@@ -198,6 +237,12 @@ describe('zkUSD Multisig Council Test Suite', () => {
         );
       },
       { name: 'Same seat casts another vote' }
+    );
+    const contractEventsAfter = await testHelper.council.fetchEvents();
+    //length of events should be the same
+    assert.strictEqual(
+      contractEventsAfter.length,
+      contractEventsBefore.length
     );
 
     actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
@@ -259,6 +304,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
     const newproposalWitness = proposalMerkleMap.getWitness(proposalHash);
     const resolutionWitness = new ZkusdGovUpdateWitness(resolutionMerkleTree.getWitness(proposalSpec.govResolutionIndex.toBigint()));
 
+    const contractEventsBefore = await testHelper.council.fetchEvents();
     await testHelper.includeTx(
       testHelper.agents.alice.keys,
       async () => {
@@ -266,9 +312,23 @@ describe('zkUSD Multisig Council Test Suite', () => {
       },
       { name: 'Alice tries to pass a proposal with sufficient votes' }
     );
+    const contractEventsAfter = await testHelper.council.fetchEvents();
+    //length of events should differ by 1
+    assert.strictEqual(
+      contractEventsAfter.length,
+      contractEventsBefore.length + 1
+    );
+
+    // check the event data
+    const lastEvent = contractEventsAfter[0];
+    assert.strictEqual(lastEvent.type, 'ProposalPassed');
+    const eventData = lastEvent.event.data as unknown as CouncilProposalPassedEvent;
+    // check if the eventData matches the expected values
+    assert.ok(eventData.proposalHash.equals(proposalHash).toBoolean());
+    assert.ok(eventData.resolutionIndex.equals(proposalSpec.govResolutionIndex).toBoolean());
 
     const actualResolutionRoot = await testHelper.council.resolutionsMerkleRoot.fetch();
-    if(!actualResolutionRoot){
+    if (!actualResolutionRoot) {
       throw "Could not fetch resolution merkle root"
     }
     const expectedResolutionRoot = resolutionWitness.calculateRoot(proposalHash);
@@ -316,7 +376,8 @@ describe('zkUSD Multisig Council Test Suite', () => {
     );
 
     const { proposalWitness, proposalCurrentVoteBitArray, resolutionWitness } =
-      supportProposalHelper(mergedVotesProof.proof , proposalMerkleMap, resolutionMerkleTree);
+      supportProposalHelper(mergedVotesProof.proof, proposalMerkleMap, resolutionMerkleTree);
+    const contractEventsBefore = await testHelper.council.fetchEvents();
     await testHelper.includeTx(
       testHelper.agents.alice.keys,
       async () => {
@@ -330,7 +391,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
       { name: 'alice sends a rollup vote' }
     );
 
-  const rolledupBitArray = voteBitArray.add(anothervoteBitArray);
+    const rolledupBitArray = voteBitArray.add(anothervoteBitArray);
 
     // verify if the vote was registered for the proposal.
     const [newRoot] = proposalWitness.computeRootAndKey(rolledupBitArray);
@@ -354,9 +415,16 @@ describe('zkUSD Multisig Council Test Suite', () => {
       },
       { name: 'Alice tries to pass a proposal #2' }
     );
+    const contractEventsAfter = await testHelper.council.fetchEvents();
+
+    // length of events should differ by 2
+    assert.strictEqual(
+      contractEventsAfter.length,
+      contractEventsBefore.length + 2
+    );
 
     const actualResolutionRoot = await testHelper.council.resolutionsMerkleRoot.fetch();
-    if(!actualResolutionRoot){
+    if (!actualResolutionRoot) {
       throw "Could not fetch resolution merkle root"
     }
     const expectedResolutionRoot = resolutionWitness.calculateRoot(proposalHash);
@@ -364,6 +432,96 @@ describe('zkUSD Multisig Council Test Suite', () => {
     assert.ok(actualResolutionRoot.equals(expectedResolutionRoot).toBoolean());
 
     resolutionMerkleTree.setLeaf(proposalSpec.govResolutionIndex.toBigint(), proposalHash);
+  });
+
+  it('should be possible to rebuild the resolution and proposal tree with gathered events', async () => {
+
+    const events = await testHelper.council.fetchEvents();
+
+    const proposalEvents = events.filter(
+      (event) => event.type === 'ProposalSupported'
+    );
+    const resolutionEvents = events.filter(
+      (event) => event.type === 'ProposalPassed'
+    );
+
+    // print counts of events
+    console.log('Proposal events count:', proposalEvents.length);
+    console.log('Resolution events count:', resolutionEvents.length);
+
+    const proposalTree = new MerkleMap();
+    const resolutionTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
+
+    proposalEvents.forEach((event) => {
+      const eventData = event.event.data as unknown as CouncilProposalSupportChangeEvent;
+      console.log(`setting proposal hash ${eventData.proposalHash.toString()} with vote bit array ${eventData.acceptedVoteBitArray.toString()}`);
+      const votes = proposalTree.get(eventData.proposalHash);
+      // since you cannot retract a vote this is fine
+      if (eventData.acceptedVoteBitArray.greaterThan(votes).toBoolean()) {
+        proposalTree.set(eventData.proposalHash, eventData.acceptedVoteBitArray);
+      }
+    });
+
+    resolutionEvents.forEach((event) => {
+      const eventData = event.event.data as unknown as CouncilProposalPassedEvent;
+      resolutionTree.setLeaf(eventData.resolutionIndex.toBigint(), eventData.proposalHash);
+    });
+
+    const proposalTreeRoot = proposalTree.getRoot();
+    const resolutionTreeRoot = resolutionTree.getRoot();
+
+    const actualProposalTreeRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
+    if (!actualProposalTreeRoot) {
+      throw new Error('Proposal root is undefined');
+    }
+    assert.ok(proposalTreeRoot.equals(actualProposalTreeRoot).toBoolean(), 'Proposal root does not match');
+
+    const actualResolutionTreeRoot = await testHelper.council.resolutionsMerkleRoot.fetch();
+
+    if (!actualResolutionTreeRoot) {
+      throw new Error('Resolution root is undefined');
+    }
+
+    assert.ok(resolutionTreeRoot.equals(actualResolutionTreeRoot).toBoolean(), 'Resolution root does not match');
+  });
+
+  it('should not be possible to use existing resolution index', async () => {
+
+    const councilSeatIndex = 0;
+    const councilMember = council[councilSeatIndex];
+
+    const voteProof = await generateVoteProof(
+      councilMember,
+      councilMerkleTree,
+      councilSeatIndex,
+      0
+    );
+
+    proposalSpec = voteProof.publicInput;
+
+    const contractEventsBefore = await testHelper.council.fetchEvents();
+
+    await assert.rejects(async () => {
+      await testHelper.includeTx(
+        testHelper.agents.alice.keys,
+        async () => {
+          await testHelper.council.supportProposalHelper(
+            voteProof,
+            proposalMerkleMap,
+            resolutionMerkleTree
+          );
+        },
+        { name: 'New proposal for the same resolution tx' }
+      );
+    });
+
+    const contractEventsAfter = await testHelper.council.fetchEvents();
+    //length of events should be the same
+    assert.strictEqual(
+      contractEventsAfter.length,
+      contractEventsBefore.length
+    );
+
   });
 
 });

@@ -928,35 +928,32 @@ export function ZkUsdEngineContract(args: {
 
     // This must use a different UpdateSpec that contains
     // the engine vk in its inputs.
-    @method async govUpdateEngineVerificationKey (
+    @method async govUpdateEngineVerificationKey(
       newVerificationKey: VerificationKey,
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
-      ) {
+    ) {
       //Precondition
 
       // TODO maybe we could save the old vkh in the state to then
       // verify the precondition
 
-      const {
-        operation,
-      } = await this.runGovUpdateCommon(
+      const { operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovCRITICALUpdateVerificationKey,
         updateSpec,
         resolutionWitness
       );
 
       // this is fine, the operation will ignore its argument
-      const newProofsVKH = operation.newVerificationKey.execute(
-        Field.from(0)
-      );
+      const newProofsVKH = operation.newVerificationKey.execute(Field.from(0));
       newProofsVKH.assertNotEquals(Field.from(0));
 
       newVerificationKey.hash.assertEquals(newProofsVKH);
 
       this.account.verificationKey.set(newVerificationKey);
 
-      this.emitEvent('VerificationKeyUpdated',
+      this.emitEvent(
+        'VerificationKeyUpdated',
         new VerificationKeyUpdatedEvent({
           resolutionIndex: updateSpec.govResolutionIndex,
           newVerificationKeyHash: newProofsVKH,

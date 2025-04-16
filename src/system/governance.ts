@@ -1,7 +1,16 @@
-import { Field, MerkleTree, MerkleWitness, PublicKey, Struct, UInt32 } from 'o1js';
+import { Field, MerkleTree, MerkleWitness, Provable, PublicKey, Struct, UInt32 } from 'o1js';
 import { ZkUsdGovernmentPoc } from '../contracts/zkusd-government-poc';
 
+const InitialCouncilMembersMaxCount = 7;
 
+export class InitialCouncilMembers extends Struct({
+  councilMembers: Provable.Array(
+    PublicKey,
+    InitialCouncilMembersMaxCount
+  ),
+}) {
+  static MaxLength = InitialCouncilMembersMaxCount; // limited by the event size
+}
 
 
 export const ZKUSD_GOV_UPDATE_TREE_HEIGHT = 20; // 1048576 updates
