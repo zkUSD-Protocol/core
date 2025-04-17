@@ -45,8 +45,14 @@ const DEVNET_ORACLES: Oracle[] = [
     ),
     endpoint: 'https://oracle3.fizk.xyz/api/price',
   },
+  {
+    publicKey: PublicKey.fromBase58(
+      'B62qq68r9VHAasJeh45oXdXoKx2vbMw6dsz7YD4FFSJ2ZbgEsUNee99'
+    ),
+    endpoint: 'https://zkusd.oracle.nori.global/api/price',
+  },
   // Fill remaining slots with dummy oracles
-  ...Array(OracleWhitelist.MAX_PARTICIPANTS - 3).fill({
+  ...Array(OracleWhitelist.MAX_PARTICIPANTS - 4).fill({
     publicKey: DUMMY_ORACLE_PUBLIC_KEY,
   }),
 ];
