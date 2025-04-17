@@ -13,6 +13,9 @@ export class ZkusdProtocolPreconditions extends Struct({
   oracleWhitelistHash: HashPrecondition,
   configMerkleRoot: HashPrecondition,
 }) {
+  static always() {
+    return ZkusdProtocolPreconditions.create();
+  }
   static create(args?: {
     emergencyStop?: BoolPrecondition;
     collateralRatio?: UInt8Precondition;

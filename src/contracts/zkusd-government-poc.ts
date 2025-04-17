@@ -98,6 +98,8 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
     super.init();
   }
 
+  // build the council merkle tree in a way compatible with the
+  // council seat leaf hashing function
   static buildCouncilMerkleTree(councilKeys: PublicKey[]) {
     const leaves = councilKeys.map((councilKey, index) => {
       return pubkeyToCouncilSeatLeaf(councilKey, index);
@@ -110,6 +112,10 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
     return merkleTree;
   }
 
+  // build the council merkle tree in a way compatible with the
+  // council seat leaf hashing function.
+  // this will additionally check that the root of the tree
+  // matches the one stored in the on-chain state
   buildAndVerifyCouncilMerkleTree(councilKeys: PublicKey[]) {
     const merkleTree =
       ZkusdGoverningCouncilContract.buildCouncilMerkleTree(councilKeys);
@@ -123,6 +129,8 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
     return merkleTree;
   }
 
+  // a helper method that, coompute the valid merkle tree root.
+  // this computation is not within provable code.
   async initializeWithKeys(
     councilMembers: PublicKey[],
     standardProposalPassThreshold: UInt8
@@ -150,6 +158,9 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
     );
   }
 
+  // a method to initialize the contract it does not check if the merkle root
+  // matches the provided keys, it is the caller's responsibility to do so.
+  // preferably use the `initializeWithKeys` method.
   @method
   async initializeWithCouncilMembersKeys(
     councilMerkleRoot: Field,
@@ -174,17 +185,18 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
 
   async deploy(args?: ZkUsdDeployArgs): Promise<void> {
     await super.deploy(args);
-
+    // TODO switch from the default to hardcoded permissions
     this.account.permissions.set({
       ...Permissions.default(),
       setPermissions: Permissions.impossible(),
       setVerificationKey: Permissions.VerificationKey.signature(),
-
       editState: Permissions.proof(),
       send: Permissions.proof(),
     });
   }
 
+  // try to pass proposal by giving the witnesses necessary to check if
+  // reached the required councik support.
   @method
   async passProposal(
     updateSpec: ZkusdProtocolUpdateSpec,
@@ -274,6 +286,8 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
     );
   }
 
+  // This method allows to create and cast a vote for a proposal
+  // it will sum (safely) the given vote with the current support
   @method
   async supportProposal(
     voteProof: ZkusdGoverningCouncilVoteProof,

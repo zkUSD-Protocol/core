@@ -87,7 +87,7 @@ export class FieldPrecondition extends Struct({
     return new FieldPrecondition({
       lower: value.add(1),
       upper: FieldMax,
-      not: Bool(true),
+      not: Bool(false),
     });
   }
 
@@ -95,7 +95,7 @@ export class FieldPrecondition extends Struct({
     return new FieldPrecondition({
       lower: value,
       upper: FieldMax,
-      not: Bool(true),
+      not: Bool(false),
     });
   }
 
@@ -103,7 +103,7 @@ export class FieldPrecondition extends Struct({
     return new FieldPrecondition({
       lower: Field.from(0),
       upper: value.sub(1),
-      not: Bool(true),
+      not: Bool(false),
     });
   }
 
@@ -195,7 +195,7 @@ export class UInt8Precondition extends Struct({
     return new UInt8Precondition({
       lower: value.add(1),
       upper: UInt8Max,
-      not: Bool(true),
+      not: Bool(false),
     });
   }
 
@@ -203,7 +203,7 @@ export class UInt8Precondition extends Struct({
     return new UInt8Precondition({
       lower: value,
       upper: UInt8Max,
-      not: Bool(true),
+      not: Bool(false),
     });
   }
 
@@ -211,7 +211,7 @@ export class UInt8Precondition extends Struct({
     return new UInt8Precondition({
       lower: UInt8.from(0),
       upper: value.sub(1),
-      not: Bool(true),
+      not: Bool(false),
     });
   }
 

@@ -20,6 +20,14 @@ interface DeployedContracts {
   gov: ZkusdGoverningCouncilContract;
   oracleAggregationVk: VerificationKey;
 }
+export interface ZkusdCompilationData {
+  oracleAggregationVk: VerificationKey;
+  councilMultiSigProgramVk: VerificationKey;
+  zkusdEngineContractVk: VerificationKey;
+  governmentContractVk: VerificationKey;
+  tokenContractVk: VerificationKey;
+}
+
 
 
 /** A proposal is considered valid if the ratio of votes in favor is greater than this value.
@@ -41,6 +49,11 @@ export class DeploymentService {
   private _gov: ContractInstance<ZkusdGoverningCouncilContract>;
   private _oracleAggregationVk: VerificationKey;
   private _councilMultisigProgramVk: VerificationKey;
+  private _compilationData: Partial<ZkusdCompilationData>;
+
+  public get compilationData(): Partial<ZkusdCompilationData> {
+    return this._compilationData
+  }
 
   private constructor(txMgr: TransactionManager<any>) {
     this._txMgr = txMgr;
@@ -60,7 +73,7 @@ export class DeploymentService {
     } else {
       service._deployer = await service._txMgr.mina.newAccount();
     }
-    await service.compile();
+    service._compilationData = await service.compile();
     return service;
   }
 
@@ -86,7 +99,7 @@ export class DeploymentService {
    * Compiles all necessary contracts and proofs for the protocol.
   * This includes the oracle aggregation proof, vault, engine, and token contracts.
    */
-  async compile() {
+  async compile() : Promise<Partial<ZkusdCompilationData>>{
     console.log('Compiling Contracts - start');
     console.time('Compiling Contracts');
 
@@ -104,11 +117,14 @@ export class DeploymentService {
       zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
       GovernmentClass: ZkusdGoverningCouncilContract
     });
+    let engineCompilationResults;
+    let tokenCompilationResults;
+    let governmenttokenCompilationResults;
 
     if (this._mina.proofsEnabled) {
-      await ZkUsdEngine.compile();
-      await ZkUsdEngine.FungibleToken.compile();
-      await ZkusdGoverningCouncilContract.compile();
+      engineCompilationResults = await ZkUsdEngine.compile();
+      tokenCompilationResults = await ZkUsdEngine.FungibleToken.compile();
+      governmenttokenCompilationResults = await ZkusdGoverningCouncilContract.compile();
     }
 
     this._token = {
@@ -126,6 +142,13 @@ export class DeploymentService {
     };
 
     console.timeEnd('Compiling Contracts');
+    return {
+      oracleAggregationVk: this._oracleAggregationVk,
+      councilMultiSigProgramVk: this._councilMultisigProgramVk,
+      zkusdEngineContractVk: engineCompilationResults?.verificationKey,
+      governmentContractVk: tokenCompilationResults?.verificationKey,
+      tokenContractVk: governmenttokenCompilationResults?.verificationKey
+    }
   }
 
   /**

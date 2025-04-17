@@ -1,0 +1,342 @@
+import { describe, it, before, after } from 'node:test';
+import assert from 'node:assert';
+import {
+  Bool,
+  Field,
+  PrivateKey,
+  Poseidon,
+  UInt32,
+  UInt8,
+  MerkleTree,
+  MerkleMap,
+} from 'o1js';
+import { TestHelper } from '../../test-helper.js';
+import { ZkusdProtocolUpdateSpec } from '../../../system/update/input.js';
+import { MinaChainPreconditions, ValidityRangeUInt32 } from '../../../system/update/blockchain-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../../../system/update/protocol-preconditions.js';
+import {
+  generateVoteProof,
+  getNextEmptyResolutionIndex,
+  rebuildCouncilMembersAndTree,
+  rebuildProposalMerkleMap,
+  rebuildResolutionMerkleTree,
+} from './council/common.js';
+import { MultiSigZkusdProtocolUpdateProgram } from '../../../proofs/gov/council-multisig.js';
+import { ZkusdGovUpdateWitness } from '../../../system/governance.js';
+import { BoolOperation, FieldOperation, UInt8Operation } from '../../../system/update/simple-operations.js';
+import { OracleWhitelist } from '../../../system/oracle.js';
+import { BoolPrecondition } from '../../../system/update/simple-preconditions.js';
+import { ZkusdProtocolUpdateOperation } from '../../../system/update/operation.js';
+
+let testHelper: TestHelper<'local'>;
+const engine = () => testHelper.engine.contract;
+
+const engineVK = () => testHelper!.zkusdCompilationData()!.zkusdEngineContractVk;
+
+/* -------------------------------------------------------------------------- */
+/* 1.  Constants for deterministic values                                     */
+/* -------------------------------------------------------------------------- */
+const EMERGENCY_STOP_VAL = Bool(true);
+const VALID_PRICE_BLOCK_COUNT_VAL = UInt8.from(42);
+const LIQ_BONUS_RATIO_VAL = UInt8.from(7);
+const COLLATERAL_RATIO_VAL = UInt8.from(175);
+const ORACLE_WHITELIST = {
+  addresses: Array.from({ length: 8 }, () => PrivateKey.random().toPublicKey()),
+};
+const ORACLE_WL_HASH = Poseidon.hash(OracleWhitelist.toFields(ORACLE_WHITELIST));
+const CONFIG_ROOT_VAL = Field.random();
+
+/* -------------------------------------------------------------------------- */
+/* 2.  Helper to build the council‑approved spec                              */
+/* -------------------------------------------------------------------------- */
+function makeDefaultAcceptedSpec(resIndex: UInt32) {
+  const spec = ZkusdProtocolUpdateSpec.empty();
+  spec.govResolutionIndex = resIndex;
+  spec.protocolUpdateOperation = ZkusdProtocolUpdateOperation.mkFromPartial({
+    emergencyStop: BoolOperation.mkSetTo(EMERGENCY_STOP_VAL),
+    validPriceBlockCount: UInt8Operation.mkSetTo(VALID_PRICE_BLOCK_COUNT_VAL),
+    liquidationBonusRatio: UInt8Operation.mkSetTo(LIQ_BONUS_RATIO_VAL),
+    collateralRatio: UInt8Operation.mkSetTo(COLLATERAL_RATIO_VAL),
+    oracleWhitelistHash: FieldOperation.mkSetTo(ORACLE_WL_HASH),
+    configMerkleRoot: FieldOperation.mkSetTo(CONFIG_ROOT_VAL),
+    newVerificationKey: FieldOperation.mkSetTo(engineVK()!.hash),
+  });
+  spec.blockchainPreconditions = MinaChainPreconditions.always();
+  spec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create();
+  return spec;
+}
+
+let updateSpec: ZkusdProtocolUpdateSpec;
+
+/* -------------------------------------------------------------------------- */
+/* 3.  Test‑case table – now no randomness                                    */
+/*     Each makeOperation pulls from global `updateSpec`.                     */
+/* -------------------------------------------------------------------------- */
+const testsToRun: TestCase[] = [
+  {
+    title: 'Toggle emergency stop',
+    call: 'govToggleEmergencyStop',
+    makeOperation() {
+      return {
+        newValue: EMERGENCY_STOP_VAL,
+      };
+    },
+    async verifyState(v) { (engine().isEmergencyStopped()).assertEquals(v); },
+    event: 'EmergencyStopToggled',
+  },
+  {
+    title: 'Change verification key',
+    call: 'govUpdateEngineVerificationKey',
+    makeOperation() {
+      return {
+        newValue: engineVK(),
+      };
+    },
+    async verifyState() { },
+    event: 'VerificationKeyUpdated',
+  },
+  {
+    title: 'Update valid price block count',
+    call: 'govUpdateValidPriceBlockCount',
+    makeOperation() {
+      return {
+        newValue: VALID_PRICE_BLOCK_COUNT_VAL,
+      };
+    },
+    async verifyState(v) {
+      (await engine().getValidPriceBlockCount()).assertEquals(v);
+    },
+    event: 'ValidPriceBlockCountUpdated',
+  },
+  {
+    title: 'Update liquidation bonus ratio',
+    call: 'govUpdateLiquidationBonusRatio',
+    makeOperation() {
+      return {
+        newValue: LIQ_BONUS_RATIO_VAL,
+      };
+    },
+    async verifyState(v) {
+      (await engine().getProtocolData()).liquidationBonusRatio.assertEquals(v);
+    },
+    event: 'LiquidationBonusRatioUpdated',
+  },
+  {
+    title: 'Update collateral ratio',
+    call: 'govUpdateCollateralRatio',
+    makeOperation() {
+      return {
+        newValue: COLLATERAL_RATIO_VAL,
+      };
+    },
+    async verifyState(v) {
+      (await engine().getProtocolData()).collateralRatio.assertEquals(v);
+    },
+    event: 'CollateralRatioUpdated',
+  },
+  {
+    title: 'Update oracle whitelist hash',
+    call: 'govUpdateOracleWhitelist',
+    makeOperation() {
+      return {
+        newValue: ORACLE_WHITELIST,
+      };
+    },
+    async verifyState(wl) {
+      const h = Poseidon.hash(OracleWhitelist.toFields(wl));
+      engine().oracleWhitelistHash.getAndRequireEquals().assertEquals(h);
+    },
+    event: 'OracleWhitelistUpdated',
+  },
+  {
+    title: 'Update config merkle root',
+    call: 'govUpdateConfigMerkleRoot',
+    makeOperation() {
+      return {
+        newValue: CONFIG_ROOT_VAL,
+      };
+    },
+    async verifyState(root) {
+      engine().configMerkleRoot.getAndRequireEquals().assertEquals(root);
+    },
+    event: 'ConfigMerkleRootUpdated',
+  },
+];
+
+
+/* -------------------------------------------------------------------------- */
+/*                            Test case structure                             */
+/* -------------------------------------------------------------------------- */
+
+type TestCase = {
+  title: string;
+  call:
+  | 'govToggleEmergencyStop'
+  | 'govUpdateValidPriceBlockCount'
+  | 'govUpdateLiquidationBonusRatio'
+  | 'govUpdateCollateralRatio'
+  | 'govUpdateOracleWhitelist'
+  | 'govUpdateEngineVerificationKey'
+  | 'govUpdateConfigMerkleRoot';
+  makeOperation(): { newValue: any };
+  verifyState(newValue: any): Promise<void>;
+  event: string;
+};
+
+
+
+/* -------------------------------------------------------------------------- */
+/*                                   Tests                                    */
+/* -------------------------------------------------------------------------- */
+
+describe('Engine – governance‑controlled setters', () => {
+  let updateWitness: ZkusdGovUpdateWitness;
+  let councilTree: MerkleTree;
+  let proposalMap: MerkleMap;
+  let resolutionTree: MerkleTree;
+
+
+  before(async () => {
+    testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
+    await testHelper.deployTokenContracts();
+    await testHelper.createLocalAgents('alice');
+    await testHelper.createLocalAgents('bob');
+
+    const events = await testHelper.council.fetchEvents();
+    ({ councilTree } = rebuildCouncilMembersAndTree(events));
+    proposalMap = rebuildProposalMerkleMap(events);
+    resolutionTree = rebuildResolutionMerkleTree(events);
+
+    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
+    updateSpec = makeDefaultAcceptedSpec(govResolutionIndex);
+
+    const councilKeyPairs = testHelper.networkKeys.council!;
+    const voteA = await generateVoteProof(
+      councilKeyPairs[0],
+      councilTree,
+      0,
+      Number(govResolutionIndex.toBigint()),
+      updateSpec
+    );
+    const voteB = await generateVoteProof(
+      councilKeyPairs[1],
+      councilTree,
+      1,
+      Number(govResolutionIndex.toBigint()),
+      updateSpec
+    );
+
+    const merged = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+      voteA.publicInput,
+      voteA,
+      voteB
+    );
+
+    const proposalHash = merged.proof.publicOutput.proposalHash;
+    const voteBits = merged.proof.publicOutput.cummulatedVoteBitArray;
+
+    await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+      await testHelper.council.supportProposalHelper(
+        merged.proof,
+        proposalMap,
+        resolutionTree
+      );
+    });
+    console.log('Im here', proposalHash.toString());
+
+    proposalMap.set(proposalHash, voteBits);
+    const proposalWitness = proposalMap.getWitness(proposalHash);
+
+    await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+      await testHelper.council.passProposal(
+        updateSpec,
+        proposalWitness,
+        voteBits,
+        new ZkusdGovUpdateWitness(
+          resolutionTree.getWitness(govResolutionIndex.toBigint())
+        )
+      );
+    });
+
+    resolutionTree.setLeaf(govResolutionIndex.toBigint(), proposalHash);
+    updateWitness = new ZkusdGovUpdateWitness(
+      resolutionTree.getWitness(govResolutionIndex.toBigint())
+    );
+  });
+
+  for (const tc of testsToRun) {
+    describe(tc.title, () => {
+      it('✅ happy‑path succeeds', async () => {
+        const { newValue } = tc.makeOperation();
+        const eventsBefore = await engine().fetchEvents();
+        await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+          if (tc.call === 'govUpdateOracleWhitelist' || tc.call === 'govUpdateEngineVerificationKey') {
+            await engine()[tc.call](newValue, updateSpec, updateWitness);
+          } else {
+            await engine()[tc.call](updateSpec, updateWitness);
+          }
+        });
+        await tc.verifyState(newValue);
+        const events = await engine().fetchEvents();
+        assert.strictEqual(events.length, eventsBefore.length + 1);
+        assert.strictEqual(events[0].type, tc.event);
+      });
+
+      it('❌ gov rejects → fails', async () => {
+        const { newValue } = tc.makeOperation();
+        const badSpecIndex = updateSpec.govResolutionIndex.add(1);
+        const spec = makeDefaultAcceptedSpec(badSpecIndex);
+        const witness = new ZkusdGovUpdateWitness(
+          resolutionTree.getWitness(badSpecIndex.toBigint())
+        );
+        await assert.rejects(async () => {
+          await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+            if (tc.call === 'govUpdateOracleWhitelist' || tc.call === 'govUpdateEngineVerificationKey') {
+              await engine()[tc.call](newValue, spec, witness);
+            } else {
+              await engine()[tc.call](spec, witness);
+            }
+          });
+        });
+      });
+
+      it('❌ bad blockchain preconditions → fails', async () => {
+        const { newValue } = tc.makeOperation();
+        const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex);
+        badSpec.blockchainPreconditions = new MinaChainPreconditions({
+          slotIndexValidityRange: MinaChainPreconditions.always().slotIndexValidityRange,
+          blockchainLength: new ValidityRangeUInt32({
+            firstValidBlock: UInt32.from(90000),
+            lastValidBlock: UInt32.from(100),
+          }),
+        });
+        await assert.rejects(async () => {
+          await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
+            if (tc.call === 'govUpdateOracleWhitelist' || tc.call === 'govUpdateEngineVerificationKey') {
+              await engine()[tc.call](newValue, badSpec, updateWitness);
+            } else {
+              await engine()[tc.call](badSpec, updateWitness);
+            }
+          });
+        });
+      });
+
+      it('❌ bad protocol preconditions → fails', async () => {
+        const { newValue } = tc.makeOperation();
+        const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex);
+        badSpec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create({
+          emergencyStop: BoolPrecondition.mkMustEqual(true),
+        });
+        await assert.rejects(async () => {
+          await testHelper.includeTx(testHelper.agents.bob.keys, async () => {
+            if (tc.call === 'govUpdateOracleWhitelist' || tc.call === 'govUpdateEngineVerificationKey') {
+              await engine()[tc.call](newValue, badSpec, updateWitness);
+            } else {
+              await engine()[tc.call](badSpec, updateWitness);
+            }
+          });
+        });
+      });
+    });
+  }
+});

@@ -1,9 +1,20 @@
-import { DynamicProof, Bool, FeatureFlags, Field, Poseidon, Struct, VerificationKey, ZkProgram, PublicKey, PrivateKey } from "o1js";
+import {
+  DynamicProof,
+  Bool,
+  FeatureFlags,
+  Field,
+  Poseidon,
+  Struct,
+  VerificationKey,
+  ZkProgram,
+  PublicKey,
+  PrivateKey,
+} from 'o1js';
 
-const {privateKey, publicKey} = PrivateKey.randomKeypair()
+const { privateKey, publicKey } = PrivateKey.randomKeypair();
 
 const p1 = ZkProgram({
-  name: "asd",
+  name: 'asd',
   publicInput: PublicKey,
   publicOutput: Bool,
   methods: {
@@ -11,7 +22,7 @@ const p1 = ZkProgram({
       privateInputs: [PrivateKey],
       async method(
         publicInput: PublicKey,
-        privateInput: PrivateKey,
+        privateInput: PrivateKey
       ): Promise<{ publicOutput: Bool }> {
         const b = privateInput.toPublicKey().equals(publicInput);
         return { publicOutput: b };
@@ -22,17 +33,14 @@ const p1 = ZkProgram({
 
 const p1vk = await p1.compile();
 
-
 const p2 = ZkProgram({
-  name: "bsd",
+  name: 'bsd',
   publicInput: PublicKey,
   publicOutput: Bool,
   methods: {
     test: {
       privateInputs: [],
-      async method(
-        publicInput: PublicKey,
-      ): Promise<{ publicOutput: Bool }> {
+      async method(publicInput: PublicKey): Promise<{ publicOutput: Bool }> {
         const b = Bool(true);
         return { publicOutput: b };
       },
@@ -42,17 +50,12 @@ const p2 = ZkProgram({
 
 const p2vk = await p2.compile();
 
-
 const proof = await p2.test(publicKey);
 
 const p3vk = p2vk;
 p3vk.verificationKey.hash = p1vk.verificationKey.hash;
 
-
-export class DProof extends DynamicProof<
-  PublicKey,
-  Bool
-> {
+export class DProof extends DynamicProof<PublicKey, Bool> {
   static publicSpecType = PublicKey;
   static publicOutputType = Bool;
   static maxProofsVerified = 0 as const;
@@ -63,4 +66,4 @@ export class DProof extends DynamicProof<
 
 const dproof = DProof.fromProof(proof.proof);
 
-dproof.verify(p3vk.verificationKey)
+dproof.verify(p3vk.verificationKey);

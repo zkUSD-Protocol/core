@@ -1,5 +1,4 @@
-import { Provable } from "o1js";
-
+import { Provable } from 'o1js';
 
 export async function measurePerformance<T>(
   label: string,
@@ -18,4 +17,3 @@ export async function measurePerformance<T>(
 
   return result;
 }
-

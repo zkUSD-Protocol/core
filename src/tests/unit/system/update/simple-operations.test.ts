@@ -1,11 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import {
-  Bool,
-  Field,
-  Provable,
-  UInt8,
-} from 'o1js';
+import { Bool, Field, Provable, UInt8 } from 'o1js';
 import {
   BoolOperation,
   FieldMax,
@@ -57,9 +52,17 @@ describe('Operation Classes Test Suite', () => {
     it('should no-op the state if operation=3 (mkNoop)', () => {
       const op = BoolOperation.mkNoop();
       const newState = op.execute(Bool(true));
-      assert.strictEqual(newState.toBoolean(), true, 'No-op should not change state');
+      assert.strictEqual(
+        newState.toBoolean(),
+        true,
+        'No-op should not change state'
+      );
       const newState2 = op.execute(initialBool);
-      assert.strictEqual(newState2.toBoolean(), false, 'No-op should not change state');
+      assert.strictEqual(
+        newState2.toBoolean(),
+        false,
+        'No-op should not change state'
+      );
     });
 
     it('should throw on invalid operation (> 3)', () => {
@@ -71,10 +74,18 @@ describe('Operation Classes Test Suite', () => {
 
     it('should correctly identify isNoop vs. non-noop', () => {
       const noop = BoolOperation.mkNoop();
-      assert.strictEqual(noop.isNoop().toBoolean(), true, 'Expected isNoop === true');
+      assert.strictEqual(
+        noop.isNoop().toBoolean(),
+        true,
+        'Expected isNoop === true'
+      );
 
       const setTo = BoolOperation.mkSetTo(Bool(true));
-      assert.strictEqual(setTo.isNoop().toBoolean(), false, 'Expected isNoop === false');
+      assert.strictEqual(
+        setTo.isNoop().toBoolean(),
+        false,
+        'Expected isNoop === false'
+      );
     });
   });
 
@@ -87,7 +98,11 @@ describe('Operation Classes Test Suite', () => {
       // Just to illustrate the structure:
       Provable.log(op);
       const newState = op.execute(initialUInt8);
-      assert.strictEqual(newState.value.toBigInt(), 123n, 'State should be set to 123');
+      assert.strictEqual(
+        newState.value.toBigInt(),
+        123n,
+        'State should be set to 123'
+      );
     });
 
     it('should add using mkAdd', () => {
@@ -105,7 +120,11 @@ describe('Operation Classes Test Suite', () => {
     it('should not change state using mkNoop', () => {
       const op = UInt8Operation.mkNoop();
       const newState = op.execute(initialUInt8);
-      assert.strictEqual(newState.value.toBigInt(), 50n, 'No-op should not change the original state');
+      assert.strictEqual(
+        newState.value.toBigInt(),
+        50n,
+        'No-op should not change the original state'
+      );
     });
 
     it('should fail if result exceeds UInt8 range after add', () => {
@@ -137,10 +156,18 @@ describe('Operation Classes Test Suite', () => {
 
     it('should correctly identify isNoop vs. non-noop', () => {
       const noop = UInt8Operation.mkNoop();
-      assert.strictEqual(noop.isNoop().toBoolean(), true, 'Expected isNoop === true');
+      assert.strictEqual(
+        noop.isNoop().toBoolean(),
+        true,
+        'Expected isNoop === true'
+      );
 
       const addOp = UInt8Operation.mkAdd(UInt8.from(1));
-      assert.strictEqual(addOp.isNoop().toBoolean(), false, 'Expected isNoop === false');
+      assert.strictEqual(
+        addOp.isNoop().toBoolean(),
+        false,
+        'Expected isNoop === false'
+      );
     });
 
     it('should throw if provided with unsupported operation in BoolOperation test', () => {
@@ -192,10 +219,18 @@ describe('Operation Classes Test Suite', () => {
 
     it('should correctly identify isNoop vs. non-noop', () => {
       const noop = FieldOperation.mkNoop();
-      assert.strictEqual(noop.isNoop().toBoolean(), true, 'Expected isNoop === true');
+      assert.strictEqual(
+        noop.isNoop().toBoolean(),
+        true,
+        'Expected isNoop === true'
+      );
 
       const setOp = FieldOperation.mkSetTo(Field(123));
-      assert.strictEqual(setOp.isNoop().toBoolean(), false, 'Expected isNoop === false');
+      assert.strictEqual(
+        setOp.isNoop().toBoolean(),
+        false,
+        'Expected isNoop === false'
+      );
     });
   });
 });

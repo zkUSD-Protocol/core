@@ -387,6 +387,10 @@ export class TestHelper<E extends string> {
     console.log('Lightnet Setup Complete');
   }
 
+  public zkusdCompilationData() {
+    return this._deploymentService.compilationData;
+  }
+
   async deployTokenContracts(args?:{force?:boolean}) {
     const force = args?.force ?? false;
     this._deploymentService = await DeploymentService.create(this.txMgr);
