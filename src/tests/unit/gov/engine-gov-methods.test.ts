@@ -32,10 +32,6 @@ let testHelper: TestHelper<'local'>;
 const engine = () => testHelper.engine.contract;
 
 const engineVK = () => testHelper!.zkusdCompilationData()!.zkusdEngineContractVk;
-
-/* -------------------------------------------------------------------------- */
-/* 1.  Constants for deterministic values                                     */
-/* -------------------------------------------------------------------------- */
 const EMERGENCY_STOP_VAL = Bool(true);
 const VALID_PRICE_BLOCK_COUNT_VAL = UInt8.from(42);
 const LIQ_BONUS_RATIO_VAL = UInt8.from(7);
@@ -46,20 +42,17 @@ const ORACLE_WHITELIST = {
 const ORACLE_WL_HASH = Poseidon.hash(OracleWhitelist.toFields(ORACLE_WHITELIST));
 const CONFIG_ROOT_VAL = Field.random();
 
-/* -------------------------------------------------------------------------- */
-/* 2.  Helper to build the council‑approved spec                              */
-/* -------------------------------------------------------------------------- */
 function makeDefaultAcceptedSpec(resIndex: UInt32) {
   const spec = ZkusdProtocolUpdateSpec.empty();
   spec.govResolutionIndex = resIndex;
-  spec.protocolUpdateOperation = ZkusdProtocolUpdateOperation.mkFromPartial({
-    emergencyStop: BoolOperation.mkSetTo(EMERGENCY_STOP_VAL),
-    validPriceBlockCount: UInt8Operation.mkSetTo(VALID_PRICE_BLOCK_COUNT_VAL),
-    liquidationBonusRatio: UInt8Operation.mkSetTo(LIQ_BONUS_RATIO_VAL),
-    collateralRatio: UInt8Operation.mkSetTo(COLLATERAL_RATIO_VAL),
-    oracleWhitelistHash: FieldOperation.mkSetTo(ORACLE_WL_HASH),
-    configMerkleRoot: FieldOperation.mkSetTo(CONFIG_ROOT_VAL),
-    newVerificationKey: FieldOperation.mkSetTo(engineVK()!.hash),
+  spec.protocolUpdateOperation = ZkusdProtocolUpdateOperation.create({
+    emergencyStop: BoolOperation.set(EMERGENCY_STOP_VAL),
+    validPriceBlockCount: UInt8Operation.set(VALID_PRICE_BLOCK_COUNT_VAL),
+    liquidationBonusRatio: UInt8Operation.set(LIQ_BONUS_RATIO_VAL),
+    collateralRatio: UInt8Operation.set(COLLATERAL_RATIO_VAL),
+    oracleWhitelistHash: FieldOperation.set(ORACLE_WL_HASH),
+    configMerkleRoot: FieldOperation.set(CONFIG_ROOT_VAL),
+    newVerificationKey: FieldOperation.set(engineVK()!.hash),
   });
   spec.blockchainPreconditions = MinaChainPreconditions.always();
   spec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create();
@@ -325,7 +318,7 @@ describe('Engine – governance‑controlled setters', () => {
         const { newValue } = tc.makeOperation();
         const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex);
         badSpec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create({
-          emergencyStop: BoolPrecondition.mkMustEqual(true),
+          emergencyStop: BoolPrecondition.equal(true),
         });
         await assert.rejects(async () => {
           await testHelper.includeTx(testHelper.agents.bob.keys, async () => {

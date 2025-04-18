@@ -15,13 +15,12 @@ import {
 import {
   MultiSigZkusdProtocolUpdateProgram,
   ZKUSD_COUNCIL_TREE_HEIGHT,
-  MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE,
   ZkusdCouncilMemberWitness,
   pubkeyToCouncilSeatLeaf,
-} from './council-multisig.js';
-import { ZkusdProtocolUpdateSpec } from '../../system/update/input.js';
-import { BoolOperation } from '../../system/update/simple-operations.js';
-import { ZkusdProtocolUpdateOutput } from '../../system/update/output.js';
+} from '../../../../proofs/gov/council-multisig.js';
+import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
+import { BoolOperation } from '../../../../system/update/simple-operations.js';
+import { ZkusdProtocolUpdateOutput } from '../../../../system/update/output.js';
 
 
 // A small helper for building and proving membership in a Merkle tree
@@ -125,7 +124,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       // 1. Create a *different* input
       const differentInput = ZkusdProtocolUpdateSpec.empty();
       // Modify it in some minimal way...
-      differentInput.protocolUpdateOperation.emergencyStop = BoolOperation.mkFlip();
+      differentInput.protocolUpdateOperation.emergencyStop = BoolOperation.flip();
 
       const differentFields = differentInput.toFields();
 
@@ -326,7 +325,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
     it('should fail to merge if the two proofs have different publicInputs', async () => {
       // Make a proof for a *different* input
       const differentInput = ZkusdProtocolUpdateSpec.empty();
-      differentInput.protocolUpdateOperation.emergencyStop = BoolOperation.mkFlip();
+      differentInput.protocolUpdateOperation.emergencyStop = BoolOperation.flip();
       const differentFields = differentInput.toFields();
 
       // Make a seatIndex proof for the *different* input

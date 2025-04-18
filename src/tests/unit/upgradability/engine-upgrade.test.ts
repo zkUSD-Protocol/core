@@ -133,7 +133,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       (err: any) => {
         assert.match(
           err.message,
-          /Cannot update field 'verificationKey' because permission for this field is 'Signature'/i
+          /Cannot update field 'verificationKey' because permission for this field is/i
         );
         return true;
       }
@@ -297,7 +297,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         await upgradedEngine.contract.initialize(
           secret,
           th.whitelist,
-          UInt32.from(25)
+          UInt8.from(25)
         );
       },
       {

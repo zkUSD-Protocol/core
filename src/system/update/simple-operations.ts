@@ -1,44 +1,78 @@
-import { Bool, Field, Provable, Struct, UInt8 } from 'o1js'; // or your zk library
+import { Bool, Field, Provable, Struct, UInt8 } from 'o1js';
 
-// Define the max valid Field value: Field.ORDER - 1
+/**
+ * Define the maximum valid Field value: Field.ORDER - 1
+ */
 export const FieldMax = Field.from(Field.ORDER - 1n);
 
+/**
+ * @notice Operations for updating a Bool state.
+ *
+ * Operation codes:
+ *  - 0: set to false
+ *  - 1: set to true
+ *  - 2: flip (negate)
+ *  - 3: no-op (do nothing)
+ */
 export class BoolOperation extends Struct({
   operation: Field,
 }) {
+  /**
+   * Execute the operation on the given Bool state.
+   */
   execute(state: Bool): Bool {
     this.operation.assertLessThanOrEqual(3);
-    const isSet: Bool = this.operation.lessThan(2);
-    const setValue: Bool = Provable.if(
+
+    const isSet = this.operation.lessThan(2);
+    const setValue = Provable.if(
       this.operation.equals(1),
       Bool(true),
       Bool(false)
     );
-    const isFlip: Bool = this.operation.equals(2);
-    const flipped: Bool = state.not();
-    // const isNoop: Bool = this.operation.equals(3);
+    const isFlip = this.operation.equals(2);
+    const flipped = state.not();
 
     return Provable.if(isSet, setValue, Provable.if(isFlip, flipped, state));
   }
 
-  static mkSetTo(value: Bool) {
+  /**
+   * Create a BoolOperation that sets the state.
+   *
+   * @param value - A Bool or native boolean.
+   * @example
+   * const op = BoolOperation.set(true);
+   */
+  static set(value: Bool | boolean): BoolOperation {
     return new BoolOperation({
-      operation: Provable.if(value, Field.from(1), Field.from(0)),
+      operation: Provable.if(Bool(value), Field(1), Field(0)),
     });
   }
 
-  static mkFlip() {
+  /**
+   * Create a BoolOperation that flips the state.
+   * @example
+   * const op = BoolOperation.flip();
+   */
+  static flip(): BoolOperation {
     return new BoolOperation({
-      operation: Field.from(2),
+      operation: Field(2),
     });
   }
 
-  static mkNoop() {
+  /**
+   * Create a BoolOperation that does nothing.
+   * @example
+   * const op = BoolOperation.noop();
+   */
+  static noop(): BoolOperation {
     return new BoolOperation({
-      operation: Field.from(3),
+      operation: Field(3),
     });
   }
 
+  /**
+   * Check if this operation is a no-op.
+   */
   isNoop(): Bool {
     return this.operation.equals(3);
   }
@@ -49,91 +83,100 @@ export class BoolOperation extends Struct({
 }
 
 /**
- * @notice Operations for updating a UInt8 state, with the following codes:
- *  0 => set
- *  1 => add
- *  2 => subtract
- *  3 => no-op
+ * @notice Operations for updating a UInt8 state.
+ *
+ * Operation codes:
+ *  - 0: set
+ *  - 1: add
+ *  - 2: subtract
+ *  - 3: no-op
  */
 export class UInt8Operation extends Struct({
   operation: Field,
   value: UInt8,
 }) {
+  /**
+   * Execute the operation on the given UInt8 state.
+   */
   execute(state: UInt8): UInt8 {
-    // Strict check: fail if operation > 3
     this.operation.assertLessThanOrEqual(3);
 
-    // Evaluate which operation to apply
     const isSet = this.operation.equals(0);
     const isAdd = this.operation.equals(1);
     const isSub = this.operation.equals(2);
-    // 3 => no-op
 
-    // Potential results
     const setResult = this.value.value;
     const addResult = state.value.add(this.value.value);
     const subResult = state.value.sub(this.value.value);
     const noChange = state.value;
 
-    // Nest the conditions:
-    //  1) If isSet => setResult
-    //  2) Else if isAdd => addResult
-    //  3) Else if isSub => subResult
-    //  4) Else => noChange
-    const retField: Field = Provable.if(
+    const retField = Provable.if(
       isSet,
       setResult,
       Provable.if(isAdd, addResult, Provable.if(isSub, subResult, noChange))
     );
 
-    // Enforce the final result is < 256 (valid UInt8 range)
     retField.assertLessThan(256);
-
-    // Return the new state as a UInt8
     return UInt8.Unsafe.fromField(retField);
   }
 
   /**
-   * @dev Set the state to the given value
+   * Create a UInt8Operation to set the state.
+   *
+   * @param value - A UInt8, number, or bigint.
+   * @example
+   * const op = UInt8Operation.set(42);
    */
-  static mkSetTo(value: UInt8): UInt8Operation {
+  static set(value: UInt8 | number | bigint): UInt8Operation {
     return new UInt8Operation({
       operation: Field(0),
-      value,
+      value: UInt8.from(value),
     });
   }
 
   /**
-   * @dev Add the given value to the current state
+   * Create a UInt8Operation to add to the state.
+   *
+   * @param value - A UInt8, number, or bigint.
+   * @example
+   * const op = UInt8Operation.add(5n);
    */
-  static mkAdd(value: UInt8): UInt8Operation {
+  static add(value: UInt8 | number | bigint): UInt8Operation {
     return new UInt8Operation({
       operation: Field(1),
-      value,
+      value: UInt8.from(value),
     });
   }
 
   /**
-   * @dev Subtract the given value from the current state
+   * Create a UInt8Operation to subtract from the state.
+   *
+   * @param value - A UInt8, number, or bigint.
+   * @example
+   * const op = UInt8Operation.sub(3);
    */
-  static mkSub(value: UInt8): UInt8Operation {
+  static sub(value: UInt8 | number | bigint): UInt8Operation {
     return new UInt8Operation({
       operation: Field(2),
-      value,
+      value: UInt8.from(value),
     });
   }
 
   /**
-   * @dev No-op: leave the state unchanged
+   * Create a UInt8Operation that does nothing.
+   * @example
+   * const op = UInt8Operation.noop();
    */
-  static mkNoop(): UInt8Operation {
+  static noop(): UInt8Operation {
     return new UInt8Operation({
       operation: Field(3),
-      // The 'value' field is unused when operation=3, so it can be anything
       value: UInt8.from(0),
     });
   }
 
+  /**
+   * Check if this operation is a no-op.
+   */
   isNoop(): Bool {
     return this.operation.equals(3);
   }
@@ -144,88 +187,97 @@ export class UInt8Operation extends Struct({
 }
 
 /**
- * @notice Operations for updating a Field state, with the following codes:
- *  0 => set
- *  1 => add
- *  2 => subtract
- *  3 => no-op
+ * @notice Operations for updating a Field state.
+ *
+ * Operation codes:
+ *  - 0: set
+ *  - 1: add
+ *  - 2: subtract
+ *  - 3: no-op
  */
 export class FieldOperation extends Struct({
   operation: Field,
   value: Field,
 }) {
+  /**
+   * Execute the operation on the given Field state.
+   */
   execute(state: Field): Field {
-    // Strict check: fail if operation > 3
     this.operation.assertLessThanOrEqual(3);
 
-    // Evaluate which operation to apply
     const isSet = this.operation.equals(0);
     const isAdd = this.operation.equals(1);
     const isSub = this.operation.equals(2);
-    // 3 => no-op
 
-    // Potential results
     const setResult = this.value;
     const addResult = state.add(this.value);
     const subResult = state.sub(this.value);
     const noChange = state;
 
-    // Nest the conditions:
-    //  1) If isSet => setResult
-    //  2) Else if isAdd => addResult
-    //  3) Else if isSub => subResult
-    //  4) Else => noChange
-    const retField: Field = Provable.if(
+    return Provable.if(
       isSet,
       setResult,
       Provable.if(isAdd, addResult, Provable.if(isSub, subResult, noChange))
     );
-
-    // Return the new state as a Field
-    return retField;
   }
 
   /**
-   * @dev Set the state to the given value
+   * Create a FieldOperation to set the state.
+   *
+   * @param value - A Field, number, or bigint.
+   * @example
+   * const op = FieldOperation.set(12345n);
    */
-  static mkSetTo(value: Field): FieldOperation {
+  static set(value: Field | number | bigint): FieldOperation {
     return new FieldOperation({
       operation: Field(0),
-      value,
+      value: Field.from(value),
     });
   }
 
   /**
-   * @dev Add the given value to the current state
+   * Create a FieldOperation to add to the state.
+   *
+   * @param value - A Field, number, or bigint.
+   * @example
+   * const op = FieldOperation.add(1000);
    */
-  static mkAdd(value: Field): FieldOperation {
+  static add(value: Field | number | bigint): FieldOperation {
     return new FieldOperation({
       operation: Field(1),
-      value,
+      value: Field.from(value),
     });
   }
 
   /**
-   * @dev Subtract the given value from the current state
+   * Create a FieldOperation to subtract from the state.
+   *
+   * @param value - A Field, number, or bigint.
+   * @example
+   * const op = FieldOperation.sub(50n);
    */
-  static mkSub(value: Field): FieldOperation {
+  static sub(value: Field | number | bigint): FieldOperation {
     return new FieldOperation({
       operation: Field(2),
-      value,
+      value: Field.from(value),
     });
   }
 
   /**
-   * @dev No-op: leave the state unchanged
+   * Create a FieldOperation that does nothing.
+   * @example
+   * const op = FieldOperation.noop();
    */
-  static mkNoop(): FieldOperation {
+  static noop(): FieldOperation {
     return new FieldOperation({
       operation: Field(3),
-      // The 'value' field is unused when operation=3, so it can be anything
-      value: Field.from(0),
+      value: Field(0),
     });
   }
 
+  /**
+   * Check if this operation is a no-op.
+   */
   isNoop(): Bool {
     return this.operation.equals(3);
   }

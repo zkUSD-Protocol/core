@@ -40,7 +40,7 @@ import {
   RejectedOnReceive,
   mkStatusFailedBeforeSending,
 } from './status.js';
-import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 
 export {
   CompilationConfig,

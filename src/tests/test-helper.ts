@@ -55,7 +55,7 @@ import { ProtocolData } from '../system/engine.js';
 import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
-import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 
 const DEBUG = !!process.env.DEBUG;
 

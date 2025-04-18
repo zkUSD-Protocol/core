@@ -55,7 +55,7 @@ import {
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 import {
   NO_RESOLUTION_INDEX,
-  ZkUsdGovernmentPocConstructor,
+  ZkUsdGovernmentConstructor,
   ZkusdGovUpdateWitness,
 } from '../system/governance.js';
 import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
@@ -88,7 +88,7 @@ export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
   zkUsdGovernmentAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
-  GovernmentClass: ZkUsdGovernmentPocConstructor;
+  GovernmentClass: ZkUsdGovernmentConstructor;
 }) {
   const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {

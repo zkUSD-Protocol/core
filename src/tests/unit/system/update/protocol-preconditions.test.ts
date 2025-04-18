@@ -54,88 +54,88 @@ describe('ZkusdUpdatedProtocolState.isValidForPreconditions()', () => {
 
   it('returns true when all fields exactly match strict equality preconditions', () => {
     const strictP = ZkusdProtocolPreconditions.create({
-      emergencyStop: BoolPrecondition.mkMustEqual(false),
-      collateralRatio: UInt8Precondition.mkEqual(UInt8.from(150)),
-      validPriceBlockCount: UInt8Precondition.mkEqual(UInt8.from(12)),
-      liquidationBonusRatio: UInt8Precondition.mkEqual(UInt8.from(5)),
-      oracleWhitelistHash: HashPrecondition.mkEqual(hash1),
-      configMerkleRoot: HashPrecondition.mkEqual(hash2),
+      emergencyStop: BoolPrecondition.equal(false),
+      collateralRatio: UInt8Precondition.equal(150),
+      validPriceBlockCount: UInt8Precondition.equal(12),
+      liquidationBonusRatio: UInt8Precondition.equal(5),
+      oracleWhitelistHash: HashPrecondition.equal(hash1),
+      configMerkleRoot: HashPrecondition.equal(hash2),
     });
     assert.ok(protocolState.isValidForPreconditions(strictP).toBoolean());
   });
 
   it('returns false if emergencyStop mismatches', () => {
     const failP = ZkusdProtocolPreconditions.create({
-      emergencyStop: BoolPrecondition.mkMustEqual(true),
+      emergencyStop: BoolPrecondition.equal(true),
     });
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
   it('returns false if collateralRatio mismatches', () => {
     const failP = ZkusdProtocolPreconditions.create({
-      collateralRatio: UInt8Precondition.mkEqual(UInt8.from(200)),
+      collateralRatio: UInt8Precondition.equal(200),
     });
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
   it('returns false if validPriceBlockCount mismatches', () => {
     const failP = ZkusdProtocolPreconditions.create({
-      validPriceBlockCount: UInt8Precondition.mkEqual(UInt8.from(15)),
+      validPriceBlockCount: UInt8Precondition.equal(15),
     });
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
   it('returns false if liquidationBonusRatio mismatches', () => {
     const failP = ZkusdProtocolPreconditions.create({
-      liquidationBonusRatio: UInt8Precondition.mkEqual(UInt8.from(10)),
+      liquidationBonusRatio: UInt8Precondition.equal(10),
     });
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
   it('returns false if oracleWhitelistHash mismatches', () => {
     const failP = ZkusdProtocolPreconditions.create({
-      oracleWhitelistHash: HashPrecondition.mkEqual(Field.random()),
+      oracleWhitelistHash: HashPrecondition.equal(Field.random()),
     });
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
   it('returns false if configMerkleRoot mismatches', () => {
     const failP = ZkusdProtocolPreconditions.create({
-      configMerkleRoot: HashPrecondition.mkEqual(Field.random()),
+      configMerkleRoot: HashPrecondition.equal(Field.random()),
     });
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
-  it('handles HashPrecondition.mkDifferentThan() correctly', () => {
+  it('handles HashPrecondition.differentThan() correctly', () => {
     const okP = ZkusdProtocolPreconditions.create({
-      oracleWhitelistHash: HashPrecondition.mkDifferentThan(Field.random()),
+      oracleWhitelistHash: HashPrecondition.differentThan(Field.random()),
     });
     const failP = ZkusdProtocolPreconditions.create({
-      oracleWhitelistHash: HashPrecondition.mkDifferentThan(hash1),
+      oracleWhitelistHash: HashPrecondition.differentThan(hash1),
     });
 
     assert.ok(protocolState.isValidForPreconditions(okP).toBoolean());
     assert.ok(protocolState.isValidForPreconditions(failP).not().toBoolean());
   });
 
-  it('handles UInt8Precondition.mkGreater and mkGreaterOrEqual correctly', () => {
+  it('handles UInt8Precondition.greaterThan() and greaterOrEqual() correctly', () => {
     const greaterOk = ZkusdProtocolPreconditions.create({
-      collateralRatio: UInt8Precondition.mkGreaterOrEqual(UInt8.from(100)),
+      collateralRatio: UInt8Precondition.greaterOrEqual(100),
     });
     const greaterFail = ZkusdProtocolPreconditions.create({
-      collateralRatio: UInt8Precondition.mkGreater(UInt8.from(200)),
+      collateralRatio: UInt8Precondition.greaterThan(200),
     });
 
     assert.ok(protocolState.isValidForPreconditions(greaterOk).toBoolean());
     assert.ok(protocolState.isValidForPreconditions(greaterFail).not().toBoolean());
   });
 
-  it('handles UInt8Precondition.mkLess and mkLessOrEqual correctly', () => {
+  it('handles UInt8Precondition.lessThan() and lessOrEqual() correctly', () => {
     const lessOk = ZkusdProtocolPreconditions.create({
-      collateralRatio: UInt8Precondition.mkLessOrEqual(UInt8.from(200)),
+      collateralRatio: UInt8Precondition.lessOrEqual(200),
     });
     const lessFail = ZkusdProtocolPreconditions.create({
-      collateralRatio: UInt8Precondition.mkLess(UInt8.from(100)),
+      collateralRatio: UInt8Precondition.lessThan(100),
     });
 
     assert.ok(protocolState.isValidForPreconditions(lessOk).toBoolean());
@@ -144,16 +144,16 @@ describe('ZkusdUpdatedProtocolState.isValidForPreconditions()', () => {
 
   it('accepts when only some fields are constrained and all constrained fields match', () => {
     const partialP = ZkusdProtocolPreconditions.create({
-      emergencyStop: BoolPrecondition.mkMustEqual(false),
-      collateralRatio: UInt8Precondition.mkEqual(UInt8.from(150)),
+      emergencyStop: BoolPrecondition.equal(false),
+      collateralRatio: UInt8Precondition.equal(150),
     });
     assert.ok(protocolState.isValidForPreconditions(partialP).toBoolean());
   });
 
   it('rejects if one constrained field fails even if others are unconstrained', () => {
     const partialFail = ZkusdProtocolPreconditions.create({
-      emergencyStop: BoolPrecondition.mkMustEqual(true), // wrong
-      collateralRatio: UInt8Precondition.mkUnconstrained(),
+      emergencyStop: BoolPrecondition.equal(true), // wrong
+      collateralRatio: UInt8Precondition.unconstrained(),
     });
     assert.ok(protocolState.isValidForPreconditions(partialFail).not().toBoolean());
   });
@@ -169,9 +169,9 @@ describe('ZkusdUpdatedProtocolState.isValidForPreconditions()', () => {
     });
 
     const edgeP = ZkusdProtocolPreconditions.create({
-      collateralRatio: UInt8Precondition.mkEqual(UInt8.from(0)),
-      validPriceBlockCount: UInt8Precondition.mkEqual(UInt8.from(255)),
-      liquidationBonusRatio: UInt8Precondition.mkEqual(UInt8.from(255)),
+      collateralRatio: UInt8Precondition.equal(0),
+      validPriceBlockCount: UInt8Precondition.equal(255),
+      liquidationBonusRatio: UInt8Precondition.equal(255),
     });
 
     assert.ok(edgeState.isValidForPreconditions(edgeP).toBoolean());

@@ -44,19 +44,12 @@ export function getNewCouncilMembers(
   }
 
   const eventData = targetEvent.event?.data;
-  console.log("Event data:");
-  Provable.log(targetEvent);
-  console.log(targetEvent);
-  console.log(eventData);
 
   // Cast to the known class type (if applicable)
   const newCouncilEvent = eventData as unknown as NewCouncilInitializedWithFixedKeysEvent;
 
   // Extract the array of council members
   const councilMemberArray = newCouncilEvent.councilMembers.councilMembers;
-  Provable.log(newCouncilEvent);
-  console.log(newCouncilEvent);
-  Provable.log(councilMemberArray);
 
   // Filter out empty keys using .isEmpty()
   const nonEmptyMembers = councilMemberArray.filter((pk) => !pk.isEmpty().toBoolean())

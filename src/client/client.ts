@@ -19,7 +19,7 @@ import {
 } from '../system/transaction.js';
 import { VaultState, Vault } from '../system/vault.js';
 import { getContractKeys } from '../config/keys.js';
-import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 
 interface ZKUSDClientConfig {
   chain: blockchain;
@@ -52,8 +52,11 @@ export class ZKUSDClient {
   static async create(config: ZKUSDClientConfig) {
     const { chain, httpProver } = config;
 
-    const { token: tokenAddress, engine: engineAddress, gov: govAddress } =
-      getContractKeys(chain);
+    const {
+      token: tokenAddress,
+      engine: engineAddress,
+      gov: govAddress,
+    } = getContractKeys(chain);
 
     const mina = await MinaNetworkInterface.initChain(chain);
     const prover = new HttpClientProver(httpProver);
@@ -68,7 +71,7 @@ export class ZKUSDClient {
       zkUsdTokenAddress: tokenAddress,
       minaPriceInputZkProgramVkHash: verificationKeys.oracleAggregation.hash,
       zkUsdGovernmentAddress: govAddress,
-      GovernmentClass: ZkusdGoverningCouncilContract
+      GovernmentClass: ZkusdGoverningCouncilContract,
     });
 
     const FungibleToken = ZkUsdEngine.FungibleToken;
@@ -239,7 +242,7 @@ export class ZKUSDClient {
       throw new Error('Vault not found');
     }
 
-    const params = await this.engine.getVaultParams()
+    const params = await this.engine.getVaultParams();
     return Vault(params).fromAccount(vaultAccount);
   }
 

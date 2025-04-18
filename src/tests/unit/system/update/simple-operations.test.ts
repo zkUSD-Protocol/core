@@ -26,20 +26,20 @@ describe('Operation Classes Test Suite', () => {
   // Tests for BoolOperation
   //
   describe('BoolOperation', () => {
-    it('should set state to true using mkSetTo(true)', () => {
-      const op = BoolOperation.mkSetTo(Bool(true));
+    it('should set state to true using set(true)', () => {
+      const op = BoolOperation.set(Bool(true));
       const newState = op.execute(initialBool);
       assert.strictEqual(newState.toBoolean(), true);
     });
 
-    it('should set state to false using mkSetTo(false)', () => {
-      const op = BoolOperation.mkSetTo(Bool(false));
+    it('should set state to false using set(false)', () => {
+      const op = BoolOperation.set(Bool(false));
       const newState = op.execute(Bool(true));
       assert.strictEqual(newState.toBoolean(), false);
     });
 
-    it('should flip the state using mkFlip', () => {
-      const op = BoolOperation.mkFlip();
+    it('should flip the state using flip', () => {
+      const op = BoolOperation.flip();
       // flipping from false => true
       const newState = op.execute(initialBool);
       assert.strictEqual(newState.toBoolean(), true);
@@ -49,8 +49,8 @@ describe('Operation Classes Test Suite', () => {
       assert.strictEqual(newState2.toBoolean(), false);
     });
 
-    it('should no-op the state if operation=3 (mkNoop)', () => {
-      const op = BoolOperation.mkNoop();
+    it('should no-op the state if operation=3 (noop)', () => {
+      const op = BoolOperation.noop();
       const newState = op.execute(Bool(true));
       assert.strictEqual(
         newState.toBoolean(),
@@ -73,14 +73,14 @@ describe('Operation Classes Test Suite', () => {
     });
 
     it('should correctly identify isNoop vs. non-noop', () => {
-      const noop = BoolOperation.mkNoop();
+      const noop = BoolOperation.noop();
       assert.strictEqual(
         noop.isNoop().toBoolean(),
         true,
         'Expected isNoop === true'
       );
 
-      const setTo = BoolOperation.mkSetTo(Bool(true));
+      const setTo = BoolOperation.set(Bool(true));
       assert.strictEqual(
         setTo.isNoop().toBoolean(),
         false,
@@ -93,8 +93,8 @@ describe('Operation Classes Test Suite', () => {
   // Tests for UInt8Operation
   //
   describe('UInt8Operation', () => {
-    it('should set state using mkSetTo', () => {
-      const op = UInt8Operation.mkSetTo(UInt8.from(123));
+    it('should set state using set', () => {
+      const op = UInt8Operation.set(UInt8.from(123));
       // Just to illustrate the structure:
       Provable.log(op);
       const newState = op.execute(initialUInt8);
@@ -106,19 +106,19 @@ describe('Operation Classes Test Suite', () => {
     });
 
     it('should add using mkAdd', () => {
-      const op = UInt8Operation.mkAdd(UInt8.from(10));
+      const op = UInt8Operation.add(10);
       const newState = op.execute(initialUInt8); // 50 + 10 = 60
       assert.strictEqual(newState.value.toBigInt(), 60n);
     });
 
     it('should subtract using mkSub', () => {
-      const op = UInt8Operation.mkSub(UInt8.from(20));
+      const op = UInt8Operation.sub(20);
       const newState = op.execute(initialUInt8); // 50 - 20 = 30
       assert.strictEqual(newState.value.toBigInt(), 30n);
     });
 
-    it('should not change state using mkNoop', () => {
-      const op = UInt8Operation.mkNoop();
+    it('should not change state using noop', () => {
+      const op = UInt8Operation.noop();
       const newState = op.execute(initialUInt8);
       assert.strictEqual(
         newState.value.toBigInt(),
@@ -128,7 +128,7 @@ describe('Operation Classes Test Suite', () => {
     });
 
     it('should fail if result exceeds UInt8 range after add', () => {
-      const op = UInt8Operation.mkAdd(UInt8.from(250));
+      const op = UInt8Operation.add(UInt8.from(250));
       // 50 + 250 = 300 => out of range
       assert.throws(() => {
         op.execute(initialUInt8);
@@ -136,7 +136,7 @@ describe('Operation Classes Test Suite', () => {
     });
 
     it('should fail if result is negative after subtract', () => {
-      const op = UInt8Operation.mkSub(UInt8.from(100));
+      const op = UInt8Operation.sub(UInt8.from(100));
       // 50 - 100 => -50 => out of range
       assert.throws(() => {
         op.execute(initialUInt8);
@@ -155,14 +155,14 @@ describe('Operation Classes Test Suite', () => {
     });
 
     it('should correctly identify isNoop vs. non-noop', () => {
-      const noop = UInt8Operation.mkNoop();
+      const noop = UInt8Operation.noop();
       assert.strictEqual(
         noop.isNoop().toBoolean(),
         true,
         'Expected isNoop === true'
       );
 
-      const addOp = UInt8Operation.mkAdd(UInt8.from(1));
+      const addOp = UInt8Operation.add(UInt8.from(1));
       assert.strictEqual(
         addOp.isNoop().toBoolean(),
         false,
@@ -183,26 +183,26 @@ describe('Operation Classes Test Suite', () => {
   // Tests for FieldOperation
   //
   describe('FieldOperation', () => {
-    it('should set state using mkSetTo', () => {
-      const op = FieldOperation.mkSetTo(Field(999));
+    it('should set state using set', () => {
+      const op = FieldOperation.set(Field(999));
       const newState = op.execute(initialField); // 100 -> 999
       assert.strictEqual(newState.toBigInt(), 999n);
     });
 
-    it('should add using mkAdd', () => {
-      const op = FieldOperation.mkAdd(Field(20));
+    it('should add using add', () => {
+      const op = FieldOperation.add(Field(20));
       const newState = op.execute(initialField); // 100 + 20 => 120
       assert.strictEqual(newState.toBigInt(), 120n);
     });
 
-    it('should subtract using mkSub', () => {
-      const op = FieldOperation.mkSub(Field(50));
+    it('should subtract using sub', () => {
+      const op = FieldOperation.sub(Field(50));
       const newState = op.execute(initialField); // 100 - 50 => 50
       assert.strictEqual(newState.toBigInt(), 50n);
     });
 
-    it('should do no-op using mkNoop', () => {
-      const op = FieldOperation.mkNoop();
+    it('should do no-op using noop', () => {
+      const op = FieldOperation.noop();
       const newState = op.execute(initialField); // 100 => 100
       assert.strictEqual(newState.toBigInt(), 100n);
     });
@@ -218,14 +218,14 @@ describe('Operation Classes Test Suite', () => {
     });
 
     it('should correctly identify isNoop vs. non-noop', () => {
-      const noop = FieldOperation.mkNoop();
+      const noop = FieldOperation.noop();
       assert.strictEqual(
         noop.isNoop().toBoolean(),
         true,
         'Expected isNoop === true'
       );
 
-      const setOp = FieldOperation.mkSetTo(Field(123));
+      const setOp = FieldOperation.set(Field(123));
       assert.strictEqual(
         setOp.isNoop().toBoolean(),
         false,

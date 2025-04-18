@@ -12,7 +12,7 @@ import {
 } from '../../../../proofs/gov/council-multisig.js';
 import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
 import { TestHelper } from '../../../test-helper.js';
-import { ZkusdGoverningCouncilContract } from '../../../../contracts/zkusd-government-poc.js';
+import { ZkusdGoverningCouncilContract } from '../../../../contracts/zkusd-governing-council.js';
 import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../../../../system/governance.js';
 
 export async function generateVoteProof(

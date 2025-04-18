@@ -9,7 +9,7 @@ import {
  * The fields of ZkusdProtocolUpdateOperation.
  * This is just a TypeScript type, not a class.
  */
-type ZkusdProtocolUpdateOperationFields = {
+export type ZkusdProtocolUpdateOperationFields = {
   emergencyStop: BoolOperation;
   collateralRatio: UInt8Operation;
   validPriceBlockCount: UInt8Operation;
@@ -26,13 +26,13 @@ type ZkusdProtocolUpdateOperationFields = {
  */
 function mkAllNoops(): ZkusdProtocolUpdateOperationFields {
   return {
-    emergencyStop: BoolOperation.mkNoop(),
-    collateralRatio: UInt8Operation.mkNoop(),
-    validPriceBlockCount: UInt8Operation.mkNoop(),
-    liquidationBonusRatio: UInt8Operation.mkNoop(),
-    oracleWhitelistHash: FieldOperation.mkNoop(),
-    configMerkleRoot: FieldOperation.mkNoop(),
-    newVerificationKey: FieldOperation.mkNoop(),
+    emergencyStop: BoolOperation.noop(),
+    collateralRatio: UInt8Operation.noop(),
+    validPriceBlockCount: UInt8Operation.noop(),
+    liquidationBonusRatio: UInt8Operation.noop(),
+    oracleWhitelistHash: FieldOperation.noop(),
+    configMerkleRoot: FieldOperation.noop(),
+    newVerificationKey: FieldOperation.noop(),
   };
 }
 
@@ -53,7 +53,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
    * Creates a new operation from a partial set of fields,
    * filling missing fields with no-ops.
    */
-  static mkFromPartial(
+  static create(
     partial: Partial<ZkusdProtocolUpdateOperationFields>
   ): ZkusdProtocolUpdateOperation {
     // Fill in no-ops for missing fields
@@ -75,7 +75,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
     return new ZkusdProtocolUpdateOperation(filled);
   }
 
-  static mkNoop(): ZkusdProtocolUpdateOperation {
+  static noop(): ZkusdProtocolUpdateOperation {
     return new ZkusdProtocolUpdateOperation(mkAllNoops());
   }
 

@@ -2,8 +2,18 @@ import { Bool, UInt8, Field, Struct } from 'o1js';
 import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
 
 /**
- * Represents the on-chain state of the protocol, which we may compare
- * against the preconditions.
+ * @notice Represents the current on-chain state of the ZKUSD protocol.
+ *
+ * Fields:
+ * - `emergencyStop` — Whether the protocol is paused (Bool).
+ * - `collateralRatio` — Minimum required collateral ratio (UInt8).
+ * - `validPriceBlockCount` — Number of valid blocks for oracle prices (UInt8).
+ * - `liquidationBonusRatio` — Bonus ratio given during liquidation events (UInt8).
+ * - `oracleWhitelistHash` — Merkle root hash of the oracle whitelist (Field).
+ * - `configMerkleRoot` — Merkle root hash of the general protocol configuration (Field).
+ *
+ * This struct is primarily used to check if the protocol state satisfies
+ * the expected update preconditions before applying a protocol update.
  */
 export class ZkusdUpdatedProtocolState extends Struct({
   emergencyStop: Bool,
@@ -12,11 +22,18 @@ export class ZkusdUpdatedProtocolState extends Struct({
   liquidationBonusRatio: UInt8,
   oracleWhitelistHash: Field,
   configMerkleRoot: Field,
-  // add more if needed...
+  // Additional fields can be added as needed
 }) {
-
+  /**
+   * Validates if this protocol state matches the provided preconditions.
+   *
+   * @param preconditions - The expected `ZkusdProtocolPreconditions`.
+   * @returns A `Bool` indicating whether the current state satisfies the preconditions.
+   *
+   * @example
+   * const isValid = protocolState.isValidForPreconditions(preconditions);
+   */
   isValidForPreconditions(preconditions: ZkusdProtocolPreconditions): Bool {
-    // Check if the protocol state matches the preconditions:
     return theUpdatePreconditionsMatchProtocolState({
       preconditions,
       protocolState: this,
@@ -24,11 +41,21 @@ export class ZkusdUpdatedProtocolState extends Struct({
   }
 }
 
+/**
+ * @internal
+ * Helper function to compare a protocol state against a set of preconditions.
+ *
+ * Each field is checked individually: if the precondition for a field is unconstrained,
+ * it automatically passes; otherwise, it must match exactly.
+ *
+ * @param args.preconditions - Expected preconditions.
+ * @param args.protocolState - Actual protocol state to validate.
+ * @returns A `Bool` indicating whether all conditions are satisfied.
+ */
 function theUpdatePreconditionsMatchProtocolState(args: {
   preconditions: ZkusdProtocolPreconditions;
   protocolState: ZkusdUpdatedProtocolState;
 }): Bool {
-  // For each field, check if it's unconstrained or if it matches:
   const { preconditions, protocolState } = args;
 
   const emergencyStopOk = preconditions.emergencyStop
@@ -49,7 +76,7 @@ function theUpdatePreconditionsMatchProtocolState(args: {
   const configMerkleRootOk = preconditions.configMerkleRoot
     .matches(protocolState.configMerkleRoot);
 
-  // Combine them all with logical AND:
+  // Combine all individual checks using logical AND:
   return emergencyStopOk
     .and(collateralRatioOk)
     .and(validPriceCountOk)

@@ -21,7 +21,7 @@ import {
   ZKUSD_GOV_UPDATE_TREE_HEIGHT,
   ZkusdGovUpdateWitness,
 } from '../../../../system/governance.js';
-import { countBits } from '../../../../contracts/zkusd-government-poc.js';
+import { countBits } from '../../../../contracts/zkusd-governing-council.js';
 import {
   CouncilProposalPassedEvent,
   CouncilProposalSupportChangeEvent,

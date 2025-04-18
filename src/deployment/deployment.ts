@@ -8,7 +8,7 @@ import { TransactionManager } from '../transaction/manager.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
-import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-government-poc.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { MAX_ZKUSD_COUNCIL_SIZE, MultiSigZkusdProtocolUpdateProgram } from '../proofs/gov/council-multisig.js';
 
 /**

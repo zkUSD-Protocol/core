@@ -22,7 +22,6 @@ import {
 
 import {
   EmergencyStopToggledEvent,
-  AdminUpdatedEvent,
   OracleWhitelistUpdatedEvent,
   NewVaultEvent,
   DepositCollateralEvent,
@@ -58,10 +57,9 @@ export function ZkUsdEngineUpgradeContract(args: {
   const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngineUpgrade
     extends TokenContract
-    implements FungibleTokenAdminBase
-  {
+    implements FungibleTokenAdminBase {
     @state(Field) oracleWhitelistHash = State<Field>(); // Posieden hash of the oracle whitelist
-    @state(UInt32) validPriceBlockCount = State<UInt32>(); // Valid price block count
+    @state(UInt8) validPriceBlockCount = State<UInt8>(); // Valid price block count
     @state(Field) hashedSecret = State<Field>(); // Posieden hash of the secret
     @state(Bool) emergencyStop = State<Bool>(); // Emergency stop
     @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
@@ -73,7 +71,6 @@ export function ZkUsdEngineUpgradeContract(args: {
 
     readonly events = {
       EmergencyStopToggled: EmergencyStopToggledEvent,
-      AdminUpdated: AdminUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
       ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
@@ -97,7 +94,7 @@ export function ZkUsdEngineUpgradeContract(args: {
     @method async initialize(
       secret: Field,
       oracleWhitelist: OracleWhitelist,
-      validPriceBlockCount: UInt32
+      validPriceBlockCount: UInt8
     ) {
       //We now need to reset the state of the engine
       //Set the secret hash
@@ -194,7 +191,7 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
-      const lastValidBlock = firstValidBlock.add(validPriceBlockCount);
+      const lastValidBlock = firstValidBlock.add(UInt32.Unsafe.fromField(validPriceBlockCount.value));
 
       this.network.blockchainLength.requireBetween(
         firstValidBlock,
@@ -601,10 +598,14 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       this.oracleWhitelistHash.set(OracleWhitelist.hash(whitelist));
 
-      this.emitEvent('OracleWhitelistUpdated', {
-        previousHash,
-        newHash: OracleWhitelist.hash(whitelist),
-      });
+      this.emitEvent('OracleWhitelistUpdated',
+        new OracleWhitelistUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousHash,
+          newHash: OracleWhitelist.hash(whitelist)
+        })
+      );
+
     }
 
     async getValidPriceBlockCount() {
@@ -617,7 +618,7 @@ export function ZkUsdEngineUpgradeContract(args: {
      * @notice  Updates the valid price block count
      * @param   count The new valid price block count
      */
-    @method async updateValidPriceBlockCount(count: UInt32, secret: Field) {
+    @method async updateValidPriceBlockCount(count: UInt8, secret: Field) {
       //Precondition
       const validPriceBlockCount =
         this.validPriceBlockCount.getAndRequireEquals();
@@ -628,10 +629,13 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       this.validPriceBlockCount.set(count);
 
-      this.emitEvent('ValidPriceBlockCountUpdated', {
-        previousCount: previousCount,
-        newCount: count,
-      });
+      this.emitEvent('ValidPriceBlockCountUpdated',
+        new ValidPriceBlockCountUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousCount: previousCount,
+          newCount: count,
+        })
+      );
     }
 
     /**

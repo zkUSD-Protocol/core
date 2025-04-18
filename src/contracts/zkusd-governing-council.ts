@@ -37,7 +37,7 @@ import {
 } from '../system/council-events.js';
 import { ensureMinArrayLength } from '../utils/array.js';
 
-export class ZkUsdGovernmentPoc extends SmartContract {
+export class ZkUsdGovernmentContract extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
 
   // // it is debatable if we need to store this in the on-chain state as we won't need to verify it most likely.
@@ -81,7 +81,7 @@ export class ProposalData extends Struct({
   }
 }
 
-export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentPoc {
+export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
   @state(Field) councilMembersMerkleRoot = State<Field>();
   @state(Field) proposalsMerkleMapRoot = State<Field>();
   @state(Field) resolutionsMerkleRoot = State<Field>();

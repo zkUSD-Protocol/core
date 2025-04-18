@@ -14,6 +14,7 @@ import {
   PrivateKey,
   UInt32,
   UInt64,
+  UInt8,
   VerificationKey,
 } from 'o1js';
 
@@ -396,7 +397,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         await upgradedEngine.contract.initialize(
           secret,
           th.whitelist,
-          UInt32.from(25)
+          UInt8.from(25)
         );
       },
       {

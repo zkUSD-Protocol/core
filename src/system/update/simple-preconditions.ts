@@ -1,47 +1,66 @@
-import { Bool, Field, Provable, Struct, UInt8 } from 'o1js'; // or your zk library
+import { Bool, Field, Provable, Struct, UInt8 } from 'o1js';
 
-// Define the max valid Field value: Field.ORDER - 1
+/**
+ * @notice Maximal valid Field value (Field.ORDER - 1).
+ */
 const FieldMax = Field.from(Field.ORDER - 1n);
+
+/**
+ * @notice Maximal valid UInt8 value (255).
+ */
 const UInt8Max = UInt8.from(255);
 
+/**
+ * @notice Precondition over a `Field` value by simple equality or inequality.
+ */
 export class HashPrecondition extends Struct({
   state: Field,
-  not: Field, // - 2 unconstrained, 1 - equality negated, 0 -  normal equality
+  not: Field,
 }) {
   matches(value: Field): Bool {
-
     const equalityCheck = value.equals(this.state);
     const nonEqualityCheck = equalityCheck.not();
     const unconstrainedCheck = Bool(true);
 
-    const ret = Provable.if(
+    return Provable.if(
       this.not.equals(Field.from(0)),
       equalityCheck,
       Provable.if(
         this.not.equals(Field.from(1)),
         nonEqualityCheck,
-        unconstrainedCheck,
-      ),
+        unconstrainedCheck
+      )
     );
-
-    return ret;
   }
 
-  static mkEqual(value: Field) {
+  /**
+   * Require exact equality to a value.
+   *
+   * @param value - Field | number | bigint
+   */
+  static equal(value: Field | number | bigint): HashPrecondition {
     return new HashPrecondition({
-      state: value,
+      state: Field.from(value),
       not: Field.from(0),
     });
   }
 
-  static mkDifferentThan(value: Field) {
+  /**
+   * Require value to be different.
+   *
+   * @param value - Field | number | bigint
+   */
+  static differentThan(value: Field | number | bigint): HashPrecondition {
     return new HashPrecondition({
-      state: value,
+      state: Field.from(value),
       not: Field.from(1),
     });
   }
 
-  static mkUnconstrained() {
+  /**
+   * Allow any value (no constraint).
+   */
+  static unconstrained(): HashPrecondition {
     return new HashPrecondition({
       state: Field.from(0),
       not: Field.from(2),
@@ -53,6 +72,9 @@ export class HashPrecondition extends Struct({
   }
 }
 
+/**
+ * @notice Precondition over a `Field` value with range check or negated range.
+ */
 export class FieldPrecondition extends Struct({
   lower: Field,
   upper: Field,
@@ -62,60 +84,59 @@ export class FieldPrecondition extends Struct({
     const greaterOrEqualLower = value.greaterThanOrEqual(this.lower);
     const lessOrEqualUpper = value.lessThanOrEqual(this.upper);
     const rangeCheck = greaterOrEqualLower.and(lessOrEqualUpper);
-    const ret = Provable.if(this.not, rangeCheck.not(), rangeCheck);
-    return ret;
+
+    return Provable.if(this.not, rangeCheck.not(), rangeCheck);
   }
 
-
-  static mkEqual(value: Field) {
+  static equal(value: Field | number | bigint): FieldPrecondition {
     return new FieldPrecondition({
-      lower: value,
-      upper: value,
+      lower: Field.from(value),
+      upper: Field.from(value),
       not: Bool(false),
     });
   }
 
-  static mkDifferentThan(value: Field) {
+  static differentThan(value: Field | number | bigint): FieldPrecondition {
     return new FieldPrecondition({
-      lower: value,
-      upper: value,
+      lower: Field.from(value),
+      upper: Field.from(value),
       not: Bool(true),
     });
   }
 
-  static mkGreater(value: Field) {
+  static greaterThan(value: Field | number | bigint): FieldPrecondition {
     return new FieldPrecondition({
-      lower: value.add(1),
+      lower: Field.from(value).add(1),
       upper: FieldMax,
       not: Bool(false),
     });
   }
 
-  static mkGreaterOrEqual(value: Field) {
+  static greaterOrEqual(value: Field | number | bigint): FieldPrecondition {
     return new FieldPrecondition({
-      lower: value,
+      lower: Field.from(value),
       upper: FieldMax,
       not: Bool(false),
     });
   }
 
-  static mkLess(value: Field) {
+  static lessThan(value: Field | number | bigint): FieldPrecondition {
     return new FieldPrecondition({
       lower: Field.from(0),
-      upper: value.sub(1),
+      upper: Field.from(value).sub(1),
       not: Bool(false),
     });
   }
 
-  static mkLessOrEqual(value: Field) {
+  static lessOrEqual(value: Field | number | bigint): FieldPrecondition {
     return new FieldPrecondition({
       lower: Field.from(0),
-      upper: value,
+      upper: Field.from(value),
       not: Bool(false),
     });
   }
 
-  static mkUnconstrained() {
+  static unconstrained(): FieldPrecondition {
     return new FieldPrecondition({
       lower: Field.from(0),
       upper: FieldMax,
@@ -128,33 +149,48 @@ export class FieldPrecondition extends Struct({
   }
 }
 
+/**
+ * @notice Precondition over a `Bool` value (true, false, or unconstrained).
+ */
 export class BoolPrecondition extends Struct({
   value: Field,
 }) {
-  requireFalse() {
+  requireFalse(): Bool {
     return this.value.equals(Field.from(0));
   }
 
-  requireTrue() {
+  requireTrue(): Bool {
     return this.value.equals(Field.from(1));
   }
 
-  unconstrained() {
+  unconstrained(): Bool {
     return this.value.equals(Field.from(2));
   }
 
-  matches(value: Bool) {
+  matches(value: Bool): Bool {
     return this.unconstrained()
       .or(this.requireTrue().and(value))
       .or(this.requireFalse().and(value.not()));
   }
 
-  static mkMustEqual(value: boolean) {
-    return new BoolPrecondition({ value: Field.from(value ? 1 : 0) });
+  /**
+   * Require the boolean value to be exactly true or false.
+   *
+   * @param value - Bool | boolean
+   */
+  static equal(value: Bool | boolean): BoolPrecondition {
+    return new BoolPrecondition({
+      value: Field.from(Bool(value).toBoolean() ? 1 : 0),
+    });
   }
 
-  static mkUnconstrained() {
-    return new BoolPrecondition({ value: Field.from(2) });
+  /**
+   * Allow any boolean value.
+   */
+  static unconstrained(): BoolPrecondition {
+    return new BoolPrecondition({
+      value: Field.from(2),
+    });
   }
 
   toFields(): Field[] {
@@ -162,6 +198,9 @@ export class BoolPrecondition extends Struct({
   }
 }
 
+/**
+ * @notice Precondition over a `UInt8` value with range check or negated range.
+ */
 export class UInt8Precondition extends Struct({
   lower: UInt8,
   upper: UInt8,
@@ -171,59 +210,59 @@ export class UInt8Precondition extends Struct({
     const greaterOrEqualLower = value.greaterThanOrEqual(this.lower);
     const lessOrEqualUpper = value.lessThanOrEqual(this.upper);
     const rangeCheck = greaterOrEqualLower.and(lessOrEqualUpper);
-    const ret = Provable.if(this.not, rangeCheck.not(), rangeCheck);
-    return ret;
+
+    return Provable.if(this.not, rangeCheck.not(), rangeCheck);
   }
 
-  static mkEqual(value: UInt8) {
+  static equal(value: UInt8 | number | bigint): UInt8Precondition {
     return new UInt8Precondition({
-      lower: value,
-      upper: value,
+      lower: UInt8.from(value),
+      upper: UInt8.from(value),
       not: Bool(false),
     });
   }
 
-  static mkDifferentThan(value: UInt8) {
+  static differentThan(value: UInt8 | number | bigint): UInt8Precondition {
     return new UInt8Precondition({
-      lower: value,
-      upper: value,
+      lower: UInt8.from(value),
+      upper: UInt8.from(value),
       not: Bool(true),
     });
   }
 
-  static mkGreater(value: UInt8) {
+  static greaterThan(value: UInt8 | number | bigint): UInt8Precondition {
     return new UInt8Precondition({
-      lower: value.add(1),
+      lower: UInt8.from(value).add(1),
       upper: UInt8Max,
       not: Bool(false),
     });
   }
 
-  static mkGreaterOrEqual(value: UInt8) {
+  static greaterOrEqual(value: UInt8 | number | bigint): UInt8Precondition {
     return new UInt8Precondition({
-      lower: value,
+      lower: UInt8.from(value),
       upper: UInt8Max,
       not: Bool(false),
     });
   }
 
-  static mkLess(value: UInt8) {
+  static lessThan(value: UInt8 | number | bigint): UInt8Precondition {
     return new UInt8Precondition({
       lower: UInt8.from(0),
-      upper: value.sub(1),
+      upper: UInt8.from(value).sub(1),
       not: Bool(false),
     });
   }
 
-  static mkLessOrEqual(value: UInt8) {
+  static lessOrEqual(value: UInt8 | number | bigint): UInt8Precondition {
     return new UInt8Precondition({
       lower: UInt8.from(0),
-      upper: value,
+      upper: UInt8.from(value),
       not: Bool(false),
     });
   }
 
-  static mkUnconstrained() {
+  static unconstrained(): UInt8Precondition {
     return new UInt8Precondition({
       lower: UInt8.from(0),
       upper: UInt8Max,
