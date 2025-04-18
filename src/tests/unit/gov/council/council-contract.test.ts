@@ -55,12 +55,10 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     const councilKeys = getNewCouncilMembers(contractEvents);
 
-    console.log('Council keys from network kes:');
     council.forEach((key) => {
       Provable.log(key);
     });
 
-    console.log('Council keys from events:');
     councilKeys.forEach((key) => {
       Provable.log(key);
     });

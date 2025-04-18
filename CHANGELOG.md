@@ -1,5 +1,17 @@
 # @zkusd/core
 
+## 0.0.6
+
+### Patch Changes
+
+- Added new oracle to config
+
+## 0.0.5
+
+### Patch Changes
+
+- a7a9291: Extracted oracle config for devnet and extended client for working with the CLI
+
 ## 0.0.4
 
 ### Patch Changes

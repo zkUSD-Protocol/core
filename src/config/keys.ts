@@ -43,9 +43,6 @@ function loadDevnetKeys(): NetworkKeyPairs {
     'DEVNET_TOKEN_PUBLIC_KEY',
     'DEVNET_ENGINE_PRIVATE_KEY',
     'DEVNET_ENGINE_PUBLIC_KEY',
-    'DEVNET_ORACLE_1_PUBLIC_KEY',
-    'DEVNET_ORACLE_2_PUBLIC_KEY',
-    'DEVNET_ORACLE_3_PUBLIC_KEY',
   ];
 
   requiredEnvVars.forEach((envVar) => {
@@ -80,34 +77,6 @@ function loadDevnetKeys(): NetworkKeyPairs {
     government: {
       privateKey: PrivateKey.fromBase58(process.env.DEVNET_GOV_PRIVATE_KEY!),
       publicKey: PublicKey.fromBase58(process.env.DEVNET_GOV_PUBLIC_KEY!),
-    },
-    oracles: [
-      {
-        publicKey: PublicKey.fromBase58(
-          process.env.DEVNET_ORACLE_1_PUBLIC_KEY!
-        ),
-      },
-      {
-        publicKey: PublicKey.fromBase58(
-          process.env.DEVNET_ORACLE_2_PUBLIC_KEY!
-        ),
-      },
-      {
-        publicKey: PublicKey.fromBase58(
-          process.env.DEVNET_ORACLE_3_PUBLIC_KEY!
-        ),
-      },
-      // Fill remaining oracle slots with empty objects containing only publicKey
-      ...Array(OracleWhitelist.MAX_PARTICIPANTS - 3).fill({
-        publicKey: PublicKey.fromBase58(
-          process.env.DEVNET_ORACLE_DUMMY_PUBLIC_KEY!
-        ),
-      }),
-    ] as [
-      Partial<KeyPair> & Pick<KeyPair, 'publicKey'>,
-      ...Array<Partial<KeyPair> & Pick<KeyPair, 'publicKey'>>,
-    ] & {
-      length: typeof OracleWhitelist.MAX_PARTICIPANTS;
     },
   };
 

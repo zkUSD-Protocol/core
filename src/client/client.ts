@@ -1,4 +1,4 @@
-import { PrivateKey, PublicKey, UInt64 } from 'o1js';
+import { AccountUpdate, PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';
@@ -8,7 +8,7 @@ import {
   TransactionManager,
   TransactionOptions,
 } from '../transaction/manager.js';
-import { blockchain } from '../types/utility.js';
+import { blockchain, KeyPair } from '../types/utility.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { verificationKeys } from '../config/verification-keys.js';
@@ -20,6 +20,7 @@ import {
 import { VaultState, Vault } from '../system/vault.js';
 import { getContractKeys } from '../config/keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
+import { calculateHealthFactor, calculateLTV } from '../utils/loan.js';
 
 interface ZKUSDClientConfig {
   chain: blockchain;
@@ -27,7 +28,7 @@ interface ZKUSDClientConfig {
 }
 
 interface TransactionContext {
-  sender: PublicKey;
+  sender: PublicKey | KeyPair;
   vaultAddress: string;
   amount?: UInt64;
   minaPriceInput?: MinaPriceInput;
@@ -89,14 +90,17 @@ export class ZKUSDClient {
    * @returns Transaction handle for tracking status
    */
   async createVault(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultPrivateKey: PrivateKey,
     options?: TransactionOptions
   ): Promise<TransactionHandle> {
-    const zkusdTokenAccount = await this.txMgr.mina.fetchMinaAccount(sender, {
-      tokenId: this.token.deriveTokenId(),
-      force: true,
-    });
+    const zkusdTokenAccount = await this.txMgr.mina.fetchMinaAccount(
+      sender instanceof PublicKey ? sender : sender.publicKey,
+      {
+        tokenId: this.token.deriveTokenId(),
+        force: true,
+      }
+    );
 
     const newAccounts = zkusdTokenAccount ? 1 : 2;
 
@@ -119,11 +123,21 @@ export class ZKUSDClient {
     );
   }
 
+  //Get the engine contract instance
+  getEngine(): InstanceType<ReturnType<typeof ZkUsdEngineContract>> {
+    return this.engine;
+  }
+
+  //Get the token contract instance
+  getToken(): InstanceType<ReturnType<typeof FungibleTokenContract>> {
+    return this.token;
+  }
+
   /**
    * Deposits collateral into a vault
    */
   async depositCollateral(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     options?: TransactionOptions
@@ -144,7 +158,7 @@ export class ZKUSDClient {
    * Withdraws collateral from a vault
    */
   async redeemCollateral(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     minaPriceInput: MinaPriceInput,
@@ -166,7 +180,7 @@ export class ZKUSDClient {
    * Mints zkUSD tokens
    */
   async mintZkUsd(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     minaPriceInput: MinaPriceInput,
@@ -188,7 +202,7 @@ export class ZKUSDClient {
    * Burns zkUSD tokens
    */
   async burnZkUsd(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     amount: UInt64,
     options?: TransactionOptions
@@ -209,7 +223,7 @@ export class ZKUSDClient {
    * Liquidates a vault
    */
   async liquidateVault(
-    sender: PublicKey,
+    sender: PublicKey | KeyPair,
     vaultAddress: string,
     minaPriceInput: MinaPriceInput,
     options?: TransactionOptions
@@ -259,6 +273,57 @@ export class ZKUSDClient {
     );
 
     return vaultAccount;
+  }
+
+  /**
+   * Calculates the health factor of a vault
+   * @param vaultAddress The address of the vault
+   * @param minaPrice The current MINA price input
+   * @returns The health factor as a number (higher is better, < 100 is liquidatable)
+   */
+  async getVaultHealthFactor(
+    vaultAddress: string,
+    minaPrice: MinaPriceInput
+  ): Promise<number> {
+    // Get the current vault state
+    const vaultState = await this.getVaultState(vaultAddress);
+
+    // Extract values from the state and price input
+    const collateralAmount = vaultState.collateralAmount.toBigInt();
+    const debtAmount = vaultState.debtAmount.toBigInt();
+    const priceValue =
+      minaPrice.proof.publicOutput.minaPrice.priceNanoUSD.toBigInt();
+
+    // Calculate and return the health factor
+    return calculateHealthFactor(collateralAmount, debtAmount, priceValue);
+  }
+
+  /**
+   * Calculates the collateralization ratio of a vault
+   * @param vaultAddress The address of the vault
+   * @param minaPrice The current MINA price input
+   * @returns The collateralization ratio as a percentage (e.g., 200 means 200%)
+   */
+  async getVaultCollateralizationRatio(
+    vaultAddress: string,
+    minaPrice: MinaPriceInput
+  ): Promise<number> {
+    // Get the current vault state
+    const vaultState = await this.getVaultState(vaultAddress);
+
+    // Extract values from the state and price input
+    const collateralAmount = vaultState.collateralAmount.toBigInt();
+    const debtAmount = vaultState.debtAmount.toBigInt();
+    const priceValue =
+      minaPrice.proof.publicOutput.minaPrice.priceNanoUSD.toBigInt();
+
+    // Calculate LTV (Loan-to-Value ratio)
+    const ltv = calculateLTV(collateralAmount, debtAmount, priceValue);
+
+    // Convert LTV to collateralization ratio
+    // LTV is debt/collateral, collateralization ratio is collateral/debt (inverse)
+    // If LTV is 0, return a very high value to represent infinite collateralization
+    return ltv === 0 ? Number.MAX_SAFE_INTEGER : (100 / ltv) * 100;
   }
 
   public getTokenId(kind: 'token' | 'engine') {
