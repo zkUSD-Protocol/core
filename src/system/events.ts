@@ -63,6 +63,11 @@ export class CollateralRatioUpdatedEvent extends Struct({
   oldRatio: UInt8,
   newRatio: UInt8,
 }) {}
+export class VaultDebtCeilingUpdatedEvent extends Struct({
+  resolutionIndex: UInt32,
+  oldValue: UInt64,
+  newValue: UInt64,
+}) {}
 
 export class EmergencyStopToggledEvent extends Struct({
   resolutionIndex: UInt32,

@@ -1,4 +1,4 @@
-import { Bool, Field, Provable, Struct, UInt8 } from 'o1js';
+import { Bool, Field, Provable, Struct, UInt64, UInt8 } from 'o1js';
 
 /**
  * Define the maximum valid Field value: Field.ORDER - 1
@@ -284,5 +284,93 @@ export class FieldOperation extends Struct({
 
   toFields(): Field[] {
     return [this.operation, this.value];
+  }
+}
+
+/**
+ * @notice Operations for updating a UInt64 state.
+ *
+ * Operation codes:
+ *  - 0: set
+ *  - 1: add
+ *  - 2: subtract
+ *  - 3: no-op
+ */
+export class UInt64Operation extends Struct({
+  operation: Field,
+  value: UInt64,
+}) {
+  /**
+   * Execute the operation on the given UInt64 state.
+   */
+  execute(state: UInt64): UInt64 {
+    // Ensure operation code is one of 0,1,2,3
+    this.operation.assertLessThanOrEqual(3);
+
+    const isSet = this.operation.equals(0);
+    const isAdd = this.operation.equals(1);
+    const isSub = this.operation.equals(2);
+
+    const setResult = this.value.value;
+    const addResult = state.value.add(this.value.value);
+    const subResult = state.value.sub(this.value.value);
+    const noChange = state.value;
+
+    // Choose result based on operation
+    const retField = Provable.if(
+      isSet,
+      setResult,
+      Provable.if(
+        isAdd,
+        addResult,
+        Provable.if(isSub, subResult, noChange)
+      )
+    );
+
+    // Ensure result fits within 64 bits
+    retField.assertLessThan(Field.from(18446744073709551616n));
+
+    return UInt64.Unsafe.fromField(retField);
+  }
+
+  /** Create a UInt64Operation to set the state. */
+  static set(value: UInt64 | number | bigint): UInt64Operation {
+    return new UInt64Operation({
+      operation: Field.from(0n),
+      value: UInt64.from(value),
+    });
+  }
+
+  /** Create a UInt64Operation to add to the state. */
+  static add(value: UInt64 | number | bigint): UInt64Operation {
+    return new UInt64Operation({
+      operation: Field.from(1n),
+      value: UInt64.from(value),
+    });
+  }
+
+  /** Create a UInt64Operation to subtract from the state. */
+  static sub(value: UInt64 | number | bigint): UInt64Operation {
+    return new UInt64Operation({
+      operation: Field.from(2n),
+      value: UInt64.from(value),
+    });
+  }
+
+  /** Create a UInt64Operation that does nothing. */
+  static noop(): UInt64Operation {
+    return new UInt64Operation({
+      operation: Field.from(3n),
+      value: UInt64.from(0n),
+    });
+  }
+
+  /** Check if this operation is a no-op. */
+  isNoop(): Bool {
+    return this.operation.equals(3);
+  }
+
+  toFields(): Field[] {
+    return [this.operation, this.value.value];
   }
 }

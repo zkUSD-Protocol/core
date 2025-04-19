@@ -2,6 +2,7 @@ import { Field, Struct } from 'o1js';
 import {
   BoolOperation,
   FieldOperation,
+  UInt64Operation,
   UInt8Operation,
 } from './simple-operations.js';
 
@@ -17,6 +18,7 @@ export type ZkusdProtocolUpdateOperationFields = {
   oracleWhitelistHash: FieldOperation;
   configMerkleRoot: FieldOperation;
   newVerificationKey: FieldOperation;
+  vaultDebtCeiling: UInt64Operation;
 };
 
 /**
@@ -33,6 +35,7 @@ function mkAllNoops(): ZkusdProtocolUpdateOperationFields {
     oracleWhitelistHash: FieldOperation.noop(),
     configMerkleRoot: FieldOperation.noop(),
     newVerificationKey: FieldOperation.noop(),
+    vaultDebtCeiling: UInt64Operation.noop(),
   };
 }
 
@@ -48,6 +51,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   oracleWhitelistHash: FieldOperation,
   configMerkleRoot: FieldOperation,
   newVerificationKey: FieldOperation,
+  vaultDebtCeiling: UInt64Operation
 }) {
   /**
    * Creates a new operation from a partial set of fields,
@@ -71,6 +75,8 @@ export class ZkusdProtocolUpdateOperation extends Struct({
         partial.configMerkleRoot ?? allNoops.configMerkleRoot,
       newVerificationKey:
         partial.newVerificationKey ?? allNoops.newVerificationKey,
+      vaultDebtCeiling:
+        partial.vaultDebtCeiling ?? allNoops.vaultDebtCeiling,
     };
     return new ZkusdProtocolUpdateOperation(filled);
   }
@@ -88,6 +94,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       ...this.oracleWhitelistHash.toFields(),
       ...this.configMerkleRoot.toFields(),
       ...this.newVerificationKey.toFields(),
+      ...this.vaultDebtCeiling.toFields(),
     ];
   }
 }

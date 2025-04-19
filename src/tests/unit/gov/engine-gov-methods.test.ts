@@ -9,6 +9,7 @@ import {
   UInt8,
   MerkleTree,
   MerkleMap,
+  UInt64,
 } from 'o1js';
 import { TestHelper } from '../../test-helper.js';
 import { ZkusdProtocolUpdateSpec } from '../../../system/update/input.js';
@@ -23,7 +24,7 @@ import {
 } from './council/common.js';
 import { MultiSigZkusdProtocolUpdateProgram } from '../../../proofs/gov/council-multisig.js';
 import { ZkusdGovUpdateWitness } from '../../../system/governance.js';
-import { BoolOperation, FieldOperation, UInt8Operation } from '../../../system/update/simple-operations.js';
+import { BoolOperation, FieldOperation, UInt64Operation, UInt8Operation } from '../../../system/update/simple-operations.js';
 import { OracleWhitelist } from '../../../system/oracle.js';
 import { BoolPrecondition } from '../../../system/update/simple-preconditions.js';
 import { ZkusdProtocolUpdateOperation } from '../../../system/update/operation.js';
@@ -41,6 +42,7 @@ const ORACLE_WHITELIST = {
 };
 const ORACLE_WL_HASH = Poseidon.hash(OracleWhitelist.toFields(ORACLE_WHITELIST));
 const CONFIG_ROOT_VAL = Field.random();
+const VAULT_DEBT_CEILING_VAL = UInt64.from(5e14);
 
 function makeDefaultAcceptedSpec(resIndex: UInt32) {
   const spec = ZkusdProtocolUpdateSpec.empty();
@@ -53,6 +55,7 @@ function makeDefaultAcceptedSpec(resIndex: UInt32) {
     oracleWhitelistHash: FieldOperation.set(ORACLE_WL_HASH),
     configMerkleRoot: FieldOperation.set(CONFIG_ROOT_VAL),
     newVerificationKey: FieldOperation.set(engineVK()!.hash),
+    vaultDebtCeiling: UInt64Operation.set(VAULT_DEBT_CEILING_VAL),
   });
   spec.blockchainPreconditions = MinaChainPreconditions.always();
   spec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create();
@@ -154,6 +157,19 @@ const testsToRun: TestCase[] = [
     },
     event: 'ConfigMerkleRootUpdated',
   },
+  {
+    title: 'Update vault debt ceiling',
+    call: 'govUpdateVaultDebtCeiling',
+    makeOperation() {
+      return {
+        newValue: VAULT_DEBT_CEILING_VAL,
+      };
+    },
+    async verifyState(v) {
+      (await engine().getProtocolData()).vaultDebtCeiling.assertEquals(v);
+    },
+    event: 'VaultDebtCeilingUpdated',
+  },
 ];
 
 
@@ -170,7 +186,8 @@ type TestCase = {
   | 'govUpdateCollateralRatio'
   | 'govUpdateOracleWhitelist'
   | 'govUpdateEngineVerificationKey'
-  | 'govUpdateConfigMerkleRoot';
+  | 'govUpdateConfigMerkleRoot'
+  | 'govUpdateVaultDebtCeiling';
   makeOperation(): { newValue: any };
   verifyState(newValue: any): Promise<void>;
   event: string;

@@ -40,6 +40,7 @@ import {
   LiquidationBonusRatioUpdatedEvent,
   ConfigMerkleRootUpdatedEvent,
   VerificationKeyUpdatedEvent,
+  VaultDebtCeilingUpdatedEvent,
 } from '../system/events.js';
 import {
   MinaPriceInput,
@@ -80,6 +81,7 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   emergencyStop: Bool;
   collateralRatio: UInt8;
   liquidationBonusRatio: UInt8;
+  vaultDebtCeiling: UInt64;
 }
 export const MinimalViableCollateralRatio: UInt8 = UInt8.from(115);
 export const MinimalViablePriceValidity: UInt8 = UInt8.one;
@@ -123,6 +125,7 @@ export function ZkUsdEngineContract(args: {
       CollateralRatioUpdated: CollateralRatioUpdatedEvent,
       LiquidationBonusRatioUpdated: LiquidationBonusRatioUpdatedEvent,
       ConfigMerkleRootUpdated: ConfigMerkleRootUpdatedEvent,
+      VaultDebtCeilingUpdated: VaultDebtCeilingUpdatedEvent,
     };
 
     /**
@@ -163,6 +166,7 @@ export function ZkUsdEngineContract(args: {
           emergencyStop: args.emergencyStop,
           collateralRatio: args.collateralRatio,
           liquidationBonusRatio: args.liquidationBonusRatio,
+          vaultDebtCeiling: args.vaultDebtCeiling,
         }).pack()
       );
     }
@@ -516,6 +520,10 @@ export function ZkUsdEngineContract(args: {
         minaPrice
       );
 
+      // Enforce the vault debt ceiling
+      const protocolData = ProtocolData.unpack(this.protocolDataPacked.getAndRequireEquals());
+      debtAmount.lessThanOrEqual(protocolData.vaultDebtCeiling).assertTrue('Minting would exceed the vault debt ceiling.');
+
       //Mint the zkUSD for the recipient
       await zkUSD.mint(owner, amount);
 
@@ -732,42 +740,61 @@ export function ZkUsdEngineContract(args: {
       return { protocolDataBefore, operation };
     }
 
+    @method async govUpdateVaultDebtCeiling(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateVaultDebtCeiling,
+        updateSpec,
+        resolutionWitness
+      );
+      const oldCeiling = protocolDataBefore.vaultDebtCeiling;
+      const newCeiling = operation.vaultDebtCeiling.execute(oldCeiling);
+
+      protocolDataBefore.vaultDebtCeiling = newCeiling;
+      this.protocolDataPacked.set(protocolDataBefore.pack());
+
+      this.emitEvent(
+        'VaultDebtCeilingUpdated',
+        new VaultDebtCeilingUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          oldValue: oldCeiling,
+          newValue: newCeiling,
+        })
+      );
+    }
+    /**
+     * Toggle emergency stop via governance
+     */
     @method async govToggleEmergencyStop(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
-      // Reuse the shared logic
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovStopProtocol,
         updateSpec,
         resolutionWitness
       );
 
-      // Execute the update on the emergencyStop field
-      const newEmergencyStop = operation.emergencyStop.execute(
+      // Mutate directly
+      protocolDataBefore.emergencyStop = operation.emergencyStop.execute(
         protocolDataBefore.emergencyStop
       );
+      this.protocolDataPacked.set(protocolDataBefore.pack());
 
-      // Commit updated data
-      const updatedProtocolData = ProtocolData.new({
-        admin: protocolDataBefore.admin,
-        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
-        emergencyStop: newEmergencyStop,
-        collateralRatio: protocolDataBefore.collateralRatio,
-        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
-      });
-      this.protocolDataPacked.set(updatedProtocolData.pack());
-
-      // Emit the event
       this.emitEvent(
         'EmergencyStopToggled',
         new EmergencyStopToggledEvent({
           resolutionIndex: updateSpec.govResolutionIndex,
-          emergencyStop: newEmergencyStop,
+          emergencyStop: protocolDataBefore.emergencyStop,
         })
       );
     }
 
+    /**
+     * Update valid price block count via governance
+     */
     @method async govUpdateValidPriceBlockCount(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
@@ -779,116 +806,85 @@ export function ZkUsdEngineContract(args: {
         resolutionWitness
       );
 
-      const newValidPriceBlockCount = operation.validPriceBlockCount.execute(
-        protocolDataBefore.validPriceBlockCount
-      );
-
-      newValidPriceBlockCount.assertGreaterThanOrEqual(
-        MinimalViablePriceValidity
-      );
-
-      const updatedProtocolData = ProtocolData.new({
-        admin: protocolDataBefore.admin,
-        validPriceBlockCount: newValidPriceBlockCount,
-        emergencyStop: protocolDataBefore.emergencyStop,
-        collateralRatio: protocolDataBefore.collateralRatio,
-        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
-      });
-      this.protocolDataPacked.set(updatedProtocolData.pack());
+      // Mutate
+      protocolDataBefore.validPriceBlockCount =
+        operation.validPriceBlockCount.execute(
+          protocolDataBefore.validPriceBlockCount
+        );
+      this.protocolDataPacked.set(protocolDataBefore.pack());
 
       this.emitEvent(
         'ValidPriceBlockCountUpdated',
         new ValidPriceBlockCountUpdatedEvent({
           resolutionIndex: updateSpec.govResolutionIndex,
-          previousCount: protocolDataBefore.validPriceBlockCount,
-          newCount: newValidPriceBlockCount,
+          previousCount: protocolDataBefore.validPriceBlockCount, // mutated holds new, but you may capture old before
+          newCount: protocolDataBefore.validPriceBlockCount,
         })
       );
       Provable.log('govUpdateValidPriceBlockCount done.');
     }
 
-    @method async govUpdateLiquidationBonusRatio(
+    /**
+     * Update collateral ratio via governance
+     */
+    @method async govUpdateCollateralRatio(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
-      // perform common checks
-      Provable.log('govUpdateLiquidationBonusRatio');
+      Provable.log('govUpdateCollateralRatio');
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
-        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
+        ZkUsdEngineMethodCodes.GovUpdateCollateralRatio,
         updateSpec,
         resolutionWitness
       );
 
-      // execute the collateral ratio update
-      const newLiquidationBonusRatio = operation.liquidationBonusRatio.execute(
-        protocolDataBefore.liquidationBonusRatio
+      // Mutate
+      protocolDataBefore.collateralRatio = operation.collateralRatio.execute(
+        protocolDataBefore.collateralRatio
+      );
+      this.protocolDataPacked.set(protocolDataBefore.pack());
+
+      this.emitEvent(
+        'CollateralRatioUpdated',
+        new CollateralRatioUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          oldRatio: protocolDataBefore.collateralRatio, // same note on capturing old if needed
+          newRatio: protocolDataBefore.collateralRatio,
+        })
+      );
+      Provable.log('govUpdateCollateralRatio done.');
+    }
+
+    /**
+     * Update liquidation bonus ratio via governance
+     */
+    @method async govUpdateLiquidationBonusRatio(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      Provable.log('govUpdateLiquidationBonusRatio');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateLiquidationBonusRatio,
+        updateSpec,
+        resolutionWitness
       );
 
-      newLiquidationBonusRatio.assertGreaterThanOrEqual(
-        MinimalViablePriceValidity
-      );
+      // Mutate
+      protocolDataBefore.liquidationBonusRatio =
+        operation.liquidationBonusRatio.execute(
+          protocolDataBefore.liquidationBonusRatio
+        );
+      this.protocolDataPacked.set(protocolDataBefore.pack());
 
-      // store the updated data
-      const updatedProtocolData = ProtocolData.new({
-        admin: protocolDataBefore.admin,
-        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
-        emergencyStop: protocolDataBefore.emergencyStop,
-        collateralRatio: protocolDataBefore.collateralRatio,
-        liquidationBonusRatio: newLiquidationBonusRatio,
-      });
-      this.protocolDataPacked.set(updatedProtocolData.pack());
-
-      // emit an event
       this.emitEvent(
         'LiquidationBonusRatioUpdated',
         new LiquidationBonusRatioUpdatedEvent({
           resolutionIndex: updateSpec.govResolutionIndex,
           oldRatio: protocolDataBefore.liquidationBonusRatio,
-          newRatio: newLiquidationBonusRatio,
+          newRatio: protocolDataBefore.liquidationBonusRatio,
         })
       );
-      Provable.log('done.');
-    }
-
-    @method async govUpdateCollateralRatio(
-      updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
-    ) {
-      // perform common checks
-      Provable.log('govUpdateCollateralRatio');
-      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
-        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
-        updateSpec,
-        resolutionWitness
-      );
-
-      // execute the collateral ratio update
-      const newCollateralRatio = operation.collateralRatio.execute(
-        protocolDataBefore.collateralRatio
-      );
-
-      newCollateralRatio.assertGreaterThanOrEqual(MinimalViableCollateralRatio);
-
-      // store the updated data
-      const updatedProtocolData = ProtocolData.new({
-        admin: protocolDataBefore.admin,
-        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
-        emergencyStop: protocolDataBefore.emergencyStop,
-        collateralRatio: newCollateralRatio,
-        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
-      });
-      this.protocolDataPacked.set(updatedProtocolData.pack());
-
-      // emit an event
-      this.emitEvent(
-        'CollateralRatioUpdated',
-        new CollateralRatioUpdatedEvent({
-          resolutionIndex: updateSpec.govResolutionIndex,
-          oldRatio: protocolDataBefore.collateralRatio,
-          newRatio: newCollateralRatio,
-        })
-      );
-      Provable.log('govUpdateCollateralRatio done');
+      Provable.log('govUpdateLiquidationBonusRatio done.');
     }
 
     @method async govUpdateOracleWhitelist(
