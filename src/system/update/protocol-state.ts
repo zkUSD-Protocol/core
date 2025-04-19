@@ -1,4 +1,4 @@
-import { Bool, UInt8, Field, Struct } from 'o1js';
+import { Bool, UInt8, Field, Struct, UInt64 } from 'o1js';
 import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
 
 /**
@@ -11,6 +11,9 @@ import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
  * - `liquidationBonusRatio` — Bonus ratio given during liquidation events (UInt8).
  * - `oracleWhitelistHash` — Merkle root hash of the oracle whitelist (Field).
  * - `configMerkleRoot` — Merkle root hash of the general protocol configuration (Field).
+ * - `vaultCreationDisabled` — Whether vault creation is disabled (Bool).
+ * - `vaultDebtCeiling` — Maximum debt ceiling for vaults (UInt64).
+ * - ``
  *
  * This struct is primarily used to check if the protocol state satisfies
  * the expected update preconditions before applying a protocol update.
@@ -22,7 +25,8 @@ export class ZkusdUpdatedProtocolState extends Struct({
   liquidationBonusRatio: UInt8,
   oracleWhitelistHash: Field,
   configMerkleRoot: Field,
-  // Additional fields can be added as needed
+  vaultCreationDisabled: Bool,
+  vaultDebtCeiling: UInt64,
 }) {
   /**
    * Validates if this protocol state matches the provided preconditions.
@@ -76,11 +80,19 @@ function theUpdatePreconditionsMatchProtocolState(args: {
   const configMerkleRootOk = preconditions.configMerkleRoot
     .matches(protocolState.configMerkleRoot);
 
+  const vaultCreationDisabledOk = preconditions.vaultCreationDisabled
+     .matches(protocolState.vaultCreationDisabled);
+
+  const vaultDebtCeilingOk = preconditions.vaultDebtCeiling
+     .matches(protocolState.vaultDebtCeiling);
+
   // Combine all individual checks using logical AND:
   return emergencyStopOk
     .and(collateralRatioOk)
     .and(validPriceCountOk)
     .and(liquidationBonusRatioOk)
     .and(oracleWhitelistHashOk)
-    .and(configMerkleRootOk);
+    .and(configMerkleRootOk)
+    .and(vaultCreationDisabledOk)
+    .and(vaultDebtCeilingOk);
 }

@@ -33,6 +33,8 @@ export const VaultErrors = {
   INSUFFICIENT_BALANCE: 'Requested amount exceeds the vaults zkUSD balance',
   INSUFFICIENT_COLLATERAL:
     'Requested amount exceeds the deposited collateral in the vault ',
+  VAULT_CREATION_DISABLED:
+    'Vault creation is currently disabled',
 };
 
 /**

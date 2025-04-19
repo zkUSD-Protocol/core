@@ -6,9 +6,7 @@ import { KeyPair, WithDefault } from '../../../types/utility.js';
 import { IMinaNetworkInterface } from '../../../mina/network-interface.js';
 import { ITransactionExecutor } from '../../../transaction/executor.js';
 import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
-import {
-  ExternalTransactionExecutor,
-} from '../../../transaction/external-executor.js';
+import { ExternalTransactionExecutor } from '../../../transaction/external-executor.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
@@ -21,7 +19,6 @@ import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 // 3. Liquidate one of the users.
 // 4. Ensure liquidation is successful and completes within 2 blocks.
 // ----------------------------------------------------------
-
 
 //
 // ------------------- Constants & Config -------------------
@@ -504,4 +501,3 @@ describe('zkUSD Integration - Concurrent - Can admin and liquidate on saturated 
     );
   });
 });
-

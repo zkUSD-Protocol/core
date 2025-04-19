@@ -56,6 +56,23 @@ import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
+import {
+  generateVoteProof,
+  getNextEmptyResolutionIndex,
+  rebuildCouncilMembersAndTree,
+  rebuildProposalMerkleMap,
+  rebuildResolutionMerkleTree,
+} from './unit/gov/council/common.js';
+import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
+import {
+  BoolOperation,
+  UInt64Operation,
+} from '../system/update/simple-operations.js';
+import { MinaChainPreconditions } from '../system/update/blockchain-preconditions.js';
+import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
+import { ZkusdProtocolPreconditions } from '../system/update/protocol-preconditions.js';
+import { MultiSigZkusdProtocolUpdateProgram } from '../proofs/gov/council-multisig.js';
+import { ZkusdGovUpdateWitness } from '../system/governance.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -390,8 +407,113 @@ export class TestHelper<E extends string> {
   public zkusdCompilationData() {
     return this._deploymentService.compilationData;
   }
+  private async proposeAndExecuteUpdate(
+    operation: any,
+    contractCall: (
+      updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) => Promise<void>
+  ) {
+    // 1. Fetch events and rebuild on-chain state
+    const events = await this.council.fetchEvents();
+    const { councilTree } = rebuildCouncilMembersAndTree(events);
+    const proposalMap = rebuildProposalMerkleMap(events);
+    const resolutionTree = rebuildResolutionMerkleTree(events);
 
-  async deployTokenContracts(args?:{force?:boolean}) {
+    // 2. Compute new resolution index and updateSpec
+    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
+    const updateSpec = ZkusdProtocolUpdateSpec.singleOperation(
+      govResolutionIndex,
+      operation,
+      {
+        blockchainPreconditions: MinaChainPreconditions.always(),
+        protocolPreconditions: ZkusdProtocolPreconditions.always(),
+      }
+    );
+
+    // 3. Generate council votes
+    const councilKeyPairs = this.networkKeys.council!;
+    const votes = await Promise.all([
+      generateVoteProof(
+        councilKeyPairs[0],
+        councilTree,
+        0,
+        Number(govResolutionIndex.toBigint()),
+        updateSpec
+      ),
+      generateVoteProof(
+        councilKeyPairs[1],
+        councilTree,
+        1,
+        Number(govResolutionIndex.toBigint()),
+        updateSpec
+      ),
+    ]);
+
+    // 4. Merge votes
+    const merged = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+      votes[0].publicInput,
+      votes[0],
+      votes[1]
+    );
+
+    const proposalHash = merged.proof.publicOutput.proposalHash;
+    const voteBits = merged.proof.publicOutput.cummulatedVoteBitArray;
+
+    // 5. Support proposal
+    await this.includeTx(this.agents.alice.keys, async () => {
+      await this.council.supportProposalHelper(
+        merged.proof,
+        proposalMap,
+        resolutionTree
+      );
+    });
+
+    proposalMap.set(proposalHash, voteBits);
+    const proposalWitness = proposalMap.getWitness(proposalHash);
+
+    // 6. Pass proposal
+    const resolutionWitness = new ZkusdGovUpdateWitness(
+      resolutionTree.getWitness(govResolutionIndex.toBigint())
+    );
+    await this.includeTx(this.agents.alice.keys, async () => {
+      await this.council.passProposal(
+        updateSpec,
+        proposalWitness,
+        voteBits,
+        resolutionWitness
+      );
+    });
+
+    // 7. Execute contract call
+    await this.includeTx(this.agents.alice.keys, () =>
+      contractCall(updateSpec, resolutionWitness)
+    );
+  }
+
+  public async setProtocolDebtCeiling(debtCeiling: UInt64) {
+    return this.proposeAndExecuteUpdate(
+      { vaultDebtCeiling: UInt64Operation.set(debtCeiling) },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govUpdateVaultDebtCeiling(
+          updateSpec,
+          resolutionWitness
+        )
+    );
+  }
+
+  public async toggleVaultCreation() {
+    return this.proposeAndExecuteUpdate(
+      { vaultCreationDisabled: BoolOperation.flip() },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govToggleVaultCreation(
+          updateSpec,
+          resolutionWitness
+        )
+    );
+  }
+
+  async deployTokenContracts(args?: { force?: boolean }) {
     const force = args?.force ?? false;
     this._deploymentService = await DeploymentService.create(this.txMgr);
     const deployedContracts = await this._deploymentService.deploy(force);
@@ -753,7 +875,7 @@ export class TestHelper<E extends string> {
       return undefined;
     }
 
-    const params =await this.engine.contract.getVaultParams();
+    const params = await this.engine.contract.getVaultParams();
     return Vault(params).fromAccount(vaultAccount);
   }
 

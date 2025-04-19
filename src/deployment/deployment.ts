@@ -232,7 +232,8 @@ export class DeploymentService {
             emergencyStop: Bool(false),
             collateralRatio: UInt8.from(150),
             liquidationBonusRatio: UInt8.from(110),
-            vaultDebtCeiling: UInt64.from(200_000n*BigInt(1e9)) // 200k USD
+            vaultDebtCeiling: UInt64.from(200_000n*BigInt(1e9)), // 200k USD
+            vaultCreationDisabled: Bool(false),
           });
         },
         {

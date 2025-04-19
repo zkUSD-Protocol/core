@@ -23,7 +23,7 @@ import {
   Provable,
 } from 'o1js';
 
-import { Vault, VaultParams } from '../system/vault.js';
+import { Vault, VaultErrors, VaultParams } from '../system/vault.js';
 import {
   EmergencyStopToggledEvent,
   AdminUpdatedEvent,
@@ -41,6 +41,7 @@ import {
   ConfigMerkleRootUpdatedEvent,
   VerificationKeyUpdatedEvent,
   VaultDebtCeilingUpdatedEvent,
+  VaultCreationToggledEvent,
 } from '../system/events.js';
 import {
   MinaPriceInput,
@@ -79,6 +80,7 @@ export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
   validPriceBlockCount: UInt8;
   emergencyStop: Bool;
+  vaultCreationDisabled: Bool;
   collateralRatio: UInt8;
   liquidationBonusRatio: UInt8;
   vaultDebtCeiling: UInt64;
@@ -126,6 +128,7 @@ export function ZkUsdEngineContract(args: {
       LiquidationBonusRatioUpdated: LiquidationBonusRatioUpdatedEvent,
       ConfigMerkleRootUpdated: ConfigMerkleRootUpdatedEvent,
       VaultDebtCeilingUpdated: VaultDebtCeilingUpdatedEvent,
+      VaultCreationToggled: VaultCreationToggledEvent,
     };
 
     /**
@@ -164,6 +167,7 @@ export function ZkUsdEngineContract(args: {
           admin: args.admin,
           validPriceBlockCount: args.validPriceBlockCount,
           emergencyStop: args.emergencyStop,
+          vaultCreationDisabled: args.vaultCreationDisabled,
           collateralRatio: args.collateralRatio,
           liquidationBonusRatio: args.liquidationBonusRatio,
           vaultDebtCeiling: args.vaultDebtCeiling,
@@ -355,6 +359,10 @@ export function ZkUsdEngineContract(args: {
      * @param   vaultAddress The address of the vault to create
      */
     @method async createVault(vaultAddress: PublicKey) {
+      // Check vault creation toggle
+      const protocolData = ProtocolData.unpack(this.protocolDataPacked.getAndRequireEquals());
+      protocolData.vaultCreationDisabled.assertFalse(VaultErrors.VAULT_CREATION_DISABLED);
+
       //The sender is the owner of the vault
       const owner = this.sender.getAndRequireSignature();
 
@@ -1150,6 +1158,8 @@ export function ZkUsdEngineContract(args: {
         validPriceBlockCount: protocolData.validPriceBlockCount,
         oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
         configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
+        vaultDebtCeiling: protocolData.vaultDebtCeiling,
+        vaultCreationDisabled: protocolData.vaultCreationDisabled,
       });
     }
 
@@ -1167,6 +1177,31 @@ export function ZkUsdEngineContract(args: {
     @method.returns(Bool)
     public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
       return Bool(true); // TODO change it to read the permission instead
+    }
+
+    @method async govToggleVaultCreation(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovToggleVaultCreation,
+        updateSpec,
+        resolutionWitness
+      );
+
+      // Mutate directly
+      protocolDataBefore.vaultCreationDisabled = operation.vaultCreationDisabled.execute(
+        protocolDataBefore.vaultCreationDisabled
+      );
+      this.protocolDataPacked.set(protocolDataBefore.pack());
+
+      this.emitEvent(
+        'VaultCreationToggled',
+        new VaultCreationToggledEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          vaultCreationDisabled: protocolDataBefore.vaultCreationDisabled,
+        })
+      );
     }
   }
 

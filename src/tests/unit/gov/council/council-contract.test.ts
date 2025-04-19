@@ -112,7 +112,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
       { name: 'Council member casts a single vote proof' }
     );
 
-   // verify if the vote was registered for the proposal.
+    // verify if the vote was registered for the proposal.
     const [newRoot] = proposalWitness.computeRootAndKey(voteBitArray);
     // ensure that the root is set to this
     const actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();

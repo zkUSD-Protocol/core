@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { PrivateKey, UInt64 } from 'o1js';
 import { TransactionHandle } from '../../../transaction/manager.js';
 import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
-import whyIsNodeRunning  from 'why-is-node-running';
+import whyIsNodeRunning from 'why-is-node-running';
 import {
   TxLifecycleStatus,
   statusIsChainResolved,

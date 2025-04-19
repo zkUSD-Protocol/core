@@ -117,4 +117,22 @@ describe('zkUSD Deployment Test Suite', () => {
     assert.notStrictEqual(davidVault, null);
     assert.notStrictEqual(eveVault, null);
   });
+
+  it('should not allow vault creation when creation is disabled', async () => {
+    await testHelper.createVaults('frank');
+    await testHelper.toggleVaultCreation();
+    await assert.rejects(async () => {
+      await testHelper.includeTx(
+        testHelper.agents.frank.keys,
+        async () => {
+          await testHelper.engine.contract.createVault(
+            testHelper.agents.frank.vault!.publicKey
+          );
+        },
+        {
+          extraSigners: [testHelper.agents.frank.vault!.privateKey],
+        }
+      );
+    }, new RegExp(VaultErrors.VAULT_CREATION_DISABLED));
+  });
 });

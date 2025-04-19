@@ -20,7 +20,11 @@ import {
 
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 import assert from 'node:assert';
-import { ContractInstance, KeyPair, WithDefault } from '../../../types/utility.js';
+import {
+  ContractInstance,
+  KeyPair,
+  WithDefault,
+} from '../../../types/utility.js';
 import { OracleWhitelist } from '../../../system/oracle.js';
 import { IMinaNetworkInterface } from '../../../mina/network-interface.js';
 import { ITransactionExecutor } from '../../../transaction/executor.js';
@@ -31,10 +35,8 @@ import { debugLog } from '../../../utils/debug.js';
 import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 
 describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
-
-  let initialEngineState:  Field[];
+  let initialEngineState: Field[];
   let initialCollateral: UInt64;
-
 
   let stop: () => void;
   let th: TestHelper<'local' | 'external'>;
@@ -59,11 +61,6 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
   });
 
   before(async () => {
-
-
-
-
-
     // Prepare a "stopExecutor" promise so we can signal external workers to stop.
     const stopExecutor = new Promise<void>((resolve) => {
       stop = resolve;
@@ -88,19 +85,21 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
     //  testing the most basic tx
     const newUser = await th.mina.newAccount();
 
-    await th.mina.fetchMinaAccount(newUser.publicKey, {force: true})
+    await th.mina.fetchMinaAccount(newUser.publicKey, { force: true });
 
     //  testing the most basic tx
     const newUser2 = await th.mina.newAccount();
 
-    await th.includeTx(newUser, async () => {
-      AccountUpdate.createSigned(newUser.publicKey).send(
-        { to: newUser2.publicKey,
+    await th.includeTx(
+      newUser,
+      async () => {
+        AccountUpdate.createSigned(newUser.publicKey).send({
+          to: newUser2.publicKey,
           amount: 1000000000,
-        }
-      )}, {name: 'testing the most basic tx'});
-
-
+        });
+      },
+      { name: 'testing the most basic tx' }
+    );
 
     await th.deployTokenContracts({ force: true });
     // await th.deployTokenContracts({ force: false });
@@ -139,48 +138,48 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
     alice = {
       keys: await th.mina.newAccount(),
       vault: PrivateKey.randomKeypair(),
-    }
+    };
 
     // create alice vault
-    await th.includeEngineTx(alice.keys, {
-      transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
-      args: {
-        transactionId: 'Create alice vault',
-        vaultAddress: alice.vault.publicKey.toBase58(),
-        newAccounts: 2
-      }
-    },
+    await th.includeEngineTx(
+      alice.keys,
+      {
+        transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
+        args: {
+          transactionId: 'Create alice vault',
+          vaultAddress: alice.vault.publicKey.toBase58(),
+          newAccounts: 2,
+        },
+      },
       { extraSigners: [alice.vault.privateKey] }
     );
 
     oneUsdPrice = await th.getMinaPriceInput(TestAmounts.PRICE_1_USD);
 
     //Alice deposits 200 MINA
-    await th.includeEngineTx(
-      alice.keys,
-      {
-        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
-        args: {
-          transactionId: 'Alice deposits 200 MINA',
-          vaultAddress: alice.vault.publicKey.toBase58(),
-          collateralAmount: TestAmounts.COLLATERAL_200_MINA.toBigInt().toString()
-        }
-      }
-    );
+    await th.includeEngineTx(alice.keys, {
+      transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
+      args: {
+        transactionId: 'Alice deposits 200 MINA',
+        vaultAddress: alice.vault.publicKey.toBase58(),
+        collateralAmount: TestAmounts.COLLATERAL_200_MINA.toBigInt().toString(),
+      },
+    });
 
     //Alice mints 5 zkUSD
-    await th.includeEngineTx(
-      alice.keys,
-      {
-        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
-        args: {
-          transactionId: 'Alice mints 25 zkUSD',
-          vaultAddress: alice.vault.publicKey.toBase58(),
-          zkusdAmount: TestAmounts.DEBT_5_ZKUSD.add(TestAmounts.DEBT_20_ZKUSD).toBigInt().toString(),
-          minaPriceProof: (await th.priceInputMgr.requestProof(TestAmounts.PRICE_1_USD)).proof
-        }
-      }
-    );
+    await th.includeEngineTx(alice.keys, {
+      transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
+      args: {
+        transactionId: 'Alice mints 25 zkUSD',
+        vaultAddress: alice.vault.publicKey.toBase58(),
+        zkusdAmount: TestAmounts.DEBT_5_ZKUSD.add(TestAmounts.DEBT_20_ZKUSD)
+          .toBigInt()
+          .toString(),
+        minaPriceProof: (
+          await th.priceInputMgr.requestProof(TestAmounts.PRICE_1_USD)
+        ).proof,
+      },
+    });
 
     const engineAccount = await th.mina.fetchMinaAccount(
       th.networkKeys.engine.publicKey,
@@ -199,7 +198,8 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       }
     ))!.balance;
 
-    if (!engineAccount?.zkapp?.appState) throw new Error('Engine account app state is missing');
+    if (!engineAccount?.zkapp?.appState)
+      throw new Error('Engine account app state is missing');
     initialEngineState = engineAccount.zkapp.appState;
 
     originalEngineVerificationKey = engineAccount?.zkapp?.verificationKey!;
@@ -231,8 +231,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         name: 'Upgradability Test Suite: Alice attempts to call a method on the upgraded engine before the vk is updated',
       }
     );
-  },
-  );
+  });
 
   // it('// should fail to execute a method on the upgraded engine before the vk is updated', async () => {
   //   await assert.rejects(
@@ -275,18 +274,16 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         );
       },
       (err: any) => {
-        assert.match(
-          err.message,
-          /Update_not_permitted_verification_key/i
-        );
+        assert.match(err.message, /Update_not_permitted_verification_key/i);
         return true;
       }
     );
   });
 
   it('should maintain the current state of the engine before the upgrade', async () => {
-
-    debugLog('Test: it should maintain the current state of the engine after the upgrade')
+    debugLog(
+      'Test: it should maintain the current state of the engine after the upgrade'
+    );
     const engineTrackingAccount = await th.mina.fetchMinaAccount(
       th.networkKeys.engine.publicKey,
 
@@ -298,9 +295,9 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
 
     const expectedCollateral = initialCollateral;
 
-    debugLog('Asserting collateral amount on the engine tracking account...')
+    debugLog('Asserting collateral amount on the engine tracking account...');
     assert.deepStrictEqual(engineTrackingAccount?.balance, expectedCollateral);
-    debugLog('Collateral on the engine tracking account as expected')
+    debugLog('Collateral on the engine tracking account as expected');
 
     const engineAccount = await th.mina.fetchMinaAccount(
       th.networkKeys.engine.publicKey,
@@ -309,9 +306,9 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       }
     );
 
-    debugLog('Asserting app state on the engine account... ')
+    debugLog('Asserting app state on the engine account... ');
     assert.deepStrictEqual(engineAccount?.zkapp?.appState, initialEngineState);
-    debugLog('App state on the engine account as expected')
+    debugLog('App state on the engine account as expected');
   });
 
   it('should allow the engine vk to be updated with the correct signature', async () => {
@@ -345,8 +342,9 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
   });
 
   it('should maintain the current state of the engine after the upgrade', async () => {
-
-    debugLog('Test: it should maintain the current state of the engine after the upgrade')
+    debugLog(
+      'Test: it should maintain the current state of the engine after the upgrade'
+    );
     const engineTrackingAccount = await th.mina.fetchMinaAccount(
       th.networkKeys.engine.publicKey,
 
@@ -358,9 +356,9 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
 
     const expectedCollateral = initialCollateral;
 
-    debugLog('Asserting collateral amount on the engine tracking account...')
+    debugLog('Asserting collateral amount on the engine tracking account...');
     assert.deepStrictEqual(engineTrackingAccount?.balance, expectedCollateral);
-    debugLog('Collateral on the engine tracking account as expected')
+    debugLog('Collateral on the engine tracking account as expected');
 
     const engineAccount = await th.mina.fetchMinaAccount(
       th.networkKeys.engine.publicKey,
@@ -369,9 +367,9 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       }
     );
 
-    debugLog('Asserting app state on the engine account... ')
+    debugLog('Asserting app state on the engine account... ');
     assert.deepStrictEqual(engineAccount?.zkapp?.appState, initialEngineState);
-    debugLog('App state on the engine account as expected')
+    debugLog('App state on the engine account as expected');
   });
 
   it('should fail to call a method on the original engine after the upgrade', async () => {

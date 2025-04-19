@@ -12,6 +12,7 @@ export const ZkUsdEngineMethodCodes = {
   GovUpdateLiquidationBonusRatio: Field.from(1100004n),
   GovUpdateOracleWhitelist: Field.from(1100005n),
   GovUpdateVaultDebtCeiling: Field.from(1100006n),
+  GovToggleVaultCreation: Field.from(1100007n),
   GovCRITICALUpdateVerificationKey: Field.from(1200005n),
 };
 
@@ -38,6 +39,7 @@ export class ProtocolData extends Struct({
   admin: PublicKey,
   validPriceBlockCount: UInt8,
   emergencyStop: Bool,
+  vaultCreationDisabled: Bool,
   collateralRatio: UInt8,
   liquidationBonusRatio: UInt8,
   vaultDebtCeiling: UInt64,
@@ -47,6 +49,7 @@ export class ProtocolData extends Struct({
       admin?: PublicKey;
       validPriceBlockCount?: UInt8;
       emergencyStop?: Bool;
+      vaultCreationDisabled?: Bool;
       collateralRatio?: UInt8;
       liquidationBonusRatio?: UInt8;
       vaultDebtCeiling?: UInt64;
@@ -56,11 +59,10 @@ export class ProtocolData extends Struct({
       admin: params.admin ?? PublicKey.empty(),
       validPriceBlockCount: params.validPriceBlockCount ?? UInt8.from(0),
       emergencyStop: params.emergencyStop ?? Bool(false),
+      vaultCreationDisabled: params.vaultCreationDisabled ?? Bool(false),
       collateralRatio: params.collateralRatio ?? UInt8.from(0),
-      liquidationBonusRatio:
-        params.liquidationBonusRatio ?? UInt8.from(0),
-      vaultDebtCeiling:
-        params.vaultDebtCeiling ?? UInt64.from(0n),
+      liquidationBonusRatio: params.liquidationBonusRatio ?? UInt8.from(0),
+      vaultDebtCeiling: params.vaultDebtCeiling ?? UInt64.from(0n),
     });
   }
 
@@ -69,6 +71,7 @@ export class ProtocolData extends Struct({
     const bits = [
       ...this.validPriceBlockCount.value.toBits(8),
       this.emergencyStop,
+      this.vaultCreationDisabled,
       this.admin.isOdd,
       ...this.collateralRatio.value.toBits(8),
       ...this.liquidationBonusRatio.value.toBits(8),
@@ -92,6 +95,7 @@ export class ProtocolData extends Struct({
     const bitFields = [
       { name: 'validPriceBlockCount', length: 8 },
       { name: 'emergencyStop', length: 1 },
+      { name: 'vaultCreationDisabled', length: 1 },
       { name: 'adminIsOdd', length: 1 },
       { name: 'collateralRatio', length: 8 },
       { name: 'liquidationBonusRatio', length: 8 },
@@ -115,12 +119,11 @@ export class ProtocolData extends Struct({
 
     const validPriceBlockCount = UInt8.Unsafe.fromField(readBits(8));
     const emergencyStop = readBits(1).equals(1);
+    const vaultCreationDisabled = readBits(1).equals(1);
     const adminIsOdd = readBits(1).equals(1);
     const collateralRatio = UInt8.Unsafe.fromField(readBits(8));
-    const liquidationBonusRatio =
-      UInt8.Unsafe.fromField(readBits(8));
-    const vaultDebtCeiling =
-      UInt64.Unsafe.fromField(readBits(64));
+    const liquidationBonusRatio = UInt8.Unsafe.fromField(readBits(8));
+    const vaultDebtCeiling = UInt64.Unsafe.fromField(readBits(64));
     const admin = PublicKey.from({
       x: packed.adminX,
       isOdd: adminIsOdd,
@@ -130,6 +133,7 @@ export class ProtocolData extends Struct({
       admin,
       validPriceBlockCount,
       emergencyStop,
+      vaultCreationDisabled,
       collateralRatio,
       liquidationBonusRatio,
       vaultDebtCeiling,

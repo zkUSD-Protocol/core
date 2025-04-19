@@ -10,7 +10,7 @@ export enum ZkusdEngineTransactionType {
   MINT_ZKUSD = 'mintZkUsd',
   BURN_ZKUSD = 'burnZkUsd',
   LIQUIDATE = 'liquidate',
-  // admin
+  // admin // TODO replace with gov methods
   UPDATE_ADMIN = 'updateAdmin',
   UPDATE_VALID_PRICE_BLOCK_COUNT = 'updateValidPriceBlockCount',
   UPDATE_ORACLE_WHITELIST = 'updateOracleWhitelist',

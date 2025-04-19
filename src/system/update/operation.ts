@@ -12,6 +12,7 @@ import {
  */
 export type ZkusdProtocolUpdateOperationFields = {
   emergencyStop: BoolOperation;
+  vaultCreationDisabled: BoolOperation;
   collateralRatio: UInt8Operation;
   validPriceBlockCount: UInt8Operation;
   liquidationBonusRatio: UInt8Operation;
@@ -22,29 +23,12 @@ export type ZkusdProtocolUpdateOperationFields = {
 };
 
 /**
- * A convenience function that returns a "no-op" version of every field.
- * This is used internally to fill in missing fields in partials, or
- * to produce a base "all-noops" operation.
- */
-function mkAllNoops(): ZkusdProtocolUpdateOperationFields {
-  return {
-    emergencyStop: BoolOperation.noop(),
-    collateralRatio: UInt8Operation.noop(),
-    validPriceBlockCount: UInt8Operation.noop(),
-    liquidationBonusRatio: UInt8Operation.noop(),
-    oracleWhitelistHash: FieldOperation.noop(),
-    configMerkleRoot: FieldOperation.noop(),
-    newVerificationKey: FieldOperation.noop(),
-    vaultDebtCeiling: UInt64Operation.noop(),
-  };
-}
-
-/**
  * The main class. We only store the final fields, but we provide static
  * methods to create or merge them in a more flexible, minimal way.
  */
 export class ZkusdProtocolUpdateOperation extends Struct({
   emergencyStop: BoolOperation,
+  vaultCreationDisabled: BoolOperation,
   collateralRatio: UInt8Operation,
   validPriceBlockCount: UInt8Operation,
   liquidationBonusRatio: UInt8Operation,
@@ -61,33 +45,28 @@ export class ZkusdProtocolUpdateOperation extends Struct({
     partial: Partial<ZkusdProtocolUpdateOperationFields>
   ): ZkusdProtocolUpdateOperation {
     // Fill in no-ops for missing fields
-    const allNoops = mkAllNoops();
-    const filled: ZkusdProtocolUpdateOperationFields = {
-      emergencyStop: partial.emergencyStop ?? allNoops.emergencyStop,
-      collateralRatio: partial.collateralRatio ?? allNoops.collateralRatio,
-      validPriceBlockCount:
-        partial.validPriceBlockCount ?? allNoops.validPriceBlockCount,
-      liquidationBonusRatio:
-        partial.liquidationBonusRatio ?? allNoops.liquidationBonusRatio,
-      oracleWhitelistHash:
-        partial.oracleWhitelistHash ?? allNoops.oracleWhitelistHash,
-      configMerkleRoot:
-        partial.configMerkleRoot ?? allNoops.configMerkleRoot,
-      newVerificationKey:
-        partial.newVerificationKey ?? allNoops.newVerificationKey,
-      vaultDebtCeiling:
-        partial.vaultDebtCeiling ?? allNoops.vaultDebtCeiling,
+    const filled = {
+      emergencyStop: partial.emergencyStop ?? BoolOperation.noop(),
+      vaultCreationDisabled: partial.vaultCreationDisabled ?? BoolOperation.noop(),
+      collateralRatio: partial.collateralRatio ?? UInt8Operation.noop(),
+      validPriceBlockCount: partial.validPriceBlockCount ?? UInt8Operation.noop(),
+      liquidationBonusRatio: partial.liquidationBonusRatio ?? UInt8Operation.noop(),
+      oracleWhitelistHash: partial.oracleWhitelistHash ?? FieldOperation.noop(),
+      configMerkleRoot: partial.configMerkleRoot ?? FieldOperation.noop(),
+      newVerificationKey: partial.newVerificationKey ?? FieldOperation.noop(),
+      vaultDebtCeiling: partial.vaultDebtCeiling ?? UInt64Operation.noop(),
     };
     return new ZkusdProtocolUpdateOperation(filled);
   }
 
   static noop(): ZkusdProtocolUpdateOperation {
-    return new ZkusdProtocolUpdateOperation(mkAllNoops());
+    return ZkusdProtocolUpdateOperation.create({});
   }
 
   toFields(): Field[] {
     return [
       ...this.emergencyStop.toFields(),
+      ...this.vaultCreationDisabled.toFields(),
       ...this.collateralRatio.toFields(),
       ...this.validPriceBlockCount.toFields(),
       ...this.liquidationBonusRatio.toFields(),
@@ -95,6 +74,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       ...this.configMerkleRoot.toFields(),
       ...this.newVerificationKey.toFields(),
       ...this.vaultDebtCeiling.toFields(),
+      ...this.vaultCreationDisabled.toFields(),
     ];
   }
 }

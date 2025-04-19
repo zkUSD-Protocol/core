@@ -107,3 +107,8 @@ export class OracleWhitelistUpdatedEvent extends Struct({
   previousHash: Field,
   newHash: Field,
 }) {}
+
+export class VaultCreationToggledEvent extends Struct({
+  resolutionIndex: UInt32,
+  vaultCreationDisabled: Bool,
+}) {}
