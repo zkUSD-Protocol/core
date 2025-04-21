@@ -278,7 +278,7 @@ export class DeploymentService {
           extraSigners: [
             this._networkKeys.government.privateKey,
           ],
-          name: 'Deploying & initilializing Gov contracts',
+          name: 'Deploying & initializing Gov contracts',
           executor: 'local',
         }
       );
