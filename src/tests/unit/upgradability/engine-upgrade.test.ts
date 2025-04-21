@@ -12,10 +12,11 @@ import {
   Field,
   Poseidon,
   UInt32,
+  UInt8,
   VerificationKey,
 } from 'o1js';
 
-import { validPriceBlockCount } from '../../../mina/networks.js';
+import { validPriceBlockCounts } from '../../../mina/networks.js';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
 import assert from 'node:assert';
 import { ContractInstance } from '../../../types/utility.js';
@@ -132,11 +133,59 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       (err: any) => {
         assert.match(
           err.message,
-          /Cannot update field 'verificationKey' because permission for this field is 'Signature'/i
+          /Cannot update field 'verificationKey' because permission for this field is/i
         );
         return true;
       }
     );
+  });
+
+  it('should maintain the current state of the engine before the upgrade', async () => {
+    const engineTrackingAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+
+      {
+        tokenId: th.engine.contract.deriveTokenId(),
+        force: true,
+      }
+    );
+
+    const expectedCollateral = TestAmounts.COLLATERAL_100_MINA;
+
+    assert.deepStrictEqual(engineTrackingAccount?.balance, expectedCollateral);
+
+    const expectedProtocolDataPacked: ProtocolDataPacked = ProtocolData.new({
+      admin: th.networkKeys.protocolAdmin.publicKey,
+      validPriceBlockCount: UInt8.from(
+        validPriceBlockCounts[th.txMgr.mina.network.chainId]
+      ),
+      emergencyStop: Bool(false),
+      collateralRatio: UInt8.from(150),
+      liquidationBonusRatio: UInt8.from(110),
+    }).pack();
+
+    const expectedOracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
+
+    const expectedInteractionFlag = Bool(false);
+
+    const engineAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+      {
+        force: true,
+      }
+    );
+
+    const expectedAppState = [
+      expectedOracleWhitelistHash,
+      ...ProtocolDataPacked.toFields(expectedProtocolDataPacked),
+      expectedInteractionFlag.toField(),
+      Field(0),
+      Field(0),
+      Field(0),
+      Field(0),
+    ];
+
+    assert.deepStrictEqual(engineAccount?.zkapp?.appState, expectedAppState);
   });
 
   it('should allow the engine vk to be updated with the correct signature', async () => {
@@ -185,10 +234,12 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
 
     const expectedProtocolDataPacked: ProtocolDataPacked = ProtocolData.new({
       admin: th.networkKeys.protocolAdmin.publicKey,
-      validPriceBlockCount: UInt32.from(
-        validPriceBlockCount[th.txMgr.mina.network.chainId]
+      validPriceBlockCount: UInt8.from(
+        validPriceBlockCounts[th.txMgr.mina.network.chainId]
       ),
       emergencyStop: Bool(false),
+      collateralRatio: UInt8.from(150),
+      liquidationBonusRatio: UInt8.from(110),
     }).pack();
 
     const expectedOracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
@@ -246,7 +297,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         await upgradedEngine.contract.initialize(
           secret,
           th.whitelist,
-          UInt32.from(25)
+          UInt8.from(25)
         );
       },
       {

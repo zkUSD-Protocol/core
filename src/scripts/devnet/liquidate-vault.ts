@@ -10,7 +10,7 @@ import {
   UInt64,
 } from 'o1js';
 import { OracleWhitelist } from '../../system/oracle.js';
-import { getContractKeys } from '../../config/keys.js';
+import { getContractKeys, getNetworkKeys } from '../../config/keys.js';
 import {
   ExternalTransactionExecutor,
   HttpClientProver,
@@ -34,6 +34,7 @@ import {
 } from '../../system/transaction.js';
 import { ZKUSDClient } from '../../client/client.js';
 import { getOracles, Oracle } from '../../config/oracles.js';
+import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
 
 const client = new Client({
   network: 'testnet',
@@ -146,14 +147,17 @@ async function liquidateVault() {
   const executor: ITransactionExecutor = new LocalTransactionExecutor();
   const txMgr = TransactionManager.new(MinaChain, { local: executor });
 
-  const { token: tokenAddress, engine: engineAddress } =
+  const { token: tokenAddress, engine: engineAddress, gov: govAddress } =
     getContractKeys('devnet');
 
   const minaPriceInput = await buildPriceInput();
 
+
   const ZkUsdEngine = ZkUsdEngineContract({
     zkUsdTokenAddress: tokenAddress,
     minaPriceInputZkProgramVkHash: minaPriceInput.verificationKey.hash,
+    zkUsdGovernmentAddress: govAddress,
+    GovernmentClass: ZkusdGoverningCouncilContract
   });
 
   const FungibleToken = ZkUsdEngine.FungibleToken;

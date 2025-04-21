@@ -11,18 +11,21 @@ export interface NetworkKeyPairs {
   protocolAdmin: KeyPair;
   token: KeyPair;
   engine: KeyPair;
+  government: KeyPair;
   oracles?: [
     Partial<KeyPair> & Pick<KeyPair, 'publicKey'>,
     ...Array<Partial<KeyPair> & Pick<KeyPair, 'publicKey'>>,
   ] & {
     length: typeof OracleWhitelist.MAX_PARTICIPANTS;
   };
+  council?: KeyPair[] ;
   agents?: Record<string, AgentKeys>;
 }
 
 export interface ContractKeys {
   token: PublicKey;
   engine: PublicKey;
+  gov: PublicKey;
 }
 
 export interface AgentKeys {
@@ -70,6 +73,10 @@ function loadDevnetKeys(): NetworkKeyPairs {
     engine: {
       privateKey: PrivateKey.fromBase58(process.env.DEVNET_ENGINE_PRIVATE_KEY!),
       publicKey: PublicKey.fromBase58(process.env.DEVNET_ENGINE_PUBLIC_KEY!),
+    },
+    government: {
+      privateKey: PrivateKey.fromBase58(process.env.DEVNET_GOV_PRIVATE_KEY!),
+      publicKey: PublicKey.fromBase58(process.env.DEVNET_GOV_PUBLIC_KEY!),
     },
   };
 
@@ -212,6 +219,41 @@ const localKeys: NetworkKeyPairs = {
       'B62qkwLvZ6e5NzRgQwkTaA9m88fTUZLHmpwvmCQEqbp5KcAAfqFAaf9'
     ),
   },
+  government: {
+    privateKey: PrivateKey.fromBase58(
+      "EKEbxJx3U1RbdojRnn3UApSPuLjAdhBYScBEohXS9NbEpKamq1dk"
+    ),
+    publicKey: PublicKey.fromBase58(
+      'B62qr6FN3dU9JP1AyyCPgFYVqctnshFR15J6oFo7e2aFNfJQh8akhfW'
+    ),
+  },
+  council: [
+    {
+      privateKey: PrivateKey.fromBase58(
+        "EKEvMHQgZFfnH3VMFFQmikHY1c7qH3h3ZBs8KVuUKqHxoiSG6TfH"
+      ),
+      publicKey: PublicKey.fromBase58(
+        "B62qoNAsVRPde4JM7BKFcPyL6Sg6PnoNXLBxPMJPRndcu3iD2H98PhZ"
+      ),
+    },
+    {
+      privateKey: PrivateKey.fromBase58(
+        "EKEmefxgS9664gFrAy3c2tuptsfRxtYSkFLMHPqFwqGmsAQGsaxP"
+      ),
+      publicKey: PublicKey.fromBase58(
+        "B62qp7iynzYJwiqr8rY93xR9w77wS861Bo5YMoMLYCaa8A5SyH1YCwZ"
+      ),
+    },
+    {
+      privateKey: PrivateKey.fromBase58(
+        "EKE9F6Ai3T1pQRCRYbCB1UhJfdoDpoaS1yKZpcfNgDkcZmEQ1DFg"
+      ),
+      publicKey: PublicKey.fromBase58(
+        "B62qoy29VJrSTQ1WPhW2teNJZi5JYJSTjf9UP166B6rz8Fj3PaUtFLz"
+      ),
+    },
+  ],
+
   oracles: [
     {
       privateKey: PrivateKey.fromBase58(
@@ -305,11 +347,13 @@ export function getContractKeys(network: blockchain): ContractKeys {
       return {
         token: localKeys.token.publicKey,
         engine: localKeys.engine.publicKey,
+        gov: localKeys.government.publicKey,
       };
     case 'lightnet':
       return {
         token: lightnetKeys.token.publicKey,
         engine: lightnetKeys.engine.publicKey,
+        gov: lightnetKeys.government.publicKey,
       };
     case 'devnet':
       return {
@@ -318,6 +362,9 @@ export function getContractKeys(network: blockchain): ContractKeys {
         ),
         engine: PublicKey.fromBase58(
           'B62qqU7Dxrkk1ciqnMQaEDVqAPQyoT6VSfrmiXHrojj4q7XBzj9TCCD'
+        ),
+        gov: PublicKey.fromBase58(
+          'B62qj1aW6ZQf4ZdQb7q1s5vYb5h7y4KsN5Q5vZQ4Qx5mR6QkM8JQf4v' // Placeholder
         ),
       };
     default:

@@ -168,6 +168,7 @@ if (process.argv[1] === __filename) {
     const compilationResults = await compileContracts({
       tokenPublicKey: keys.token,
       enginePublicKey: keys.engine,
+      governmentPublicKey: keys.gov,
     });
 
     server(chainInterface, compilationResults).listen(PORT, () => {

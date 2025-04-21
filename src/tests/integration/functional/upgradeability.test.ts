@@ -14,6 +14,7 @@ import {
   PrivateKey,
   UInt32,
   UInt64,
+  UInt8,
   VerificationKey,
 } from 'o1js';
 
@@ -283,6 +284,36 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
     );
   });
 
+  it('should maintain the current state of the engine before the upgrade', async () => {
+
+    debugLog('Test: it should maintain the current state of the engine after the upgrade')
+    const engineTrackingAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+
+      {
+        tokenId: th.engine.contract.deriveTokenId(),
+        force: true,
+      }
+    );
+
+    const expectedCollateral = initialCollateral;
+
+    debugLog('Asserting collateral amount on the engine tracking account...')
+    assert.deepStrictEqual(engineTrackingAccount?.balance, expectedCollateral);
+    debugLog('Collateral on the engine tracking account as expected')
+
+    const engineAccount = await th.mina.fetchMinaAccount(
+      th.networkKeys.engine.publicKey,
+      {
+        force: true,
+      }
+    );
+
+    debugLog('Asserting app state on the engine account... ')
+    assert.deepStrictEqual(engineAccount?.zkapp?.appState, initialEngineState);
+    debugLog('App state on the engine account as expected')
+  });
+
   it('should allow the engine vk to be updated with the correct signature', async () => {
     await th.includeTx(
       alice.keys,
@@ -366,7 +397,7 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
         await upgradedEngine.contract.initialize(
           secret,
           th.whitelist,
-          UInt32.from(25)
+          UInt8.from(25)
         );
       },
       {

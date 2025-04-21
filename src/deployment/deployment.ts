@@ -1,13 +1,15 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, UInt32, UInt8, VerificationKey } from 'o1js';
+import { AccountUpdate, Bool, Provable, UInt8, VerificationKey } from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
-import { validPriceBlockCount } from '../mina/networks.js';
+import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
+import { MAX_ZKUSD_COUNCIL_SIZE, MultiSigZkusdProtocolUpdateProgram } from '../proofs/gov/council-multisig.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -15,8 +17,22 @@ import { updateVerificationKeys } from '../utils/node/update-verification-keys.j
 interface DeployedContracts {
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  gov: ZkusdGoverningCouncilContract;
   oracleAggregationVk: VerificationKey;
 }
+export interface ZkusdCompilationData {
+  oracleAggregationVk: VerificationKey;
+  councilMultiSigProgramVk: VerificationKey;
+  zkusdEngineContractVk: VerificationKey;
+  governmentContractVk: VerificationKey;
+  tokenContractVk: VerificationKey;
+}
+
+
+
+/** A proposal is considered valid if the ratio of votes in favor is greater than this value.
+    E.g. for 4 council seats a ratio of 2/3 would require 2 votes, 3 votes for 5 seats. */
+const CouncilVoteThresholdRatio = 2 / 3;
 
 /**
  * Service responsible for deploying and initializing the zkUSD protocol contracts.
@@ -30,7 +46,14 @@ export class DeploymentService {
   private _networkKeys: NetworkKeyPairs;
   private _token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  private _gov: ContractInstance<ZkusdGoverningCouncilContract>;
   private _oracleAggregationVk: VerificationKey;
+  private _councilMultisigProgramVk: VerificationKey;
+  private _compilationData: Partial<ZkusdCompilationData>;
+
+  public get compilationData(): Partial<ZkusdCompilationData> {
+    return this._compilationData
+  }
 
   private constructor(txMgr: TransactionManager<any>) {
     this._txMgr = txMgr;
@@ -50,7 +73,7 @@ export class DeploymentService {
     } else {
       service._deployer = await service._txMgr.mina.newAccount();
     }
-    await service.compile();
+    service._compilationData = await service.compile();
     return service;
   }
 
@@ -61,6 +84,7 @@ export class DeploymentService {
   private updateVerificationKeys() {
     updateVerificationKeys({
       oracleAggregationVk: this._oracleAggregationVk,
+      councilMultiSigProgramVk: this._councilMultisigProgramVk,
     });
   }
 
@@ -73,25 +97,34 @@ export class DeploymentService {
 
   /**
    * Compiles all necessary contracts and proofs for the protocol.
-   * This includes the oracle aggregation proof, vault, engine, and token contracts.
+  * This includes the oracle aggregation proof, vault, engine, and token contracts.
    */
-  async compile() {
+  async compile() : Promise<Partial<ZkusdCompilationData>>{
     console.log('Compiling Contracts - start');
     console.time('Compiling Contracts');
 
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
+    const councilMultiSigProgramCompiled = await MultiSigZkusdProtocolUpdateProgram.compile();
+    this._councilMultisigProgramVk = councilMultiSigProgramCompiled.verificationKey;
+
     this.updateVerificationKeys();
 
     const ZkUsdEngine = ZkUsdEngineContract({
       zkUsdTokenAddress: this._networkKeys.token.publicKey,
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
+      zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
+      GovernmentClass: ZkusdGoverningCouncilContract
     });
+    let engineCompilationResults;
+    let tokenCompilationResults;
+    let governmenttokenCompilationResults;
 
     if (this._mina.proofsEnabled) {
-      await ZkUsdEngine.compile();
-      await ZkUsdEngine.FungibleToken.compile();
+      engineCompilationResults = await ZkUsdEngine.compile();
+      tokenCompilationResults = await ZkUsdEngine.FungibleToken.compile();
+      governmenttokenCompilationResults = await ZkusdGoverningCouncilContract.compile();
     }
 
     this._token = {
@@ -104,7 +137,18 @@ export class DeploymentService {
       contract: new ZkUsdEngine(this._networkKeys.engine.publicKey),
     };
 
+    this._gov = {
+      contract: new ZkusdGoverningCouncilContract(this._networkKeys.government.publicKey),
+    };
+
     console.timeEnd('Compiling Contracts');
+    return {
+      oracleAggregationVk: this._oracleAggregationVk,
+      councilMultiSigProgramVk: this._councilMultisigProgramVk,
+      zkusdEngineContractVk: engineCompilationResults?.verificationKey,
+      governmentContractVk: tokenCompilationResults?.verificationKey,
+      tokenContractVk: governmenttokenCompilationResults?.verificationKey
+    }
   }
 
   /**
@@ -153,6 +197,15 @@ export class DeploymentService {
       { force: true }
     );
 
+    const govAccount = await this._mina.fetchMinaAccount(
+      this._networkKeys.government.publicKey,
+      { force: true }
+    );
+    this._networkKeys.government.publicKey,
+      { force: true }
+    Provable.log('governance address - deployment', this._networkKeys.government.publicKey)
+
+
     if (!tokenAccount || force) {
       if (!force) console.log('Contracts dont exist - deploying....');
       else console.log('Forcing contracts deployment....');
@@ -173,10 +226,12 @@ export class DeploymentService {
           );
           await this._engine.contract.deploy({
             admin: this._networkKeys.protocolAdmin.publicKey,
-            validPriceBlockCount: UInt32.from(
-              validPriceBlockCount[this._txMgr.mina.network.chainId]
+            validPriceBlockCount: UInt8.from(
+              validPriceBlockCounts[this._txMgr.mina.network.chainId]
             ),
             emergencyStop: Bool(false),
+            collateralRatio: UInt8.from(150),
+            liquidationBonusRatio: UInt8.from(110),
           });
         },
         {
@@ -194,6 +249,43 @@ export class DeploymentService {
       console.log('Token and Engine contracts already deployed');
     }
 
+    if (!govAccount || force) {
+
+      const councilKeys = this._networkKeys.council?.map((key) => key.publicKey);
+      if(!councilKeys || councilKeys.length == 0) {
+        throw new Error('Council keys not found in the network keys');
+      }
+      const threshold = Math.floor(CouncilVoteThresholdRatio * councilKeys?.length);
+      if (threshold > MAX_ZKUSD_COUNCIL_SIZE){
+        throw new Error(
+          `Council size exceeds the maximum size of ${MAX_ZKUSD_COUNCIL_SIZE}`
+        );
+      }
+
+      if (!force) console.log('Gov contracts dont exist deploying');
+      else console.log('Forcing contracts deployment....');
+      const txHandle = await this._txMgr.tx(
+        this._deployer,
+        async () => {
+          AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
+          await this._gov.contract.deploy();
+          await this._gov.contract.initializeWithKeys(
+            councilKeys,
+            UInt8.from(threshold)
+          );
+        },
+        {
+          extraSigners: [
+            this._networkKeys.government.privateKey,
+          ],
+          name: 'Deploying & initializing Gov contracts',
+          executor: 'local',
+        }
+      );
+      await txHandle.awaitIncluded();
+    } else {
+      console.log('Gov contracts already deployed');
+    }
     // fetch the latest nonce for the accounts
     await this._mina.fetchMinaAccount(this._networkKeys.engine.publicKey);
     await this._mina.fetchMinaAccount(
@@ -234,6 +326,7 @@ export class DeploymentService {
       token: this._token,
       engine: this._engine,
       oracleAggregationVk: this._oracleAggregationVk,
+      gov: this._gov.contract,
     };
   }
 }

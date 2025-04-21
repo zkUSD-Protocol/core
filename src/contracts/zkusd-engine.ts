@@ -19,9 +19,11 @@ import {
   Int64,
   UInt32,
   VerificationKey,
+  UInt8,
+  Provable,
 } from 'o1js';
 
-import { Vault } from '../system/vault.js';
+import { Vault, VaultParams } from '../system/vault.js';
 import {
   EmergencyStopToggledEvent,
   AdminUpdatedEvent,
@@ -34,6 +36,10 @@ import {
   LiquidateEvent,
   VaultOwnerUpdatedEvent,
   ValidPriceBlockCountUpdatedEvent,
+  CollateralRatioUpdatedEvent,
+  LiquidationBonusRatioUpdatedEvent,
+  ConfigMerkleRootUpdatedEvent,
+  VerificationKeyUpdatedEvent,
 } from '../system/events.js';
 import {
   MinaPriceInput,
@@ -44,32 +50,57 @@ import {
   ProtocolData,
   ProtocolDataPacked,
   ZkUsdEngineErrors,
+  ZkUsdEngineMethodCodes,
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
+import {
+  NO_RESOLUTION_INDEX,
+  ZkUsdGovernmentConstructor,
+  ZkusdGovUpdateWitness,
+} from '../system/governance.js';
+import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
+import {
+  ZkusdUpdateMinaBlockchainState,
+  requireBlockchainPreconditions,
+} from '../system/update/blockchain-state.js';
+import { ZkusdUpdatedProtocolState } from '../system/update/protocol-state.js';
+import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 
 /**
  * @title   zkUSD Engine contract
  * @notice  This contract is the master contract used to govern the rules of interaction with the zkUSD system.
- *          It uses a token account design model which installs user vaults on the token account of the engine. This
+ *          ItIpnsAddr uses a token account design model which installs user vaults on the token account of the engine. This
  *          allows the engine to be the admin of the zkUSD token contract, while also managing the price state, interaction with the vaults,
  *          and administrative functionality such as the oracle whitelist.
  */
 
 export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
   admin: PublicKey;
-  validPriceBlockCount: UInt32;
+  validPriceBlockCount: UInt8;
   emergencyStop: Bool;
+  collateralRatio: UInt8;
+  liquidationBonusRatio: UInt8;
 }
+export const MinimalViableCollateralRatio: UInt8 = UInt8.from(115);
+export const MinimalViablePriceValidity: UInt8 = UInt8.one;
 
 export function ZkUsdEngineContract(args: {
   zkUsdTokenAddress: PublicKey;
+  zkUsdGovernmentAddress: PublicKey;
   minaPriceInputZkProgramVkHash: Field;
+  GovernmentClass: ZkUsdGovernmentConstructor;
 }) {
   const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngine extends TokenContract implements FungibleTokenAdminBase {
-    @state(Field) oracleWhitelistHash = State<Field>(); // Posieden hash of the oracle whitelist
+    // -- on-chain data --
+    @state(Field) oracleWhitelistHash = State<Field>(); // Poseidon hash of the oracle whitelist
     @state(ProtocolDataPacked) protocolDataPacked = State<ProtocolDataPacked>(); // Protocol data
     @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
+
+    // -- off-chain data --
+    @state(Field) configMerkleRoot = State<Field>(); // Merkle root of the contract offchain state. (not used yet)
+
+    // -- government data --
 
     static ZKUSD_TOKEN_ADDRESS = zkUsdTokenAddress; // The address of the zkUSD token contract
     static MINIMUM_VALID_ORACLE_SUBMISSIONS: UInt32 = UInt32.from(3); // The minimum number of valid oracle submissions required to update the price
@@ -81,6 +112,7 @@ export function ZkUsdEngineContract(args: {
       AdminUpdated: AdminUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
       ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
+      VerificationKeyUpdated: VerificationKeyUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
       NewVault: NewVaultEvent,
       DepositCollateral: DepositCollateralEvent,
@@ -88,6 +120,9 @@ export function ZkUsdEngineContract(args: {
       MintZkUsd: MintZkUsdEvent,
       BurnZkUsd: BurnZkUsdEvent,
       Liquidate: LiquidateEvent,
+      CollateralRatioUpdated: CollateralRatioUpdatedEvent,
+      LiquidationBonusRatioUpdated: LiquidationBonusRatioUpdatedEvent,
+      ConfigMerkleRootUpdated: ConfigMerkleRootUpdatedEvent,
     };
 
     /**
@@ -113,7 +148,7 @@ export function ZkUsdEngineContract(args: {
          * This design choice balances protocol upgradeability with security, acknowledging that
          * true immutability of verification keys is not achievable under Mina's current architecture.
          */
-        setVerificationKey: Permissions.VerificationKey.signature(),
+        setVerificationKey: Permissions.VerificationKey.proofOrSignature(),
 
         editState: Permissions.proof(),
         send: Permissions.proof(),
@@ -126,6 +161,8 @@ export function ZkUsdEngineContract(args: {
           admin: args.admin,
           validPriceBlockCount: args.validPriceBlockCount,
           emergencyStop: args.emergencyStop,
+          collateralRatio: args.collateralRatio,
+          liquidationBonusRatio: args.liquidationBonusRatio,
         }).pack()
       );
     }
@@ -169,6 +206,30 @@ export function ZkUsdEngineContract(args: {
       return balance;
     }
 
+    public async getVaultParams(): Promise<VaultParams> {
+      // return vault params from protocol data
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.getVaultParams();
+    }
+
+    // TODO doc
+    public async getVaultClass(): Promise<ReturnType<typeof Vault>> {
+      return Vault(await this.getVaultParams());
+    }
+
+    // TODO doc
+    public async retrieveVault(vaultAddress: PublicKey) {
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+      return Vault(await this.getVaultParams()).getAndRequireEquals(
+        vaultUpdate
+      );
+    }
+
     /**
      * @notice  Returns the health factor of a vault
      * @param   vaultAddress The address of the vault
@@ -178,13 +239,8 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPrice: MinaPrice
     ): Promise<UInt64> {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      //Get the vault
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      //Get the vault & add the precondition
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -226,7 +282,7 @@ export function ZkUsdEngineContract(args: {
       const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
       const lastValidBlock = firstValidBlock.add(
-        protocolData.validPriceBlockCount
+        protocolData.validPriceBlockCount.toUInt32()
       );
 
       this.network.blockchainLength.requireBetween(
@@ -260,12 +316,8 @@ export function ZkUsdEngineContract(args: {
       //Get signature from the current owner
       const owner = this.sender.getAndRequireSignature();
 
-      //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      //Get the vault & add the precondition
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Update the owner
       vault.updateOwner(newOwner, owner);
@@ -316,7 +368,8 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      Vault.initialize(newVaultUpdate, owner);
+      const params = await this.getVaultParams();
+      Vault(params).initialize(newVaultUpdate, owner);
 
       //Emit the NewVault event
       this.emitEvent(
@@ -337,13 +390,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async depositCollateral(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      // const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -394,13 +441,7 @@ export function ZkUsdEngineContract(args: {
       //Ensure the protocol is not stopped
       await this.ensureProtocolNotStopped();
 
-      //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -455,12 +496,7 @@ export function ZkUsdEngineContract(args: {
       //Ensure the protocol is not stopped
       await this.ensureProtocolNotStopped();
 
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -506,12 +542,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async burnZkUsd(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the owner of the zkUSD
       // we have sender signature from zkUSD.burn
@@ -555,11 +586,7 @@ export function ZkUsdEngineContract(args: {
       await this.ensureProtocolNotStopped();
 
       // //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -618,6 +645,13 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    @method.returns(ProtocolData) async getProtocolData() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData;
+    }
+
     /**
      * @notice  Toggles the emergency stop state of the protocol
      * @dev     Can only be called by authorized addresses via protocol vault
@@ -628,7 +662,7 @@ export function ZkUsdEngineContract(args: {
         this.protocolDataPacked.getAndRequireEquals()
       );
 
-      //Assertions
+      // Assertions
       shouldStop
         .equals(protocolData.emergencyStop)
         .assertFalse('Protocol is already in desired state');
@@ -644,18 +678,315 @@ export function ZkUsdEngineContract(args: {
       this.emitEvent(
         'EmergencyStopToggled',
         new EmergencyStopToggledEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
           emergencyStop: shouldStop,
         })
       );
     }
 
-    @method.returns(Vault) // TODO does it have to be a methods
-    async retrieveVault(vaultAddress: PublicKey) {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
+    /**
+     * @notice Shared function that checks governance acceptance, verifies the proof,
+     *         ensures preconditions, and returns the existing protocol data + operation.
+     */
+    async runGovUpdateCommon(
+      methodCode: Field,
+      resolutionSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ): Promise<{
+      protocolDataBefore: ProtocolData;
+      operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
+    }> {
+      // Verify governance acceptance
+      const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);
+      const govAcceptance = await gov.canExecuteGovResolution(
+        methodCode,
+        resolutionSpec,
+        resolutionWitness
       );
-      return Vault.getAndRequireEquals(vaultUpdate);
+      govAcceptance.assertTrue(
+        'ZkUSD government contract disallowed the update proof.'
+      );
+
+      // Check blockchain-level preconditions (time, block length, etc.)
+      const blockchainState = await this.buildBlockchainState();
+
+      requireBlockchainPreconditions({
+        preconditions: resolutionSpec.blockchainPreconditions,
+        blockchainState,
+      });
+
+      // Check protocol-level preconditions
+      const protocolState = await this.buildProtocolState();
+      protocolState
+        .isValidForPreconditions(resolutionSpec.protocolUpdatePreconditions)
+        .assertTrue();
+
+      // Fetch the current on-chain protocol data
+      const packedData = this.protocolDataPacked.getAndRequireEquals();
+      const protocolDataBefore = ProtocolData.unpack(packedData);
+
+      // Extract the update operation from the proof
+      const operation = resolutionSpec.protocolUpdateOperation;
+
+      // Return all we need for the actual update
+      return { protocolDataBefore, operation };
+    }
+
+    @method async govToggleEmergencyStop(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      // Reuse the shared logic
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovStopProtocol,
+        updateSpec,
+        resolutionWitness
+      );
+
+      // Execute the update on the emergencyStop field
+      const newEmergencyStop = operation.emergencyStop.execute(
+        protocolDataBefore.emergencyStop
+      );
+
+      // Commit updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
+        emergencyStop: newEmergencyStop,
+        collateralRatio: protocolDataBefore.collateralRatio,
+        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      // Emit the event
+      this.emitEvent(
+        'EmergencyStopToggled',
+        new EmergencyStopToggledEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          emergencyStop: newEmergencyStop,
+        })
+      );
+    }
+
+    @method async govUpdateValidPriceBlockCount(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      Provable.log('govUpdateValidPriceBlockCount');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
+        updateSpec,
+        resolutionWitness
+      );
+
+      const newValidPriceBlockCount = operation.validPriceBlockCount.execute(
+        protocolDataBefore.validPriceBlockCount
+      );
+
+      newValidPriceBlockCount.assertGreaterThanOrEqual(
+        MinimalViablePriceValidity
+      );
+
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: newValidPriceBlockCount,
+        emergencyStop: protocolDataBefore.emergencyStop,
+        collateralRatio: protocolDataBefore.collateralRatio,
+        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      this.emitEvent(
+        'ValidPriceBlockCountUpdated',
+        new ValidPriceBlockCountUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          previousCount: protocolDataBefore.validPriceBlockCount,
+          newCount: newValidPriceBlockCount,
+        })
+      );
+      Provable.log('govUpdateValidPriceBlockCount done.');
+    }
+
+    @method async govUpdateLiquidationBonusRatio(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      // perform common checks
+      Provable.log('govUpdateLiquidationBonusRatio');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
+        updateSpec,
+        resolutionWitness
+      );
+
+      // execute the collateral ratio update
+      const newLiquidationBonusRatio = operation.liquidationBonusRatio.execute(
+        protocolDataBefore.liquidationBonusRatio
+      );
+
+      newLiquidationBonusRatio.assertGreaterThanOrEqual(
+        MinimalViablePriceValidity
+      );
+
+      // store the updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
+        emergencyStop: protocolDataBefore.emergencyStop,
+        collateralRatio: protocolDataBefore.collateralRatio,
+        liquidationBonusRatio: newLiquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      // emit an event
+      this.emitEvent(
+        'LiquidationBonusRatioUpdated',
+        new LiquidationBonusRatioUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          oldRatio: protocolDataBefore.liquidationBonusRatio,
+          newRatio: newLiquidationBonusRatio,
+        })
+      );
+      Provable.log('done.');
+    }
+
+    @method async govUpdateCollateralRatio(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      // perform common checks
+      Provable.log('govUpdateCollateralRatio');
+      const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
+        updateSpec,
+        resolutionWitness
+      );
+
+      // execute the collateral ratio update
+      const newCollateralRatio = operation.collateralRatio.execute(
+        protocolDataBefore.collateralRatio
+      );
+
+      newCollateralRatio.assertGreaterThanOrEqual(MinimalViableCollateralRatio);
+
+      // store the updated data
+      const updatedProtocolData = ProtocolData.new({
+        admin: protocolDataBefore.admin,
+        validPriceBlockCount: protocolDataBefore.validPriceBlockCount,
+        emergencyStop: protocolDataBefore.emergencyStop,
+        collateralRatio: newCollateralRatio,
+        liquidationBonusRatio: protocolDataBefore.liquidationBonusRatio,
+      });
+      this.protocolDataPacked.set(updatedProtocolData.pack());
+
+      // emit an event
+      this.emitEvent(
+        'CollateralRatioUpdated',
+        new CollateralRatioUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          oldRatio: protocolDataBefore.collateralRatio,
+          newRatio: newCollateralRatio,
+        })
+      );
+      Provable.log('govUpdateCollateralRatio done');
+    }
+
+    @method async govUpdateOracleWhitelist(
+      whitelist: OracleWhitelist,
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      //Precondition
+      const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
+
+      const { operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
+        updateSpec,
+        resolutionWitness
+      );
+
+      // check if whitelist matches the proof
+      const whitelisthash = Poseidon.hash(OracleWhitelist.toFields(whitelist));
+      const oldWhitelistHash = this.oracleWhitelistHash.getAndRequireEquals();
+
+      // Step 2: execute the collateral ratio update
+      const proofWhitelistHash =
+        operation.oracleWhitelistHash.execute(oldWhitelistHash);
+      whitelisthash.assertEquals(proofWhitelistHash);
+
+      this.oracleWhitelistHash.set(whitelisthash);
+
+      this.emitEvent(
+        'OracleWhitelistUpdated',
+        new OracleWhitelistUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          previousHash,
+          newHash: whitelisthash,
+        })
+      );
+    }
+
+    // This must use a different UpdateSpec that contains
+    // the engine vk in its inputs.
+    @method async govUpdateEngineVerificationKey(
+      newVerificationKey: VerificationKey,
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      //Precondition
+
+      // TODO maybe we could save the old vkh in the state to then
+      // verify the precondition
+
+      const { operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovCRITICALUpdateVerificationKey,
+        updateSpec,
+        resolutionWitness
+      );
+
+      // this is fine, the operation will ignore its argument
+      const newProofsVKH = operation.newVerificationKey.execute(Field.from(0));
+      newProofsVKH.assertNotEquals(Field.from(0));
+
+      newVerificationKey.hash.assertEquals(newProofsVKH);
+
+      this.account.verificationKey.set(newVerificationKey);
+
+      this.emitEvent(
+        'VerificationKeyUpdated',
+        new VerificationKeyUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          newVerificationKeyHash: newProofsVKH,
+        })
+      );
+    }
+
+    @method async govUpdateConfigMerkleRoot(
+      updateSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) {
+      const { operation } = await this.runGovUpdateCommon(
+        ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
+        updateSpec,
+        resolutionWitness
+      );
+
+      const oldConfigMerkleRoot = this.configMerkleRoot.getAndRequireEquals();
+
+      // Step 2: execute the collateral ratio update
+      const newConfigRoot =
+        operation.configMerkleRoot.execute(oldConfigMerkleRoot);
+
+      this.configMerkleRoot.set(newConfigRoot);
+
+      this.emitEvent(
+        'ConfigMerkleRootUpdated',
+        new ConfigMerkleRootUpdatedEvent({
+          resolutionIndex: updateSpec.govResolutionIndex,
+          oldRoot: oldConfigMerkleRoot,
+          newRoot: newConfigRoot,
+        })
+      );
     }
 
     /**
@@ -674,10 +1005,14 @@ export function ZkUsdEngineContract(args: {
       );
       this.oracleWhitelistHash.set(updatedWhitelistHash);
 
-      this.emitEvent('OracleWhitelistUpdated', {
-        previousHash,
-        newHash: updatedWhitelistHash,
-      });
+      this.emitEvent(
+        'OracleWhitelistUpdated',
+        new OracleWhitelistUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousHash,
+          newHash: updatedWhitelistHash,
+        })
+      );
     }
 
     async getValidPriceBlockCount() {
@@ -687,11 +1022,13 @@ export function ZkUsdEngineContract(args: {
       return protocolData.validPriceBlockCount;
     }
 
+    // async govUpdateValidPriceBlockCount(count: UInt32) {k
+
     /**
      * @notice  Updates the valid price block count
      * @param   count The new valid price block count
      */
-    @method async updateValidPriceBlockCount(count: UInt32) {
+    @method async updateValidPriceBlockCount(count: UInt8) {
       //Precondition
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
@@ -704,10 +1041,14 @@ export function ZkUsdEngineContract(args: {
       protocolData.validPriceBlockCount = count;
       this.protocolDataPacked.set(protocolData.pack());
 
-      this.emitEvent('ValidPriceBlockCountUpdated', {
-        previousCount: previousCount,
-        newCount: count,
-      });
+      this.emitEvent(
+        'ValidPriceBlockCountUpdated',
+        new ValidPriceBlockCountUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousCount: previousCount,
+          newCount: count,
+        })
+      );
     }
 
     getAdmin() {
@@ -800,6 +1141,27 @@ export function ZkUsdEngineContract(args: {
       //We need the admin signature to resume the token
       await this.ensureAdminSignature();
       return Bool(true);
+    }
+
+    async buildProtocolState(): Promise<ZkusdUpdatedProtocolState> {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return new ZkusdUpdatedProtocolState({
+        emergencyStop: protocolData.emergencyStop,
+        collateralRatio: protocolData.collateralRatio,
+        liquidationBonusRatio: protocolData.liquidationBonusRatio,
+        validPriceBlockCount: protocolData.validPriceBlockCount,
+        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
+        configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
+      });
+    }
+
+    async buildBlockchainState(): Promise<ZkusdUpdateMinaBlockchainState> {
+      return {
+        currentSlot: this.currentSlot,
+        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
+      };
     }
 
     /**

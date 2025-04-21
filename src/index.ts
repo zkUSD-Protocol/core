@@ -2,7 +2,7 @@ import { ZkUsdEngineContract } from './contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { VerificationKey } from 'o1js';
 import { verificationKeys } from './config/verification-keys.js';
-import { validPriceBlockCount } from './mina/networks.js';
+import { validPriceBlockCounts } from './mina/networks.js';
 import {
   MinaPriceInput,
   AggregateOraclePrices,
@@ -86,7 +86,7 @@ export {
   ZkUsdEngineContract,
   FungibleTokenContract,
   oracleAggregationVk,
-  validPriceBlockCount,
+  validPriceBlockCounts,
   AggregateOraclePricesProof,
   AggregateOraclePrices,
   OraclePriceSubmissions,

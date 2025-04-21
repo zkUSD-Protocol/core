@@ -95,7 +95,9 @@ async function main(epmBaseUrl: string, chain: blockchain) {
   const compilationResults = await compileContracts({
     tokenPublicKey: keys.token,
     enginePublicKey: keys.engine,
+    governmentPublicKey: keys.gov,
   });
+
 
   console.log(
     `NodeScriptExecutor started. Polling for jobs at ${epmBaseUrl}...`

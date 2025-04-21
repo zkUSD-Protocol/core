@@ -33,7 +33,7 @@ import {
   WithDefault,
 } from '../types/utility.js';
 import crypto from 'crypto';
-import { validPriceBlockCount } from '../mina/networks.js';
+import { validPriceBlockCounts } from '../mina/networks.js';
 import { Mutex } from '../utils/mutex.js';
 import { Account, isKeyPair } from '../mina/utils.js';
 import {
@@ -55,6 +55,7 @@ import { ProtocolData } from '../system/engine.js';
 import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -137,6 +138,7 @@ export class TestHelper<E extends string> {
 
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
+  council: ZkusdGoverningCouncilContract;
   vaultVerificationKeyHash?: Field;
   oracleAggregationVk: VerificationKey;
   whitelist: OracleWhitelist = new OracleWhitelist({
@@ -385,6 +387,10 @@ export class TestHelper<E extends string> {
     console.log('Lightnet Setup Complete');
   }
 
+  public zkusdCompilationData() {
+    return this._deploymentService.compilationData;
+  }
+
   async deployTokenContracts(args?:{force?:boolean}) {
     const force = args?.force ?? false;
     this._deploymentService = await DeploymentService.create(this.txMgr);
@@ -397,6 +403,7 @@ export class TestHelper<E extends string> {
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
     this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
+    this.council = deployedContracts.gov;
 
     if (['local', 'lightnet'].includes(this.mina.network.chainId)) {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
@@ -746,7 +753,8 @@ export class TestHelper<E extends string> {
       return undefined;
     }
 
-    return Vault.fromAccount(vaultAccount);
+    const params =await this.engine.contract.getVaultParams();
+    return Vault(params).fromAccount(vaultAccount);
   }
 
   public async retrieveAgentVaultState(agentName: string): Promise<VaultState> {
@@ -916,7 +924,7 @@ class PriceInputManager {
   }
 
   private get priceValidity(): number {
-    return validPriceBlockCount[this.mina.network.chainId];
+    return validPriceBlockCounts[this.mina.network.chainId];
   }
 
   private async currentBlockHeight(): Promise<UInt32> {

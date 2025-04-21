@@ -3,7 +3,7 @@ import { AccountUpdate, Field, Permissions, UInt64 } from 'o1js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { MinaPriceInput } from '../../../proofs/oracle-price-aggregation/verify.js';
-import { Vault, VaultErrors } from '../../../system/vault.js';
+import { Vault as MkVault, VaultErrors } from '../../../system/vault.js';
 import { ZkUsdEngineErrors } from '../../../system/engine.js';
 
 describe('zkUSD Vault Liquidation Test Suite', () => {
@@ -14,13 +14,18 @@ describe('zkUSD Vault Liquidation Test Suite', () => {
   let priceFourtyCent: MinaPriceInput;
   let priceTwentyFiveCent: MinaPriceInput;
 
+  let Vault: ReturnType<typeof MkVault>;
+
   before(async () => {
     th = await TestHelper.initLocalChain({ proofsEnabled: false });
     await th.deployTokenContracts();
+
     await th.createLocalAgents('alice', 'bob', 'charlie', 'dave', 'rewards');
 
     //Deploy a fresh vault
     await th.createVaults('alice', 'bob', 'charlie', 'dave');
+
+    Vault = MkVault(await th.engine.contract.getVaultParams());
 
     // Alice deposits 100 Mina
     await th.includeTx(

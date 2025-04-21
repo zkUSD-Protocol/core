@@ -17,11 +17,11 @@ import {
   Int64,
   UInt32,
   VerificationKey,
+  UInt8,
 } from 'o1js';
 
 import {
   EmergencyStopToggledEvent,
-  AdminUpdatedEvent,
   OracleWhitelistUpdatedEvent,
   NewVaultEvent,
   DepositCollateralEvent,
@@ -39,12 +39,16 @@ import {
 import { PriceAggregationProofPublicOutput } from '../../../../proofs/oracle-price-aggregation/common.js';
 import { ZkUsdEngineErrors } from '../../../../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../../../../system/oracle.js';
-import { Vault } from '../../../../system/vault.js';
+import { Vault, VaultParams } from '../../../../system/vault.js';
+import { NO_RESOLUTION_INDEX } from '../../../../system/governance.js';
 
 /**
  * @title   zkUSD Engine contract
  * @notice  This is a fake contract to test the upgradability of the zkUSD engine.
  */
+
+const COLLATERAL_RATIO = UInt8.from(150);
+const LIQUIDATION_BONUS_RATIO = UInt8.from(110);
 
 export function ZkUsdEngineUpgradeContract(args: {
   zkUsdTokenAddress: PublicKey;
@@ -53,10 +57,9 @@ export function ZkUsdEngineUpgradeContract(args: {
   const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngineUpgrade
     extends TokenContract
-    implements FungibleTokenAdminBase
-  {
+    implements FungibleTokenAdminBase {
     @state(Field) oracleWhitelistHash = State<Field>(); // Posieden hash of the oracle whitelist
-    @state(UInt32) validPriceBlockCount = State<UInt32>(); // Valid price block count
+    @state(UInt8) validPriceBlockCount = State<UInt8>(); // Valid price block count
     @state(Field) hashedSecret = State<Field>(); // Posieden hash of the secret
     @state(Bool) emergencyStop = State<Bool>(); // Emergency stop
     @state(Bool) interactionFlag = State<Bool>(); // Flag to ensure token interaction is only done through the engine
@@ -68,7 +71,6 @@ export function ZkUsdEngineUpgradeContract(args: {
 
     readonly events = {
       EmergencyStopToggled: EmergencyStopToggledEvent,
-      AdminUpdated: AdminUpdatedEvent,
       OracleWhitelistUpdated: OracleWhitelistUpdatedEvent,
       ValidPriceBlockCountUpdated: ValidPriceBlockCountUpdatedEvent,
       VaultOwnerUpdated: VaultOwnerUpdatedEvent,
@@ -92,7 +94,7 @@ export function ZkUsdEngineUpgradeContract(args: {
     @method async initialize(
       secret: Field,
       oracleWhitelist: OracleWhitelist,
-      validPriceBlockCount: UInt32
+      validPriceBlockCount: UInt8
     ) {
       //We now need to reset the state of the engine
       //Set the secret hash
@@ -124,6 +126,23 @@ export function ZkUsdEngineUpgradeContract(args: {
       return balance;
     }
 
+    public async getVaultParams(): Promise<VaultParams> {
+      // return vault params from protocol data
+      return {
+        collateralRatio: COLLATERAL_RATIO,
+        liquidationBonusRatio: LIQUIDATION_BONUS_RATIO,
+      };
+    }
+
+    public async retrieveVault(vaultAddress: PublicKey) {
+      const vaultUpdate =
+        AccountUpdate.create(
+          vaultAddress,
+          this.deriveTokenId()
+        );
+      return Vault(await this.getVaultParams()).getAndRequireEquals(vaultUpdate);
+    }
+
     /**
      * @notice  Returns the health factor of a vault
      * @param   vaultAddress The address of the vault
@@ -133,13 +152,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       vaultAddress: PublicKey,
       minaPrice: MinaPrice
     ): Promise<UInt64> {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      //Get the vault
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -178,7 +191,7 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
-      const lastValidBlock = firstValidBlock.add(validPriceBlockCount);
+      const lastValidBlock = firstValidBlock.add(UInt32.Unsafe.fromField(validPriceBlockCount.value));
 
       this.network.blockchainLength.requireBetween(
         firstValidBlock,
@@ -211,12 +224,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       //Get signature from the current owner
       const owner = this.sender.getAndRequireSignature();
 
-      //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Update the owner
       const newVaultState = vault.updateOwner(newOwner, owner);
@@ -267,7 +275,8 @@ export function ZkUsdEngineUpgradeContract(args: {
         this.deriveTokenId()
       );
 
-      Vault.initialize(newVaultUpdate, owner);
+      const params = await this.getVaultParams();
+      Vault(params).initialize(newVaultUpdate, owner);
 
       //Emit the NewVault event
       this.emitEvent(
@@ -288,13 +297,7 @@ export function ZkUsdEngineUpgradeContract(args: {
      */
     @method async depositCollateral(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      // const vault = new ZkUsdVault(vaultAddress, this.deriveTokenId());
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -346,12 +349,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       await this.ensureProtocolNotStopped();
 
       //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -406,12 +404,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       //Ensure the protocol is not stopped
       await this.ensureProtocolNotStopped();
 
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
@@ -457,12 +450,7 @@ export function ZkUsdEngineUpgradeContract(args: {
      */
     @method async burnZkUsd(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       //Get the owner of the zkUSD
       // we have sender signature from zkUSD.burn
@@ -506,11 +494,7 @@ export function ZkUsdEngineUpgradeContract(args: {
       await this.ensureProtocolNotStopped();
 
       // //Get the vault
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      const vault = Vault.getAndRequireEquals(vaultUpdate);
+      const vault = await this.retrieveVault(vaultAddress);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngineUpgrade.FungibleToken(
@@ -592,18 +576,10 @@ export function ZkUsdEngineUpgradeContract(args: {
       this.emitEvent(
         'EmergencyStopToggled',
         new EmergencyStopToggledEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
           emergencyStop: shouldStop,
         })
       );
-    }
-
-    @method.returns(Vault) // TODO does it have to be a methods
-    async retrieveVault(vaultAddress: PublicKey) {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      return Vault.getAndRequireEquals(vaultUpdate);
     }
 
     /**
@@ -622,10 +598,14 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       this.oracleWhitelistHash.set(OracleWhitelist.hash(whitelist));
 
-      this.emitEvent('OracleWhitelistUpdated', {
-        previousHash,
-        newHash: OracleWhitelist.hash(whitelist),
-      });
+      this.emitEvent('OracleWhitelistUpdated',
+        new OracleWhitelistUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousHash,
+          newHash: OracleWhitelist.hash(whitelist)
+        })
+      );
+
     }
 
     async getValidPriceBlockCount() {
@@ -638,7 +618,7 @@ export function ZkUsdEngineUpgradeContract(args: {
      * @notice  Updates the valid price block count
      * @param   count The new valid price block count
      */
-    @method async updateValidPriceBlockCount(count: UInt32, secret: Field) {
+    @method async updateValidPriceBlockCount(count: UInt8, secret: Field) {
       //Precondition
       const validPriceBlockCount =
         this.validPriceBlockCount.getAndRequireEquals();
@@ -649,10 +629,13 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       this.validPriceBlockCount.set(count);
 
-      this.emitEvent('ValidPriceBlockCountUpdated', {
-        previousCount: previousCount,
-        newCount: count,
-      });
+      this.emitEvent('ValidPriceBlockCountUpdated',
+        new ValidPriceBlockCountUpdatedEvent({
+          resolutionIndex: NO_RESOLUTION_INDEX,
+          previousCount: previousCount,
+          newCount: count,
+        })
+      );
     }
 
     /**

@@ -35,7 +35,8 @@ describe('zkUSD Deployment Test Suite', () => {
             keys.publicKey,
             testHelper.engine.contract.deriveTokenId()
           );
-          Vault.initialize(newVaultUpdate, keys.publicKey);
+          const params = await testHelper.engine.contract.getVaultParams();
+          Vault(params).initialize(newVaultUpdate, keys.publicKey);
         },
         {
           extraSigners: [keys.privateKey],
