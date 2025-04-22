@@ -63,7 +63,7 @@ import {
   ZkusdUpdateMinaBlockchainState,
   requireBlockchainPreconditions,
 } from '../system/update/blockchain-state.js';
-import { ZkusdUpdatedProtocolState } from '../system/update/protocol-state.js';
+import { ZkusdUpdateProtocolState } from '../system/update/protocol-state.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 
 /**
@@ -1087,6 +1087,7 @@ export function ZkUsdEngineContract(args: {
         newAdmin,
       });
     }
+
     /**
      * @notice  This method is used to assert the interaction flag, this is used to ensure that the zkUSD token contract knows it is being called from the vault
      * @returns True if the flag is set
@@ -1097,7 +1098,37 @@ export function ZkUsdEngineContract(args: {
       return Bool(true);
     }
 
+    /**
+     * @notice  Builds the protocol state for the update
+     * @returns The protocol state
+     */
+    async buildProtocolState(): Promise<ZkusdUpdateProtocolState> {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return new ZkusdUpdateProtocolState({
+        emergencyStop: protocolData.emergencyStop,
+        collateralRatio: protocolData.collateralRatio,
+        liquidationBonusRatio: protocolData.liquidationBonusRatio,
+        validPriceBlockCount: protocolData.validPriceBlockCount,
+        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
+        configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
+      });
+    }
+
+    /**
+     * @notice  Builds the blockchain state for the update
+     * @returns The blockchain state
+     */
+    async buildBlockchainState(): Promise<ZkusdUpdateMinaBlockchainState> {
+      return {
+        currentSlot: this.currentSlot,
+        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
+      };
+    }
+
     //   FUNGIBLE TOKEN ADMIN FUNCTIONS
+    //   We need to use the admin signature for the token standard management, this will be a multisig.
 
     /**
      * @notice  Returns true if the account update is valid
@@ -1116,7 +1147,6 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canChangeAdmin(_admin: PublicKey) {
-      //We need the admin signature to change the admin
       await this.ensureAdminSignature();
       return Bool(true);
     }
@@ -1127,7 +1157,6 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canPause(): Promise<Bool> {
-      //We need the admin signature to pause the token, we will only do this in case of upgrades
       await this.ensureAdminSignature();
       return Bool(true);
     }
@@ -1138,30 +1167,8 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canResume(): Promise<Bool> {
-      //We need the admin signature to resume the token
       await this.ensureAdminSignature();
       return Bool(true);
-    }
-
-    async buildProtocolState(): Promise<ZkusdUpdatedProtocolState> {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return new ZkusdUpdatedProtocolState({
-        emergencyStop: protocolData.emergencyStop,
-        collateralRatio: protocolData.collateralRatio,
-        liquidationBonusRatio: protocolData.liquidationBonusRatio,
-        validPriceBlockCount: protocolData.validPriceBlockCount,
-        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
-        configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
-      });
-    }
-
-    async buildBlockchainState(): Promise<ZkusdUpdateMinaBlockchainState> {
-      return {
-        currentSlot: this.currentSlot,
-        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
-      };
     }
 
     /**
@@ -1170,7 +1177,8 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
-      return Bool(true); // TODO change it to read the permission instead
+      await this.ensureAdminSignature();
+      return Bool(true);
     }
   }
 

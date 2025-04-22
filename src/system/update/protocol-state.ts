@@ -15,7 +15,7 @@ import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
  * This struct is primarily used to check if the protocol state satisfies
  * the expected update preconditions before applying a protocol update.
  */
-export class ZkusdUpdatedProtocolState extends Struct({
+export class ZkusdUpdateProtocolState extends Struct({
   emergencyStop: Bool,
   collateralRatio: UInt8,
   validPriceBlockCount: UInt8,
@@ -54,27 +54,33 @@ export class ZkusdUpdatedProtocolState extends Struct({
  */
 function theUpdatePreconditionsMatchProtocolState(args: {
   preconditions: ZkusdProtocolPreconditions;
-  protocolState: ZkusdUpdatedProtocolState;
+  protocolState: ZkusdUpdateProtocolState;
 }): Bool {
   const { preconditions, protocolState } = args;
 
-  const emergencyStopOk = preconditions.emergencyStop
-    .matches(protocolState.emergencyStop);
+  const emergencyStopOk = preconditions.emergencyStop.matches(
+    protocolState.emergencyStop
+  );
 
-  const collateralRatioOk = preconditions.collateralRatio
-    .matches(protocolState.collateralRatio);
+  const collateralRatioOk = preconditions.collateralRatio.matches(
+    protocolState.collateralRatio
+  );
 
-  const validPriceCountOk = preconditions.validPriceBlockCount
-    .matches(protocolState.validPriceBlockCount);
+  const validPriceCountOk = preconditions.validPriceBlockCount.matches(
+    protocolState.validPriceBlockCount
+  );
 
-  const liquidationBonusRatioOk = preconditions.liquidationBonusRatio
-    .matches(protocolState.liquidationBonusRatio);
+  const liquidationBonusRatioOk = preconditions.liquidationBonusRatio.matches(
+    protocolState.liquidationBonusRatio
+  );
 
-  const oracleWhitelistHashOk = preconditions.oracleWhitelistHash
-    .matches(protocolState.oracleWhitelistHash);
+  const oracleWhitelistHashOk = preconditions.oracleWhitelistHash.matches(
+    protocolState.oracleWhitelistHash
+  );
 
-  const configMerkleRootOk = preconditions.configMerkleRoot
-    .matches(protocolState.configMerkleRoot);
+  const configMerkleRootOk = preconditions.configMerkleRoot.matches(
+    protocolState.configMerkleRoot
+  );
 
   // Combine all individual checks using logical AND:
   return emergencyStopOk
