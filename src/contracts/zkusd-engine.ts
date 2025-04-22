@@ -772,7 +772,6 @@ export function ZkUsdEngineContract(args: {
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
-      Provable.log('govUpdateValidPriceBlockCount');
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
@@ -804,7 +803,6 @@ export function ZkUsdEngineContract(args: {
           newCount: newValidPriceBlockCount,
         })
       );
-      Provable.log('govUpdateValidPriceBlockCount done.');
     }
 
     @method async govUpdateLiquidationBonusRatio(
@@ -812,7 +810,6 @@ export function ZkUsdEngineContract(args: {
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
       // perform common checks
-      Provable.log('govUpdateLiquidationBonusRatio');
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
@@ -847,7 +844,6 @@ export function ZkUsdEngineContract(args: {
           newRatio: newLiquidationBonusRatio,
         })
       );
-      Provable.log('done.');
     }
 
     @method async govUpdateCollateralRatio(
@@ -855,7 +851,6 @@ export function ZkUsdEngineContract(args: {
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
       // perform common checks
-      Provable.log('govUpdateCollateralRatio');
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
         updateSpec,
@@ -888,7 +883,6 @@ export function ZkUsdEngineContract(args: {
           newRatio: newCollateralRatio,
         })
       );
-      Provable.log('govUpdateCollateralRatio done');
     }
 
     @method async govUpdateOracleWhitelist(

@@ -52,7 +52,6 @@ export class ZkUsdGovernmentContract extends SmartContract {
     resolutionUpdateSpec: ZkusdProtocolUpdateSpec,
     resolutionWitness: ZkusdGovUpdateWitness
   ) {
-    Provable.log('base method called');
     return Bool(false);
   }
 
@@ -146,14 +145,15 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       InitialCouncilMembers.MaxLength,
       PublicKey.empty()
     );
-    const merkleTree = ZkusdGoverningCouncilContract.buildCouncilMerkleTree(
-      councilMembers
-    );
+    const merkleTree =
+      ZkusdGoverningCouncilContract.buildCouncilMerkleTree(councilMembers);
 
     const councilMerkleRoot = merkleTree.getRoot();
     await this.initializeWithCouncilMembersKeys(
       councilMerkleRoot,
-      new InitialCouncilMembers({ councilMembers: councilMembersProvableArray }),
+      new InitialCouncilMembers({
+        councilMembers: councilMembersProvableArray,
+      }),
       standardProposalPassThreshold
     );
   }
