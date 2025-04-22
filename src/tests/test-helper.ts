@@ -433,28 +433,26 @@ export class TestHelper<E extends string> {
 
     // 3. Generate council votes
     const councilKeyPairs = this.networkKeys.council!;
-    const votes = await Promise.all([
-      generateVoteProof(
-        councilKeyPairs[0],
-        councilTree,
-        0,
-        Number(govResolutionIndex.toBigint()),
-        updateSpec
-      ),
-      generateVoteProof(
-        councilKeyPairs[1],
+    const vote1= await generateVoteProof(
+      councilKeyPairs[0],
+      councilTree,
+      0,
+      Number(govResolutionIndex.toBigint()),
+      updateSpec
+    )
+    const vote2 = await generateVoteProof(
+      councilKeyPairs[1],
         councilTree,
         1,
         Number(govResolutionIndex.toBigint()),
         updateSpec
-      ),
-    ]);
+    )
 
     // 4. Merge votes
     const merged = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-      votes[0].publicInput,
-      votes[0],
-      votes[1]
+      vote1.publicInput,
+      vote1,
+      vote2
     );
 
     const proposalHash = merged.proof.publicOutput.proposalHash;

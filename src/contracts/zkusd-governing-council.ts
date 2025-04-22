@@ -246,7 +246,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     // voteCount should be equal to or above the treshold
     voteCount.assertGreaterThanOrEqual(
       treshold.value,
-      'Vote count is below the treshold'
+      'Vote count is below the threshold'
     );
 
     // recompute the root and set it and thus enable executing the resolution

@@ -321,7 +321,9 @@ describe('zkUSD Vault Mint Test Suite', () => {
   });
   it('should fail to mint if resulting debt exceeds the vault debt ceiling', async () => {
     // Set the vault debt ceiling to 10 zkUSD (assuming helper exists)
-    await th.setProtocolDebtCeiling(TestAmounts.DEBT_10_ZKUSD);
+    const currentAliceVaultDebt = (await th.retrieveAgentVaultState('alice')).debtAmount;
+    
+    await th.setProtocolDebtCeiling(currentAliceVaultDebt.add(TestAmounts.DEBT_10_ZKUSD));
 
     // Alice mints up to the ceiling (should succeed)
     await th.includeTx(th.agents.alice.keys, async () => {
