@@ -6,6 +6,7 @@ import { LocalTransactionExecutor } from '../../transaction/local-executor.js';
 import { OracleWhitelist } from '../../system/oracle.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { ITransactionExecutor } from '../../index.node.js';
+import { getOracles } from '../../config/oracles.js';
 
 async function updateOracleWhitelist() {
   const MinaChain = await MinaNetworkInterface.initDevnet();
@@ -17,14 +18,9 @@ async function updateOracleWhitelist() {
 
   const keys = getNetworkKeys('devnet');
 
-  const whitelist = new OracleWhitelist({
-    addresses: [],
-  });
+  const oracleConfig = getOracles('devnet');
 
-  //Update the oracle whitelist
-  for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
-    whitelist.addresses[i] = keys.oracles![i].publicKey;
-  }
+  const whitelist = oracleConfig.oracleWhitelist;
 
   const oracleWhitelistHash = OracleWhitelist.hash(whitelist);
 
