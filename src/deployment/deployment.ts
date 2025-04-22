@@ -1,7 +1,14 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, Provable, UInt64, UInt8, VerificationKey } from 'o1js';
+import {
+  AccountUpdate,
+  Bool,
+  Provable,
+  UInt64,
+  UInt8,
+  VerificationKey,
+} from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
@@ -9,7 +16,10 @@ import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
-import { MAX_ZKUSD_COUNCIL_SIZE, MultiSigZkusdProtocolUpdateProgram } from '../proofs/gov/council-multisig.js';
+import {
+  MAX_ZKUSD_COUNCIL_SIZE,
+  MultiSigZkusdProtocolUpdateProgram,
+} from '../proofs/gov/council-multisig.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -27,8 +37,6 @@ export interface ZkusdCompilationData {
   governmentContractVk: VerificationKey;
   tokenContractVk: VerificationKey;
 }
-
-
 
 /** A proposal is considered valid if the ratio of votes in favor is greater than this value.
     E.g. for 4 council seats a ratio of 2/3 would require 2 votes, 3 votes for 5 seats. */
@@ -52,7 +60,7 @@ export class DeploymentService {
   private _compilationData: Partial<ZkusdCompilationData>;
 
   public get compilationData(): Partial<ZkusdCompilationData> {
-    return this._compilationData
+    return this._compilationData;
   }
 
   private constructor(txMgr: TransactionManager<any>) {
@@ -97,17 +105,19 @@ export class DeploymentService {
 
   /**
    * Compiles all necessary contracts and proofs for the protocol.
-  * This includes the oracle aggregation proof, vault, engine, and token contracts.
+   * This includes the oracle aggregation proof, vault, engine, and token contracts.
    */
-  async compile() : Promise<Partial<ZkusdCompilationData>>{
+  async compile(): Promise<Partial<ZkusdCompilationData>> {
     console.log('Compiling Contracts - start');
     console.time('Compiling Contracts');
 
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
-    const councilMultiSigProgramCompiled = await MultiSigZkusdProtocolUpdateProgram.compile();
-    this._councilMultisigProgramVk = councilMultiSigProgramCompiled.verificationKey;
+    const councilMultiSigProgramCompiled =
+      await MultiSigZkusdProtocolUpdateProgram.compile();
+    this._councilMultisigProgramVk =
+      councilMultiSigProgramCompiled.verificationKey;
 
     this.updateVerificationKeys();
 
@@ -115,7 +125,7 @@ export class DeploymentService {
       zkUsdTokenAddress: this._networkKeys.token.publicKey,
       minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
       zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
-      GovernmentClass: ZkusdGoverningCouncilContract
+      GovernmentClass: ZkusdGoverningCouncilContract,
     });
     let engineCompilationResults;
     let tokenCompilationResults;
@@ -124,7 +134,8 @@ export class DeploymentService {
     if (this._mina.proofsEnabled) {
       engineCompilationResults = await ZkUsdEngine.compile();
       tokenCompilationResults = await ZkUsdEngine.FungibleToken.compile();
-      governmenttokenCompilationResults = await ZkusdGoverningCouncilContract.compile();
+      governmenttokenCompilationResults =
+        await ZkusdGoverningCouncilContract.compile();
     }
 
     this._token = {
@@ -138,7 +149,9 @@ export class DeploymentService {
     };
 
     this._gov = {
-      contract: new ZkusdGoverningCouncilContract(this._networkKeys.government.publicKey),
+      contract: new ZkusdGoverningCouncilContract(
+        this._networkKeys.government.publicKey
+      ),
     };
 
     console.timeEnd('Compiling Contracts');
@@ -147,8 +160,8 @@ export class DeploymentService {
       councilMultiSigProgramVk: this._councilMultisigProgramVk,
       zkusdEngineContractVk: engineCompilationResults?.verificationKey,
       governmentContractVk: tokenCompilationResults?.verificationKey,
-      tokenContractVk: governmenttokenCompilationResults?.verificationKey
-    }
+      tokenContractVk: governmenttokenCompilationResults?.verificationKey,
+    };
   }
 
   /**
@@ -201,10 +214,11 @@ export class DeploymentService {
       this._networkKeys.government.publicKey,
       { force: true }
     );
-    this._networkKeys.government.publicKey,
-      { force: true }
-    Provable.log('governance address - deployment', this._networkKeys.government.publicKey)
-
+    this._networkKeys.government.publicKey, { force: true };
+    Provable.log(
+      'governance address - deployment',
+      this._networkKeys.government.publicKey
+    );
 
     if (!tokenAccount || force) {
       if (!force) console.log('Contracts dont exist - deploying....');
@@ -232,7 +246,7 @@ export class DeploymentService {
             emergencyStop: Bool(false),
             collateralRatio: UInt8.from(150),
             liquidationBonusRatio: UInt8.from(110),
-            vaultDebtCeiling: UInt64.from(200_000n*BigInt(1e9)), // 200k USD
+            vaultDebtCeiling: UInt64.from(200_000n * BigInt(1e9)), // 200k USD
             vaultCreationDisabled: Bool(false),
           });
         },
@@ -252,13 +266,16 @@ export class DeploymentService {
     }
 
     if (!govAccount || force) {
-
-      const councilKeys = this._networkKeys.council?.map((key) => key.publicKey);
-      if(!councilKeys || councilKeys.length == 0) {
+      const councilKeys = this._networkKeys.council?.map(
+        (key) => key.publicKey
+      );
+      if (!councilKeys || councilKeys.length == 0) {
         throw new Error('Council keys not found in the network keys');
       }
-      const threshold = Math.floor(CouncilVoteThresholdRatio * councilKeys?.length);
-      if (threshold > MAX_ZKUSD_COUNCIL_SIZE){
+      const threshold = Math.floor(
+        CouncilVoteThresholdRatio * councilKeys?.length
+      );
+      if (threshold > MAX_ZKUSD_COUNCIL_SIZE) {
         throw new Error(
           `Council size exceeds the maximum size of ${MAX_ZKUSD_COUNCIL_SIZE}`
         );
@@ -277,9 +294,7 @@ export class DeploymentService {
           );
         },
         {
-          extraSigners: [
-            this._networkKeys.government.privateKey,
-          ],
+          extraSigners: [this._networkKeys.government.privateKey],
           name: 'Deploying & initilializing Gov contracts',
           executor: 'local',
         }

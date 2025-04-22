@@ -35,7 +35,7 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   oracleWhitelistHash: FieldOperation,
   configMerkleRoot: FieldOperation,
   newVerificationKey: FieldOperation,
-  vaultDebtCeiling: UInt64Operation
+  vaultDebtCeiling: UInt64Operation,
 }) {
   /**
    * Creates a new operation from a partial set of fields,
@@ -47,10 +47,13 @@ export class ZkusdProtocolUpdateOperation extends Struct({
     // Fill in no-ops for missing fields
     const filled = {
       emergencyStop: partial.emergencyStop ?? BoolOperation.noop(),
-      vaultCreationDisabled: partial.vaultCreationDisabled ?? BoolOperation.noop(),
+      vaultCreationDisabled:
+        partial.vaultCreationDisabled ?? BoolOperation.noop(),
       collateralRatio: partial.collateralRatio ?? UInt8Operation.noop(),
-      validPriceBlockCount: partial.validPriceBlockCount ?? UInt8Operation.noop(),
-      liquidationBonusRatio: partial.liquidationBonusRatio ?? UInt8Operation.noop(),
+      validPriceBlockCount:
+        partial.validPriceBlockCount ?? UInt8Operation.noop(),
+      liquidationBonusRatio:
+        partial.liquidationBonusRatio ?? UInt8Operation.noop(),
       oracleWhitelistHash: partial.oracleWhitelistHash ?? FieldOperation.noop(),
       configMerkleRoot: partial.configMerkleRoot ?? FieldOperation.noop(),
       newVerificationKey: partial.newVerificationKey ?? FieldOperation.noop(),

@@ -62,29 +62,37 @@ function theUpdatePreconditionsMatchProtocolState(args: {
 }): Bool {
   const { preconditions, protocolState } = args;
 
-  const emergencyStopOk = preconditions.emergencyStop
-    .matches(protocolState.emergencyStop);
+  const emergencyStopOk = preconditions.emergencyStop.matches(
+    protocolState.emergencyStop
+  );
 
-  const collateralRatioOk = preconditions.collateralRatio
-    .matches(protocolState.collateralRatio);
+  const collateralRatioOk = preconditions.collateralRatio.matches(
+    protocolState.collateralRatio
+  );
 
-  const validPriceCountOk = preconditions.validPriceBlockCount
-    .matches(protocolState.validPriceBlockCount);
+  const validPriceCountOk = preconditions.validPriceBlockCount.matches(
+    protocolState.validPriceBlockCount
+  );
 
-  const liquidationBonusRatioOk = preconditions.liquidationBonusRatio
-    .matches(protocolState.liquidationBonusRatio);
+  const liquidationBonusRatioOk = preconditions.liquidationBonusRatio.matches(
+    protocolState.liquidationBonusRatio
+  );
 
-  const oracleWhitelistHashOk = preconditions.oracleWhitelistHash
-    .matches(protocolState.oracleWhitelistHash);
+  const oracleWhitelistHashOk = preconditions.oracleWhitelistHash.matches(
+    protocolState.oracleWhitelistHash
+  );
 
-  const configMerkleRootOk = preconditions.configMerkleRoot
-    .matches(protocolState.configMerkleRoot);
+  const configMerkleRootOk = preconditions.configMerkleRoot.matches(
+    protocolState.configMerkleRoot
+  );
 
-  const vaultCreationDisabledOk = preconditions.vaultCreationDisabled
-     .matches(protocolState.vaultCreationDisabled);
+  const vaultCreationDisabledOk = preconditions.vaultCreationDisabled.matches(
+    protocolState.vaultCreationDisabled
+  );
 
-  const vaultDebtCeilingOk = preconditions.vaultDebtCeiling
-     .matches(protocolState.vaultDebtCeiling);
+  const vaultDebtCeilingOk = preconditions.vaultDebtCeiling.matches(
+    protocolState.vaultDebtCeiling
+  );
 
   // Combine all individual checks using logical AND:
   return emergencyStopOk

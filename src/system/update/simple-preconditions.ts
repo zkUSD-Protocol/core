@@ -18,15 +18,7 @@
  *      .matches(value)   // returns o1js.Bool
  *****************************************************************************************/
 
-import {
-  Bool,
-  Field,
-  Provable,
-  Struct,
-  UInt8,
-  UInt32,
-  UInt64,
-} from 'o1js';
+import { Bool, Field, Provable, Struct, UInt8, UInt32, UInt64 } from 'o1js';
 
 /* -------------------------------------------------------------------------- */
 /*                Generic factory for Field / UInt‑range preconditions        */
@@ -45,7 +37,7 @@ import {
 function createRangePrecondition(
   Scalar: any,
   maxValue: any,
-  serialize: (lower: any, upper: any, not: Bool) => Field[],
+  serialize: (lower: any, upper: any, not: Bool) => Field[]
 ) {
   return class RangePrecondition extends Struct({
     lower: Scalar,
@@ -118,25 +110,37 @@ const FieldMax = Field.from(Field.ORDER - 1n);
 export const UInt8Precondition = createRangePrecondition(
   UInt8,
   UInt8.MAXINT(),
-  (lower: UInt8, upper: UInt8, not: Bool) => [lower.value, upper.value, not.toField()],
+  (lower: UInt8, upper: UInt8, not: Bool) => [
+    lower.value,
+    upper.value,
+    not.toField(),
+  ]
 );
 
 export const UInt32Precondition = createRangePrecondition(
   UInt32,
   UInt32.MAXINT(),
-  (lower: UInt32, upper: UInt32, not: Bool) => [lower.value, upper.value, not.toField()],
+  (lower: UInt32, upper: UInt32, not: Bool) => [
+    lower.value,
+    upper.value,
+    not.toField(),
+  ]
 );
 
 export const UInt64Precondition = createRangePrecondition(
   UInt64,
   UInt64.MAXINT(),
-  (lower: UInt64, upper: UInt64, not: Bool) => [lower.value, upper.value, not.toField()],
+  (lower: UInt64, upper: UInt64, not: Bool) => [
+    lower.value,
+    upper.value,
+    not.toField(),
+  ]
 );
 
 export const FieldPrecondition = createRangePrecondition(
   Field,
   FieldMax,
-  (lower: Field, upper: Field, not: Bool) => [lower, upper, not.toField()],
+  (lower: Field, upper: Field, not: Bool) => [lower, upper, not.toField()]
 );
 
 export type UInt8Precondition = InstanceType<typeof UInt8Precondition>;
@@ -162,8 +166,9 @@ export class HashPrecondition extends Struct({
 
     // 0 → eq, 1 → neq, 2 → any
     return Provable.if(
-      this.not.equals(Field.from(0)), eq,
-      Provable.if(this.not.equals(Field.from(1)), neq, any),
+      this.not.equals(Field.from(0)),
+      eq,
+      Provable.if(this.not.equals(Field.from(1)), neq, any)
     );
   }
 
@@ -189,9 +194,15 @@ export class HashPrecondition extends Struct({
 export class BoolPrecondition extends Struct({
   value: Field, // 0 = false, 1 = true, 2 = unconstrained
 }) {
-  private expectFalse(): Bool { return this.value.equals(Field.from(0)); }
-  private expectTrue(): Bool { return this.value.equals(Field.from(1)); }
-  private free(): Bool { return this.value.equals(Field.from(2)); }
+  private expectFalse(): Bool {
+    return this.value.equals(Field.from(0));
+  }
+  private expectTrue(): Bool {
+    return this.value.equals(Field.from(1));
+  }
+  private free(): Bool {
+    return this.value.equals(Field.from(2));
+  }
 
   matches(v: Bool): Bool {
     return this.free()

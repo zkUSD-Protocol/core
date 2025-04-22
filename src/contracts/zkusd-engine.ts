@@ -360,8 +360,12 @@ export function ZkUsdEngineContract(args: {
      */
     @method async createVault(vaultAddress: PublicKey) {
       // Check vault creation toggle
-      const protocolData = ProtocolData.unpack(this.protocolDataPacked.getAndRequireEquals());
-      protocolData.vaultCreationDisabled.assertFalse(VaultErrors.VAULT_CREATION_DISABLED);
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      protocolData.vaultCreationDisabled.assertFalse(
+        VaultErrors.VAULT_CREATION_DISABLED
+      );
 
       //The sender is the owner of the vault
       const owner = this.sender.getAndRequireSignature();
@@ -529,8 +533,12 @@ export function ZkUsdEngineContract(args: {
       );
 
       // Enforce the vault debt ceiling
-      const protocolData = ProtocolData.unpack(this.protocolDataPacked.getAndRequireEquals());
-      debtAmount.lessThanOrEqual(protocolData.vaultDebtCeiling).assertTrue('Minting would exceed the vault debt ceiling.');
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      debtAmount
+        .lessThanOrEqual(protocolData.vaultDebtCeiling)
+        .assertTrue('Minting would exceed the vault debt ceiling.');
 
       //Mint the zkUSD for the recipient
       await zkUSD.mint(owner, amount);
@@ -1190,9 +1198,10 @@ export function ZkUsdEngineContract(args: {
       );
 
       // Mutate directly
-      protocolDataBefore.vaultCreationDisabled = operation.vaultCreationDisabled.execute(
-        protocolDataBefore.vaultCreationDisabled
-      );
+      protocolDataBefore.vaultCreationDisabled =
+        operation.vaultCreationDisabled.execute(
+          protocolDataBefore.vaultCreationDisabled
+        );
       this.protocolDataPacked.set(protocolDataBefore.pack());
 
       this.emitEvent(

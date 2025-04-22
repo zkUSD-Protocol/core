@@ -320,11 +320,7 @@ export class UInt64Operation extends Struct({
     const retField = Provable.if(
       isSet,
       setResult,
-      Provable.if(
-        isAdd,
-        addResult,
-        Provable.if(isSub, subResult, noChange)
-      )
+      Provable.if(isAdd, addResult, Provable.if(isSub, subResult, noChange))
     );
 
     // Ensure result fits within 64 bits

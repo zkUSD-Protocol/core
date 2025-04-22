@@ -67,6 +67,7 @@ function makeDefaultAcceptedSpec(resIndex: UInt32) {
     configMerkleRoot: FieldOperation.set(CONFIG_ROOT_VAL),
     newVerificationKey: FieldOperation.set(engineVK()!.hash),
     vaultDebtCeiling: UInt64Operation.set(VAULT_DEBT_CEILING_VAL),
+    vaultCreationDisabled: BoolOperation.set(VAULT_CREATION_DISABLED_VAL),
   });
   spec.blockchainPreconditions = MinaChainPreconditions.always();
   spec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create();
@@ -196,6 +197,17 @@ const testsToRun: TestCase[] = [
     },
     event: 'VaultDebtCeilingUpdated',
   },
+  {
+    title: 'Toggle vault creation',
+    call: 'govToggleVaultCreation',
+    makeOperation() {
+      return { newValue: VAULT_CREATION_DISABLED_VAL };
+    },
+    async verifyState(v) {
+      (await engine().getProtocolData()).vaultCreationDisabled.assertEquals(v);
+    },
+    event: 'VaultCreationToggled',
+  },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -213,7 +225,8 @@ type TestCase = {
     | 'govUpdateEngineVerificationKey'
     | 'govUpdateConfigMerkleRoot'
     | 'govUpdateVaultDebtCeiling'
-    | 'govToggleVaultCreation';
+    | 'govToggleVaultCreation'
+    | 'govToggleEmergencyStop';
   makeOperation(): { newValue: any };
   verifyState(newValue: any): Promise<void>;
   event: string;

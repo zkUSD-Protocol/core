@@ -9,7 +9,10 @@
 import { Field, Struct, UInt32 } from 'o1js';
 import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
 import { MinaChainPreconditions } from './blockchain-preconditions.js';
-import { ZkusdProtocolUpdateOperation, ZkusdProtocolUpdateOperationFields } from './operation.js';
+import {
+  ZkusdProtocolUpdateOperation,
+  ZkusdProtocolUpdateOperationFields,
+} from './operation.js';
 
 /**
  * Represents a full specification for a ZKUSD protocol update.
@@ -26,7 +29,6 @@ export class ZkusdProtocolUpdateSpec extends Struct({
   blockchainPreconditions: MinaChainPreconditions,
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {
-
   /**
    * Creates an empty (no-op) protocol update spec.
    *
@@ -63,7 +65,9 @@ export class ZkusdProtocolUpdateSpec extends Struct({
    */
   static singleOperation(
     resolutionIndex: string | number | bigint | UInt32,
-    protocolUpdateOperation: ZkusdProtocolUpdateOperation | Partial<ZkusdProtocolUpdateOperationFields>,
+    protocolUpdateOperation:
+      | ZkusdProtocolUpdateOperation
+      | Partial<ZkusdProtocolUpdateOperationFields>,
     args?: {
       blockchainPreconditions?: MinaChainPreconditions;
       protocolPreconditions?: ZkusdProtocolPreconditions;

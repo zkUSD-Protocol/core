@@ -84,9 +84,9 @@ export class TrackedPromiseError extends Error {
  *   a generic "Aborted" error.
  */
 export type SettleSignal<T> =
-  { resolveWith: T } |
-  { rejectWith: any } |
-  { settleFast: 'settleFast' };
+  | { resolveWith: T }
+  | { rejectWith: any }
+  | { settleFast: 'settleFast' };
 
 /**
  * An interface for cooperative abort handling. Provides methods for:
@@ -113,19 +113,24 @@ export interface AbortApi<T> {
    *   or `undefined` if no abort action is necessary. If the signal forces rejection,
    *   this method throws a `TrackedPromiseError`.
    */
-  markAbortSite: (suggestedSignal?: SettleSignal<T>) => { resolveWith: T } | undefined;
+  markAbortSite: (
+    suggestedSignal?: SettleSignal<T>
+  ) => { resolveWith: T } | undefined;
 
   // this will be triggered by setting the abort signal unless its resolveWith
   installRejector: (rejector: (reason: any) => void) => void;
+}
 
-};
-
-export function convertToNonResolvable<T>(a: AbortApi<T>) : AbortApi<any> {
-  const pollAbortSignal: () => SettleSignal<any> | undefined = a.pollAbortSignal;
-  const markAbortSite: (suggestedSignal?: SettleSignal<any>) => undefined = (sig) => {
+export function convertToNonResolvable<T>(a: AbortApi<T>): AbortApi<any> {
+  const pollAbortSignal: () => SettleSignal<any> | undefined =
+    a.pollAbortSignal;
+  const markAbortSite: (suggestedSignal?: SettleSignal<any>) => undefined = (
+    sig
+  ) => {
     a.markAbortSite(sig);
-  }
-  const installRejector: (rejector: (reason: any) => void) => void = a.installRejector;
+  };
+  const installRejector: (rejector: (reason: any) => void) => void =
+    a.installRejector;
   return { pollAbortSignal, markAbortSite, installRejector };
 }
 
@@ -161,18 +166,15 @@ export class TrackedPromise<T> {
    */
   private _settleTimestamp?: number;
 
-
   /**
    * Holds the currently active abort signal, if any. When present,
    * the promise may be aborted at the nearest "abort site."
    */
   private _abortSignal: SettleSignal<T> | undefined;
 
-
   // /**
   //  */
   private _rejectors: ((reason: any) => void)[] = [];
-
 
   /**
    * Creates a new TrackedPromise instance.
@@ -180,7 +182,10 @@ export class TrackedPromise<T> {
    * @param promise - A function returning a Promise to wrap.
    * @param id - (optional) A string identifying this TrackedPromise.
    */
-  constructor(promise: (args: { abortApi: AbortApi<T> }) => Promise<T>, id?: string) {
+  constructor(
+    promise: (args: { abortApi: AbortApi<T> }) => Promise<T>,
+    id?: string
+  ) {
     this._id = id;
     this._creationTimestamp = Date.now();
 
@@ -192,8 +197,8 @@ export class TrackedPromise<T> {
       },
       installRejector: (rejector: (reason: any) => void) => {
         this._rejectors.push(rejector);
-      }
-    }
+      },
+    };
 
     this._internalPromise = promise({ abortApi })
       .then((value) => {
@@ -381,21 +386,36 @@ export class TrackedPromise<T> {
    * @returns A function that either resolves, throws, or does nothing,
    *   depending on the current `_abortSignal`.
    */
-  private handleAbortSite(suggestedSignal?: SettleSignal<T>): (() => ({ resolveWith: T } | undefined)) {
+  private handleAbortSite(
+    suggestedSignal?: SettleSignal<T>
+  ): () => { resolveWith: T } | undefined {
     const signal = this._abortSignal;
     if (signal === undefined) {
       return () => undefined;
     } else if ('resolveWith' in signal) {
-      return () => { return { resolveWith: signal.resolveWith } };
+      return () => {
+        return { resolveWith: signal.resolveWith };
+      };
     } else if ('rejectWith' in signal) {
-      return () => { throw this.createError(signal.rejectWith); };
+      return () => {
+        throw this.createError(signal.rejectWith);
+      };
     } else if ('settleFast' in signal) {
       if (suggestedSignal !== undefined && 'resolveWith' in suggestedSignal) {
-        return () => { return { resolveWith: suggestedSignal.resolveWith } }
-      } else if (suggestedSignal !== undefined && 'rejectWith' in suggestedSignal) {
-        return () => { throw this.createError(suggestedSignal.rejectWith); };
+        return () => {
+          return { resolveWith: suggestedSignal.resolveWith };
+        };
+      } else if (
+        suggestedSignal !== undefined &&
+        'rejectWith' in suggestedSignal
+      ) {
+        return () => {
+          throw this.createError(suggestedSignal.rejectWith);
+        };
       } else {
-        return () => { throw this.createError('Aborted'); };
+        return () => {
+          throw this.createError('Aborted');
+        };
       }
     } else {
       throw new Error('Invalid abort signal');
@@ -403,7 +423,10 @@ export class TrackedPromise<T> {
   }
 
   public thenTracked<U>(
-    nextComputation: (parentValue: T, extra: { abortApi: AbortApi<U> }) => Promise<U>,
+    nextComputation: (
+      parentValue: T,
+      extra: { abortApi: AbortApi<U> }
+    ) => Promise<U>,
     childId?: string
   ): TrackedPromise<U> {
     const self = this;
