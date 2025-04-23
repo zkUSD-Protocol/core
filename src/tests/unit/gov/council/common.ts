@@ -20,7 +20,7 @@ export async function generateVoteProof(
   councilTree: MerkleTree,
   seatIndex: number,
   govResolutionIndex: number = 0,
-  updateSpec: ZkusdProtocolUpdateSpec = ZkusdProtocolUpdateSpec.empty(),
+  updateSpec: ZkusdProtocolUpdateSpec = ZkusdProtocolUpdateSpec.empty()
 ): Promise<ZkusdGoverningCouncilVoteProof> {
   // an example of a update - an empty one, but its okay for these tests.
   updateSpec.govResolutionIndex = UInt32.from(govResolutionIndex);
@@ -34,7 +34,6 @@ export async function generateVoteProof(
     councilTree.getWitness(BigInt(seatIndex))
   );
 
-  console.log('Creating vote (correct signature, correct membership)...');
   const { proof } = await MultiSigZkusdProtocolUpdateProgram.createVote(
     updateSpec,
     signature,
@@ -83,7 +82,7 @@ export function rebuildProposalMerkleMap(
  * @returns The reconstructed MerkleTree of resolutions
  */
 export function rebuildResolutionMerkleTree(
-  events: Array<{ type: string; event: { data: any } }>,
+  events: Array<{ type: string; event: { data: any } }>
 ): MerkleTree {
   const resolutionTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
 
@@ -132,12 +131,14 @@ export function rebuildCouncilMembersAndTree(
  * @param resolutionTree - The Merkle tree containing resolution entries.
  * @returns The index of the first empty leaf as a UInt32.
  */
-export function getNextEmptyResolutionIndex(resolutionTree: MerkleTree): UInt32 {
+export function getNextEmptyResolutionIndex(
+  resolutionTree: MerkleTree
+): UInt32 {
   for (let i = 0n; i < resolutionTree.leafCount; i++) {
     const hash = resolutionTree.getLeaf(i);
     if (hash.toBigInt() === 0n) {
       return UInt32.from(i);
     }
   }
-  throw new Error("Could not find an empty Resolution Index.");
+  throw new Error('Could not find an empty Resolution Index.');
 }

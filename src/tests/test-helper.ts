@@ -75,6 +75,7 @@ import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
 import {
   BoolOperation,
   FieldOperation,
+  UInt64Operation,
 } from '../system/update/simple-operations.js';
 
 const DEBUG = !!process.env.DEBUG;
@@ -409,6 +410,28 @@ export class TestHelper<E extends string> {
 
   public zkusdCompilationData() {
     return this._deploymentService.compilationData;
+  }
+
+  public async setProtocolDebtCeiling(debtCeiling: UInt64) {
+    return this.proposeAndExecuteUpdate(
+      { vaultDebtCeiling: UInt64Operation.set(debtCeiling) },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govUpdateVaultDebtCeiling(
+          updateSpec,
+          resolutionWitness
+        )
+    );
+  }
+
+  public async toggleVaultCreation() {
+    return this.proposeAndExecuteUpdate(
+      { vaultCreationDisabled: BoolOperation.flip() },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govToggleVaultCreation(
+          updateSpec,
+          resolutionWitness
+        )
+    );
   }
 
   async deployTokenContracts(args?: { force?: boolean }) {
@@ -955,6 +978,7 @@ export class TestHelper<E extends string> {
         }
       }
     }
+    const finalProof: ZkusdGoverningCouncilVoteProof = mergedVoteProof;
 
     const proposalHash = mergedVoteProof.publicOutput.proposalHash;
     const voteBits = mergedVoteProof.publicOutput.cummulatedVoteBitArray;
@@ -964,7 +988,7 @@ export class TestHelper<E extends string> {
     // 5. Support proposal
     await this.includeTx(this.deployer, async () => {
       await this.council.supportProposalHelper(
-        mergedVoteProof,
+        finalProof,
         proposalMap,
         resolutionTree
       );

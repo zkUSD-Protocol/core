@@ -1,7 +1,14 @@
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
-import { AccountUpdate, Bool, Provable, UInt8, VerificationKey } from 'o1js';
+import {
+  AccountUpdate,
+  Bool,
+  Provable,
+  UInt64,
+  UInt8,
+  VerificationKey,
+} from 'o1js';
 import { ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
@@ -235,6 +242,8 @@ export class DeploymentService {
             emergencyStop: Bool(false),
             collateralRatio: UInt8.from(150),
             liquidationBonusRatio: UInt8.from(110),
+            vaultDebtCeiling: UInt64.from(200_000n * BigInt(1e9)), // 200k USD
+            vaultCreationDisabled: Bool(false),
           });
         },
         {

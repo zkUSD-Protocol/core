@@ -24,10 +24,7 @@ export const InitialCouncilMembersMaxCount = 7;
  * - Used during the initial setup of the ZKUSD governance council.
  */
 export class InitialCouncilMembers extends Struct({
-  councilMembers: Provable.Array(
-    PublicKey,
-    InitialCouncilMembersMaxCount
-  ),
+  councilMembers: Provable.Array(PublicKey, InitialCouncilMembersMaxCount),
 }) {
   /**
    * Maximum allowed number of council members.

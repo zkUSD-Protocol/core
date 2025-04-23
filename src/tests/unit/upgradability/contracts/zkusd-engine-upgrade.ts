@@ -57,7 +57,8 @@ export function ZkUsdEngineUpgradeContract(args: {
   const { zkUsdTokenAddress, minaPriceInputZkProgramVkHash } = args;
   class ZkUsdEngineUpgrade
     extends TokenContract
-    implements FungibleTokenAdminBase {
+    implements FungibleTokenAdminBase
+  {
     @state(Field) oracleWhitelistHash = State<Field>(); // Posieden hash of the oracle whitelist
     @state(UInt8) validPriceBlockCount = State<UInt8>(); // Valid price block count
     @state(Field) hashedSecret = State<Field>(); // Posieden hash of the secret
@@ -135,12 +136,13 @@ export function ZkUsdEngineUpgradeContract(args: {
     }
 
     public async retrieveVault(vaultAddress: PublicKey) {
-      const vaultUpdate =
-        AccountUpdate.create(
-          vaultAddress,
-          this.deriveTokenId()
-        );
-      return Vault(await this.getVaultParams()).getAndRequireEquals(vaultUpdate);
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+      return Vault(await this.getVaultParams()).getAndRequireEquals(
+        vaultUpdate
+      );
     }
 
     /**
@@ -191,7 +193,9 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       const firstValidBlock =
         minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
-      const lastValidBlock = firstValidBlock.add(UInt32.Unsafe.fromField(validPriceBlockCount.value));
+      const lastValidBlock = firstValidBlock.add(
+        UInt32.Unsafe.fromField(validPriceBlockCount.value)
+      );
 
       this.network.blockchainLength.requireBetween(
         firstValidBlock,
@@ -598,14 +602,14 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       this.oracleWhitelistHash.set(OracleWhitelist.hash(whitelist));
 
-      this.emitEvent('OracleWhitelistUpdated',
+      this.emitEvent(
+        'OracleWhitelistUpdated',
         new OracleWhitelistUpdatedEvent({
           resolutionIndex: NO_RESOLUTION_INDEX,
           previousHash,
-          newHash: OracleWhitelist.hash(whitelist)
+          newHash: OracleWhitelist.hash(whitelist),
         })
       );
-
     }
 
     async getValidPriceBlockCount() {
@@ -629,7 +633,8 @@ export function ZkUsdEngineUpgradeContract(args: {
 
       this.validPriceBlockCount.set(count);
 
-      this.emitEvent('ValidPriceBlockCountUpdated',
+      this.emitEvent(
+        'ValidPriceBlockCountUpdated',
         new ValidPriceBlockCountUpdatedEvent({
           resolutionIndex: NO_RESOLUTION_INDEX,
           previousCount: previousCount,

@@ -147,17 +147,19 @@ async function liquidateVault() {
   const executor: ITransactionExecutor = new LocalTransactionExecutor();
   const txMgr = TransactionManager.new(MinaChain, { local: executor });
 
-  const { token: tokenAddress, engine: engineAddress, gov: govAddress } =
-    getContractKeys('devnet');
+  const {
+    token: tokenAddress,
+    engine: engineAddress,
+    gov: govAddress,
+  } = getContractKeys('devnet');
 
   const minaPriceInput = await buildPriceInput();
-
 
   const ZkUsdEngine = ZkUsdEngineContract({
     zkUsdTokenAddress: tokenAddress,
     minaPriceInputZkProgramVkHash: minaPriceInput.verificationKey.hash,
     zkUsdGovernmentAddress: govAddress,
-    GovernmentClass: ZkusdGoverningCouncilContract
+    GovernmentClass: ZkusdGoverningCouncilContract,
   });
 
   const FungibleToken = ZkUsdEngine.FungibleToken;

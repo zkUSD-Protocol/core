@@ -18,7 +18,7 @@ export interface NetworkKeyPairs {
   ] & {
     length: typeof OracleWhitelist.MAX_PARTICIPANTS;
   };
-  council?: KeyPair[] ;
+  council?: KeyPair[];
   agents?: Record<string, AgentKeys>;
 }
 
@@ -221,7 +221,7 @@ const localKeys: NetworkKeyPairs = {
   },
   government: {
     privateKey: PrivateKey.fromBase58(
-      "EKEbxJx3U1RbdojRnn3UApSPuLjAdhBYScBEohXS9NbEpKamq1dk"
+      'EKEbxJx3U1RbdojRnn3UApSPuLjAdhBYScBEohXS9NbEpKamq1dk'
     ),
     publicKey: PublicKey.fromBase58(
       'B62qr6FN3dU9JP1AyyCPgFYVqctnshFR15J6oFo7e2aFNfJQh8akhfW'
@@ -230,26 +230,26 @@ const localKeys: NetworkKeyPairs = {
   council: [
     {
       privateKey: PrivateKey.fromBase58(
-        "EKEvMHQgZFfnH3VMFFQmikHY1c7qH3h3ZBs8KVuUKqHxoiSG6TfH"
+        'EKEvMHQgZFfnH3VMFFQmikHY1c7qH3h3ZBs8KVuUKqHxoiSG6TfH'
       ),
       publicKey: PublicKey.fromBase58(
-        "B62qoNAsVRPde4JM7BKFcPyL6Sg6PnoNXLBxPMJPRndcu3iD2H98PhZ"
+        'B62qoNAsVRPde4JM7BKFcPyL6Sg6PnoNXLBxPMJPRndcu3iD2H98PhZ'
       ),
     },
     {
       privateKey: PrivateKey.fromBase58(
-        "EKEmefxgS9664gFrAy3c2tuptsfRxtYSkFLMHPqFwqGmsAQGsaxP"
+        'EKEmefxgS9664gFrAy3c2tuptsfRxtYSkFLMHPqFwqGmsAQGsaxP'
       ),
       publicKey: PublicKey.fromBase58(
-        "B62qp7iynzYJwiqr8rY93xR9w77wS861Bo5YMoMLYCaa8A5SyH1YCwZ"
+        'B62qp7iynzYJwiqr8rY93xR9w77wS861Bo5YMoMLYCaa8A5SyH1YCwZ'
       ),
     },
     {
       privateKey: PrivateKey.fromBase58(
-        "EKE9F6Ai3T1pQRCRYbCB1UhJfdoDpoaS1yKZpcfNgDkcZmEQ1DFg"
+        'EKE9F6Ai3T1pQRCRYbCB1UhJfdoDpoaS1yKZpcfNgDkcZmEQ1DFg'
       ),
       publicKey: PublicKey.fromBase58(
-        "B62qoy29VJrSTQ1WPhW2teNJZi5JYJSTjf9UP166B6rz8Fj3PaUtFLz"
+        'B62qoy29VJrSTQ1WPhW2teNJZi5JYJSTjf9UP166B6rz8Fj3PaUtFLz'
       ),
     },
   ],

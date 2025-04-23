@@ -22,7 +22,6 @@ import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
 import { BoolOperation } from '../../../../system/update/simple-operations.js';
 import { ZkusdProtocolUpdateOutput } from '../../../../system/update/output.js';
 
-
 // A small helper for building and proving membership in a Merkle tree
 class CouncilMerkleTree {
   height: number;
@@ -65,7 +64,8 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
 
   before(async () => {
     console.log('Compiling ZkProgram...');
-    const { verificationKey: vk } = await MultiSigZkusdProtocolUpdateProgram.compile();
+    const { verificationKey: vk } =
+      await MultiSigZkusdProtocolUpdateProgram.compile();
     verificationKey = vk;
     console.log('Compilation complete.');
 
@@ -111,43 +111,58 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
 
       // 4. Verify proof
       const ok = await verify(proof, verificationKey);
-      assert.strictEqual(ok, true, 'Expected valid proof to verify successfully');
+      assert.strictEqual(
+        ok,
+        true,
+        'Expected valid proof to verify successfully'
+      );
 
       // 5. Check publicOutput
-      const { proposalHash, councilMemberMerkleRoot, cummulatedVoteBitArray } = proof.publicOutput;
-      assert(proposalHash.equals(Poseidon.hash(updateInputFields)).toBoolean(), 'Proposal hash mismatch');
-      assert(councilMemberMerkleRoot.equals(councilMerkleRoot).toBoolean(), 'Merkle root mismatch');
-      assert(cummulatedVoteBitArray.equals(Field(2 ** seatIndex)).toBoolean(), 'Vote bit array mismatch');
+      const { proposalHash, councilMemberMerkleRoot, cummulatedVoteBitArray } =
+        proof.publicOutput;
+      assert(
+        proposalHash.equals(Poseidon.hash(updateInputFields)).toBoolean(),
+        'Proposal hash mismatch'
+      );
+      assert(
+        councilMemberMerkleRoot.equals(councilMerkleRoot).toBoolean(),
+        'Merkle root mismatch'
+      );
+      assert(
+        cummulatedVoteBitArray.equals(Field(2 ** seatIndex)).toBoolean(),
+        'Vote bit array mismatch'
+      );
     });
 
     it('should fail if the signature is for different data', async () => {
       // 1. Create a *different* input
       const differentInput = ZkusdProtocolUpdateSpec.empty();
       // Modify it in some minimal way...
-      differentInput.protocolUpdateOperation.emergencyStop = BoolOperation.flip();
+      differentInput.protocolUpdateOperation.emergencyStop =
+        BoolOperation.flip();
 
       const differentFields = differentInput.toFields();
 
       // 2. Sign the *different* data
-      const wrongSignature = Signature.create(councilPrivateKey, differentFields);
+      const wrongSignature = Signature.create(
+        councilPrivateKey,
+        differentFields
+      );
 
       // 3. Attempt to create a vote proof with the *original* updateInput but the wrong signature
       const witness = councilTree.getWitness(seatIndex);
 
       console.log('Creating vote with mismatched input-signature...');
-      await assert.rejects(
-        async () => {
-          await MultiSigZkusdProtocolUpdateProgram.createVote(
-            updateInput,
-            wrongSignature,
-            councilPublicKey,
-            witness,
-            councilMerkleRoot,
-            Field(2 ** seatIndex)
-          );
-        },
-        'Expected createVote to fail with incorrect signature'
-      );
+      await assert.rejects(async () => {
+        await MultiSigZkusdProtocolUpdateProgram.createVote(
+          updateInput,
+          wrongSignature,
+          councilPublicKey,
+          witness,
+          councilMerkleRoot,
+          Field(2 ** seatIndex)
+        );
+      }, 'Expected createVote to fail with incorrect signature');
       console.log('Proof creation failed as expected.');
     });
 
@@ -160,19 +175,16 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       const witness = councilTree.getWitness(wrongSeatIndex); // Actually won't match the correct key
 
       console.log('Creating vote with a mismatched seat witness...');
-      await assert.rejects(
-        async () => {
-          await MultiSigZkusdProtocolUpdateProgram.createVote(
-            updateInput,
-            signature,
-            councilPublicKey,
-            witness,
-            councilMerkleRoot,
-            Field(2 ** wrongSeatIndex)
-          );
-        },
-        'Expected createVote to fail if membership proof does not match actual seat'
-      );
+      await assert.rejects(async () => {
+        await MultiSigZkusdProtocolUpdateProgram.createVote(
+          updateInput,
+          signature,
+          councilPublicKey,
+          witness,
+          councilMerkleRoot,
+          Field(2 ** wrongSeatIndex)
+        );
+      }, 'Expected createVote to fail if membership proof does not match actual seat');
       console.log('Proof creation failed as expected.');
     });
 
@@ -184,19 +196,16 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       const witness = councilTree.getWitness(seatIndex);
 
       console.log('Creating vote with the wrong public key...');
-      await assert.rejects(
-        async () => {
-          await MultiSigZkusdProtocolUpdateProgram.createVote(
-            updateInput,
-            signature,
-            wrongPublicKey,
-            witness,
-            councilMerkleRoot,
-            Field(2 ** seatIndex)
-          );
-        },
-        'Expected createVote to fail if the provided public key is not actually in the tree'
-      );
+      await assert.rejects(async () => {
+        await MultiSigZkusdProtocolUpdateProgram.createVote(
+          updateInput,
+          signature,
+          wrongPublicKey,
+          witness,
+          councilMerkleRoot,
+          Field(2 ** seatIndex)
+        );
+      }, 'Expected createVote to fail if the provided public key is not actually in the tree');
       console.log('Proof creation failed as expected.');
     });
   });
@@ -213,21 +222,18 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       // For brevity, assume you build the tree and witness for a seat=40
       // but in reality, your circuit expects seat=3 or seat=5, not BOTH.
       const signature = Signature.create(privateKey, updateInputFields);
-      const witness = councilTree.getWitness(40);  // (If 40 is in range of your tree size)
+      const witness = councilTree.getWitness(40); // (If 40 is in range of your tree size)
 
-      await assert.rejects(
-        async () => {
-          await MultiSigZkusdProtocolUpdateProgram.createVote(
-            updateInput,
-            signature,
-            publicKey,
-            witness,
-            councilMerkleRoot,
-            seatIndexMaliciousValue
-          );
-        },
-        'Expected createVote to fail if the seat index sets multiple bits.'
-      );
+      await assert.rejects(async () => {
+        await MultiSigZkusdProtocolUpdateProgram.createVote(
+          updateInput,
+          signature,
+          publicKey,
+          witness,
+          councilMerkleRoot,
+          seatIndexMaliciousValue
+        );
+      }, 'Expected createVote to fail if the seat index sets multiple bits.');
     });
   });
 
@@ -281,7 +287,10 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       proof1 = p1;
 
       // Second proof
-      const signature2 = Signature.create(secondCouncilPrivateKey, updateInputFields);
+      const signature2 = Signature.create(
+        secondCouncilPrivateKey,
+        updateInputFields
+      );
       const witness2 = combinedTree.getWitness(seatIndex2);
       const { proof: p2 } = await MultiSigZkusdProtocolUpdateProgram.createVote(
         updateInput,
@@ -306,9 +315,10 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       assert.strictEqual(ok, true, 'Expected the merged proof to verify');
 
       // Check the final output
-      const { cummulatedVoteBitArray, proposalHash } = mergedProof.proof.publicOutput;
+      const { cummulatedVoteBitArray, proposalHash } =
+        mergedProof.proof.publicOutput;
       // We expect seatIndex and seatIndex2 bits to be set in cummulatedVoteBitArray
-      const expectedBits = Field((2 ** seatIndex) + (2 ** seatIndex2));
+      const expectedBits = Field(2 ** seatIndex + 2 ** seatIndex2);
       assert(
         cummulatedVoteBitArray.equals(expectedBits).toBoolean(),
         `Expected OR of seatIndex(${seatIndex}) and seatIndex2(${seatIndex2}) bits`
@@ -325,34 +335,36 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
     it('should fail to merge if the two proofs have different publicInputs', async () => {
       // Make a proof for a *different* input
       const differentInput = ZkusdProtocolUpdateSpec.empty();
-      differentInput.protocolUpdateOperation.emergencyStop = BoolOperation.flip();
+      differentInput.protocolUpdateOperation.emergencyStop =
+        BoolOperation.flip();
       const differentFields = differentInput.toFields();
 
       // Make a seatIndex proof for the *different* input
-      const signatureDifferent = Signature.create(councilPrivateKey, differentFields);
+      const signatureDifferent = Signature.create(
+        councilPrivateKey,
+        differentFields
+      );
       const witness1 = councilTree.getWitness(seatIndex);
 
-      const proofWithDifferentInput = await MultiSigZkusdProtocolUpdateProgram.createVote(
-        differentInput,
-        signatureDifferent,
-        councilPublicKey,
-        witness1,
-        councilMerkleRoot,
-        Field(2 ** seatIndex)
-      );
+      const proofWithDifferentInput =
+        await MultiSigZkusdProtocolUpdateProgram.createVote(
+          differentInput,
+          signatureDifferent,
+          councilPublicKey,
+          witness1,
+          councilMerkleRoot,
+          Field(2 ** seatIndex)
+        );
 
       // Attempt to merge that with a valid proof for the original input
       console.log('Attempting merge with mismatched input proofs...');
-      await assert.rejects(
-        async () => {
-          await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-            updateInput, // The "current" input is the original
-            proof1,      // correct input
-            proofWithDifferentInput.proof // different input
-          );
-        },
-        'Expected mergeVotes to fail when public inputs do not match'
-      );
+      await assert.rejects(async () => {
+        await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+          updateInput, // The "current" input is the original
+          proof1, // correct input
+          proofWithDifferentInput.proof // different input
+        );
+      }, 'Expected mergeVotes to fail when public inputs do not match');
       console.log('Merging failed as expected.');
     });
 
@@ -360,28 +372,29 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       // proof1 was created from the combined root
       // We'll make a proof2 from a *different* councilRoot (the "secondCouncilMerkleRoot" lacking seatIndex)
       // That way, the leftProof.publicOutput.councilMemberMerkleRoot != rightProof.publicOutput.councilMemberMerkleRoot
-      const signature2 = Signature.create(secondCouncilPrivateKey, updateInputFields);
-      const witness2 = secondTree.getWitness(seatIndex2);
-      const proofMismatchRoot = await MultiSigZkusdProtocolUpdateProgram.createVote(
-        updateInput,
-        signature2,
-        secondCouncilPublicKey,
-        witness2,
-        secondCouncilMerkleRoot,
-        Field(2 ** seatIndex2)
+      const signature2 = Signature.create(
+        secondCouncilPrivateKey,
+        updateInputFields
       );
+      const witness2 = secondTree.getWitness(seatIndex2);
+      const proofMismatchRoot =
+        await MultiSigZkusdProtocolUpdateProgram.createVote(
+          updateInput,
+          signature2,
+          secondCouncilPublicKey,
+          witness2,
+          secondCouncilMerkleRoot,
+          Field(2 ** seatIndex2)
+        );
 
       console.log('Attempting merge with mismatched council roots...');
-      await assert.rejects(
-        async () => {
-          await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-            updateInput,
-            proof1,
-            proofMismatchRoot.proof
-          );
-        },
-        'Expected mergeVotes to fail if the council roots differ'
-      );
+      await assert.rejects(async () => {
+        await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+          updateInput,
+          proof1,
+          proofMismatchRoot.proof
+        );
+      }, 'Expected mergeVotes to fail if the council roots differ');
       console.log('Merging failed as expected.');
     });
   });

@@ -45,9 +45,10 @@ export class ValidityRangeUInt32 extends Struct({
    * const range = ValidityRangeUInt32.before(50000);
    */
   static before(lastValidBlock: UInt32 | bigint | number): ValidityRangeUInt32 {
-    const lastValidBlockUInt32 = lastValidBlock instanceof UInt32
-      ? lastValidBlock
-      : UInt32.from(lastValidBlock);
+    const lastValidBlockUInt32 =
+      lastValidBlock instanceof UInt32
+        ? lastValidBlock
+        : UInt32.from(lastValidBlock);
 
     return new ValidityRangeUInt32({
       firstValidBlock: UInt32.from(0),
@@ -97,9 +98,12 @@ export class MinaChainPreconditions extends Struct({
    *   slotIndexValidityRange: ValidityRangeUInt32.before(50000n)
    * });
    */
-  static create(args?: Partial<MinaChainPreconditionsFields>): MinaChainPreconditions {
+  static create(
+    args?: Partial<MinaChainPreconditionsFields>
+  ): MinaChainPreconditions {
     return new MinaChainPreconditions({
-      slotIndexValidityRange: args?.slotIndexValidityRange ?? ValidityRangeUInt32.always(),
+      slotIndexValidityRange:
+        args?.slotIndexValidityRange ?? ValidityRangeUInt32.always(),
       blockchainLength: args?.blockchainLength ?? ValidityRangeUInt32.always(),
     });
   }
@@ -113,11 +117,16 @@ export class MinaChainPreconditions extends Struct({
    * @example
    * const preconditions = MinaChainPreconditions.before({ slot: 500000 });
    */
-  static before(args: { block?: UInt32 | bigint | number; slot?: UInt32 | bigint | number }): MinaChainPreconditions {
+  static before(args: {
+    block?: UInt32 | bigint | number;
+    slot?: UInt32 | bigint | number;
+  }): MinaChainPreconditions {
     const preconditions = MinaChainPreconditions.always();
 
     if (args.block !== undefined) {
-      preconditions.slotIndexValidityRange = ValidityRangeUInt32.before(args.block);
+      preconditions.slotIndexValidityRange = ValidityRangeUInt32.before(
+        args.block
+      );
     }
     if (args.slot !== undefined) {
       preconditions.blockchainLength = ValidityRangeUInt32.before(args.slot);
@@ -141,12 +150,18 @@ export class MinaChainPreconditions extends Struct({
     const preconditions = MinaChainPreconditions.always();
 
     preconditions.blockchainLength = new ValidityRangeUInt32({
-      firstValidBlock: firstValidBlock !== undefined
-        ? (firstValidBlock instanceof UInt32 ? firstValidBlock : UInt32.from(firstValidBlock))
-        : UInt32.from(0),
-      lastValidBlock: lastValidBlock !== undefined
-        ? (lastValidBlock instanceof UInt32 ? lastValidBlock : UInt32.from(lastValidBlock))
-        : UInt32.from(UInt32.MAXINT()),
+      firstValidBlock:
+        firstValidBlock !== undefined
+          ? firstValidBlock instanceof UInt32
+            ? firstValidBlock
+            : UInt32.from(firstValidBlock)
+          : UInt32.from(0),
+      lastValidBlock:
+        lastValidBlock !== undefined
+          ? lastValidBlock instanceof UInt32
+            ? lastValidBlock
+            : UInt32.from(lastValidBlock)
+          : UInt32.from(UInt32.MAXINT()),
     });
 
     return preconditions;

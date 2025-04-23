@@ -107,7 +107,10 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
     return resulting;
   }
 
-  constructor(mina: IMinaNetworkInterface, config?: Partial<TransactionStatusScannerConfig>) {
+  constructor(
+    mina: IMinaNetworkInterface,
+    config?: Partial<TransactionStatusScannerConfig>
+  ) {
     this._mina = mina;
     this._overlayConfig = config;
   }
@@ -137,8 +140,10 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
    */
   public async stopScanning(): Promise<void> {
     this._isScanning = false;
-    try{
-    this._transactionStatusPromisesRejectors.forEach((rejector) => rejector());
+    try {
+      this._transactionStatusPromisesRejectors.forEach((rejector) =>
+        rejector()
+      );
     } catch (err) {
       debugLog(`(visibility) Stopping scanner silenced: ${err}`);
     }
@@ -186,9 +191,11 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
             { timeout }
           )
         );
-      }
+      };
 
-      abortApi?.installRejector(() => {rejector(false)});
+      abortApi?.installRejector(() => {
+        rejector(false);
+      });
 
       const timeoutHandle = setTimeout(() => {
         this._resolvers.delete(transactionHash);
@@ -198,8 +205,9 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         rejector(true);
       }, timeout);
 
-
-      this._transactionStatusPromisesRejectors.set(newRandomId, () => rejector(false));
+      this._transactionStatusPromisesRejectors.set(newRandomId, () =>
+        rejector(false)
+      );
 
       this._resolvers.set(
         transactionHash,
@@ -303,9 +311,11 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
         );
         this.processNewBlocks(response, fromBlock);
         setTimeout(() => this.doScan(), Number(this.config.blockTimeMs));
-      }
-      else{
-        setTimeout(() => this.doScan(), Number(this.config.newBlockPollIntervalMs));
+      } else {
+        setTimeout(
+          () => this.doScan(),
+          Number(this.config.newBlockPollIntervalMs)
+        );
       }
       this.keepLastXBlocks(100);
     } catch (err) {

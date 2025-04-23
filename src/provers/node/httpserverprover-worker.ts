@@ -98,7 +98,6 @@ async function main(epmBaseUrl: string, chain: blockchain) {
     governmentPublicKey: keys.gov,
   });
 
-
   console.log(
     `NodeScriptExecutor started. Polling for jobs at ${epmBaseUrl}...`
   );
