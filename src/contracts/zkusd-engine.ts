@@ -63,7 +63,7 @@ import {
   ZkusdUpdateMinaBlockchainState,
   requireBlockchainPreconditions,
 } from '../system/update/blockchain-state.js';
-import { ZkusdUpdatedProtocolState } from '../system/update/protocol-state.js';
+import { ZkusdUpdateProtocolState } from '../system/update/protocol-state.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 
 /**
@@ -141,11 +141,10 @@ export function ZkUsdEngineContract(args: {
          * reset to 'signature' during network upgrades (hardforks). This means that achieving complete
          * immutability for verification keys is currently not possible in the Mina protocol.
          *
-         * Given this constraint, and our commitment to continuous protocol improvements, we explicitly
-         * set the verification key permission to 'signature'. This allows us to upgrade the protocol's
-         * proof system as needed and as we improve our decentralisation efforts.
+         * Between hardforks, we can use the 'proof' permission to upgrade the proof system. This is managed
+         * by the zkUSD governing layer.
          *
-         * This design choice balances protocol upgradeability with security, acknowledging that
+         * This design choice balances protocol upgradeability with decentralised governance and security, while acknowledging that
          * true immutability of verification keys is not achievable under Mina's current architecture.
          */
         setVerificationKey: Permissions.VerificationKey.proofOrSignature(),
@@ -167,7 +166,9 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
-    //Blocks the updating of state of the token accounts
+    /**
+     * @notice  Blocks the updating of state of the token accounts
+     */
     approveBase(_forest: AccountUpdateForest): Promise<void> {
       throw Error(ZkUsdEngineErrors.UPDATES_BLOCKED);
     }
@@ -194,115 +195,11 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * @notice  Returns the total amount of collateral deposited into the engine
-     * @returns The total amount of collateral deposited into the engine
+     *
+     * VAULT METHODS
+     *
+     *
      */
-    public async getTotalDepositedCollateral(): Promise<UInt64> {
-      const account = AccountUpdate.create(
-        this.address,
-        this.deriveTokenId()
-      ).account;
-      const balance = account.balance.getAndRequireEquals();
-      return balance;
-    }
-
-    public async getVaultParams(): Promise<VaultParams> {
-      // return vault params from protocol data
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return protocolData.getVaultParams();
-    }
-
-    // TODO doc
-    public async getVaultClass(): Promise<ReturnType<typeof Vault>> {
-      return Vault(await this.getVaultParams());
-    }
-
-    // TODO doc
-    public async retrieveVault(vaultAddress: PublicKey) {
-      const vaultUpdate = AccountUpdate.create(
-        vaultAddress,
-        this.deriveTokenId()
-      );
-      return Vault(await this.getVaultParams()).getAndRequireEquals(
-        vaultUpdate
-      );
-    }
-
-    /**
-     * @notice  Returns the health factor of a vault
-     * @param   vaultAddress The address of the vault
-     * @returns The health factor of the vault
-     */
-    public async getVaultHealthFactor(
-      vaultAddress: PublicKey,
-      minaPrice: MinaPrice
-    ): Promise<UInt64> {
-      //Get the vault & add the precondition
-      const vault = await this.retrieveVault(vaultAddress);
-
-      //Return the health factor
-      return vault.getHealthFactor(minaPrice);
-    }
-
-    /**
-     * @notice  Ensures the protocol is not stopped
-     */
-    async ensureProtocolNotStopped() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      protocolData.emergencyStop.assertFalse(ZkUsdEngineErrors.EMERGENCY_HALT);
-    }
-
-    /**
-     * @notice  Internal helper to validate admin signature
-     * @returns The signed account update from the admin
-     */
-    async ensureAdminSignature(): Promise<AccountUpdate> {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return AccountUpdate.createSigned(protocolData.admin);
-    }
-
-    /**
-     * @notice  Verifies the Mina price input proof against contract data.
-     * @param   minaPriceInput The Mina price input proof
-     * @returns The verified Mina price. If the proof is invalid, this function will throw an error.
-     */
-    verifyMinaPriceInput(
-      minaPriceInput: MinaPriceInput
-    ): PriceAggregationProofPublicOutput {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-
-      const firstValidBlock =
-        minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
-      const lastValidBlock = firstValidBlock.add(
-        protocolData.validPriceBlockCount.toUInt32()
-      );
-
-      this.network.blockchainLength.requireBetween(
-        firstValidBlock,
-        lastValidBlock
-      );
-
-      verifyMinaPriceInputProof({
-        input: minaPriceInput,
-        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
-        proofVkHash: minaPriceInputZkProgramVkHash,
-        currentBlockHeight: firstValidBlock,
-      });
-
-      minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
-        ZkUsdEngine.MINIMUM_VALID_ORACLE_SUBMISSIONS
-      );
-
-      return minaPriceInput.proof.publicOutput;
-    }
 
     /**
      * @notice  Updates the owner of a vault
@@ -645,92 +542,12 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
-    @method.returns(ProtocolData) async getProtocolData() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return protocolData;
-    }
-
     /**
-     * @notice  Toggles the emergency stop state of the protocol
-     * @dev     Can only be called by authorized addresses via protocol vault
-     * @param   shouldStop True to stop the protocol, false to resume
+     *
+     * GOVERNANCE METHODS
+     *
+     *
      */
-    @method async toggleEmergencyStop(shouldStop: Bool) {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-
-      // Assertions
-      shouldStop
-        .equals(protocolData.emergencyStop)
-        .assertFalse('Protocol is already in desired state');
-
-      //Do we have the right permissions to toggle the protocol?
-      await this.ensureAdminSignature();
-
-      //Toggle the protocol state
-      protocolData.emergencyStop = shouldStop;
-      this.protocolDataPacked.set(protocolData.pack());
-
-      //Emit the Liquidate event
-      this.emitEvent(
-        'EmergencyStopToggled',
-        new EmergencyStopToggledEvent({
-          resolutionIndex: NO_RESOLUTION_INDEX,
-          emergencyStop: shouldStop,
-        })
-      );
-    }
-
-    /**
-     * @notice Shared function that checks governance acceptance, verifies the proof,
-     *         ensures preconditions, and returns the existing protocol data + operation.
-     */
-    async runGovUpdateCommon(
-      methodCode: Field,
-      resolutionSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
-    ): Promise<{
-      protocolDataBefore: ProtocolData;
-      operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
-    }> {
-      // Verify governance acceptance
-      const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);
-      const govAcceptance = await gov.canExecuteGovResolution(
-        methodCode,
-        resolutionSpec,
-        resolutionWitness
-      );
-      govAcceptance.assertTrue(
-        'ZkUSD government contract disallowed the update proof.'
-      );
-
-      // Check blockchain-level preconditions (time, block length, etc.)
-      const blockchainState = await this.buildBlockchainState();
-
-      requireBlockchainPreconditions({
-        preconditions: resolutionSpec.blockchainPreconditions,
-        blockchainState,
-      });
-
-      // Check protocol-level preconditions
-      const protocolState = await this.buildProtocolState();
-      protocolState
-        .isValidForPreconditions(resolutionSpec.protocolUpdatePreconditions)
-        .assertTrue();
-
-      // Fetch the current on-chain protocol data
-      const packedData = this.protocolDataPacked.getAndRequireEquals();
-      const protocolDataBefore = ProtocolData.unpack(packedData);
-
-      // Extract the update operation from the proof
-      const operation = resolutionSpec.protocolUpdateOperation;
-
-      // Return all we need for the actual update
-      return { protocolDataBefore, operation };
-    }
 
     @method async govToggleEmergencyStop(
       updateSpec: ZkusdProtocolUpdateSpec,
@@ -984,82 +801,6 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * @notice  Updates the oracle whitelist merkle root
-     * @param   whitelist The new oracle whitelist merkle root
-     */
-    @method async updateOracleWhitelist(whitelist: OracleWhitelist) {
-      //Precondition
-      const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
-
-      //Ensure admin signature
-      await this.ensureAdminSignature();
-
-      const updatedWhitelistHash = Poseidon.hash(
-        OracleWhitelist.toFields(whitelist)
-      );
-      this.oracleWhitelistHash.set(updatedWhitelistHash);
-
-      this.emitEvent(
-        'OracleWhitelistUpdated',
-        new OracleWhitelistUpdatedEvent({
-          resolutionIndex: NO_RESOLUTION_INDEX,
-          previousHash,
-          newHash: updatedWhitelistHash,
-        })
-      );
-    }
-
-    async getValidPriceBlockCount() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return protocolData.validPriceBlockCount;
-    }
-
-    // async govUpdateValidPriceBlockCount(count: UInt32) {k
-
-    /**
-     * @notice  Updates the valid price block count
-     * @param   count The new valid price block count
-     */
-    @method async updateValidPriceBlockCount(count: UInt8) {
-      //Precondition
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-
-      const previousCount = protocolData.validPriceBlockCount;
-      //Ensure admin signature
-      await this.ensureAdminSignature();
-
-      protocolData.validPriceBlockCount = count;
-      this.protocolDataPacked.set(protocolData.pack());
-
-      this.emitEvent(
-        'ValidPriceBlockCountUpdated',
-        new ValidPriceBlockCountUpdatedEvent({
-          resolutionIndex: NO_RESOLUTION_INDEX,
-          previousCount: previousCount,
-          newCount: count,
-        })
-      );
-    }
-
-    getAdmin() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return protocolData.admin;
-    }
-
-    isEmergencyStopped() {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return protocolData.emergencyStop;
-    }
-
-    /**
      * @notice  Updates the admin public key
      * @param   newAdmin The new admin public key
      */
@@ -1081,17 +822,279 @@ export function ZkUsdEngineContract(args: {
         newAdmin,
       });
     }
+
+    /**
+     *
+     * PUBLIC METHODS
+     *
+     *
+     */
+
+    /**
+     * @notice  Returns the total amount of collateral deposited into the engine
+     * @returns The total amount of collateral deposited into the engine
+     */
+    public async getTotalDepositedCollateral(): Promise<UInt64> {
+      const account = AccountUpdate.create(
+        this.address,
+        this.deriveTokenId()
+      ).account;
+      const balance = account.balance.getAndRequireEquals();
+      return balance;
+    }
+
+    /**
+     * @notice  Returns the vault parameters based on the protocol data
+     * @returns The vault parameters
+     */
+    public async getVaultParams(): Promise<VaultParams> {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.getVaultParams();
+    }
+
+    /**
+     * @notice  Returns the vault class based on the protocol data
+     * @returns The vault class
+     */
+    public async getVaultClass(): Promise<ReturnType<typeof Vault>> {
+      return Vault(await this.getVaultParams());
+    }
+
+    /**
+     * @notice  Retrieves a vault
+     * @param   vaultAddress The address of the vault
+     * @returns The vault
+     */
+    public async retrieveVault(vaultAddress: PublicKey) {
+      const vaultUpdate = AccountUpdate.create(
+        vaultAddress,
+        this.deriveTokenId()
+      );
+      return Vault(await this.getVaultParams()).getAndRequireEquals(
+        vaultUpdate
+      );
+    }
+
+    /**
+     * @notice  Returns the health factor of a vault
+     * @param   vaultAddress The address of the vault
+     * @returns The health factor of the vault
+     */
+    public async getVaultHealthFactor(
+      vaultAddress: PublicKey,
+      minaPrice: MinaPrice
+    ): Promise<UInt64> {
+      //Get the vault & add the precondition
+      const vault = await this.retrieveVault(vaultAddress);
+
+      //Return the health factor
+      return vault.getHealthFactor(minaPrice);
+    }
+
+    /**
+     *
+     * INTERNAL METHODS
+     *
+     *
+     */
+
     /**
      * @notice  This method is used to assert the interaction flag, this is used to ensure that the zkUSD token contract knows it is being called from the vault
      * @returns True if the flag is set
      */
-    assertInteractionFlag() {
+    assertInteractionFlag(): Bool {
       this.interactionFlag.requireEquals(Bool(true));
       this.interactionFlag.set(Bool(false));
       return Bool(true);
     }
 
-    //   FUNGIBLE TOKEN ADMIN FUNCTIONS
+    /**
+     * @notice  Verifies the Mina price input proof against contract data.
+     * @param   minaPriceInput The Mina price input proof
+     * @returns The verified Mina price. If the proof is invalid, this function will throw an error.
+     */
+    verifyMinaPriceInput(
+      minaPriceInput: MinaPriceInput
+    ): PriceAggregationProofPublicOutput {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+
+      const firstValidBlock =
+        minaPriceInput.proof.publicOutput.minaPrice.currentBlockHeight;
+      const lastValidBlock = firstValidBlock.add(
+        protocolData.validPriceBlockCount.toUInt32()
+      );
+
+      this.network.blockchainLength.requireBetween(
+        firstValidBlock,
+        lastValidBlock
+      );
+
+      verifyMinaPriceInputProof({
+        input: minaPriceInput,
+        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
+        proofVkHash: minaPriceInputZkProgramVkHash,
+        currentBlockHeight: firstValidBlock,
+      });
+
+      minaPriceInput.proof.publicOutput.validSubmissions.count.assertGreaterThanOrEqual(
+        ZkUsdEngine.MINIMUM_VALID_ORACLE_SUBMISSIONS
+      );
+
+      return minaPriceInput.proof.publicOutput;
+    }
+
+    /**
+     * @notice  Returns the admin public key
+     * @returns The admin public key
+     */
+    getAdmin(): PublicKey {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.admin;
+    }
+
+    /**
+     * @notice  Returns true if the protocol is emergency stopped
+     * @returns True if the protocol is emergency stopped
+     */
+    isEmergencyStopped(): Bool {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.emergencyStop;
+    }
+
+    /**
+     * @notice  Returns the protocol data
+     * @returns The protocol data
+     */
+    getProtocolData(): ProtocolData {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData;
+    }
+
+    /**
+     * @notice  Returns the valid price block count
+     * @returns The valid price block count
+     */
+    getValidPriceBlockCount(): UInt8 {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return protocolData.validPriceBlockCount;
+    }
+
+    /**
+     * @notice  Builds the protocol state for the update
+     * @returns The protocol state
+     */
+    buildProtocolState(): ZkusdUpdateProtocolState {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return new ZkusdUpdateProtocolState({
+        emergencyStop: protocolData.emergencyStop,
+        collateralRatio: protocolData.collateralRatio,
+        liquidationBonusRatio: protocolData.liquidationBonusRatio,
+        validPriceBlockCount: protocolData.validPriceBlockCount,
+        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
+        configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
+      });
+    }
+
+    /**
+     * @notice  Builds the blockchain state for the update
+     * @returns The blockchain state
+     */
+    buildBlockchainState(): ZkusdUpdateMinaBlockchainState {
+      return {
+        currentSlot: this.currentSlot,
+        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
+      };
+    }
+
+    /**
+     * @notice  Ensures the protocol is not stopped
+     */
+    ensureProtocolNotStopped() {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      protocolData.emergencyStop.assertFalse(ZkUsdEngineErrors.EMERGENCY_HALT);
+    }
+
+    /**
+     * @notice  Internal helper to validate admin signature
+     * @returns The signed account update from the admin
+     */
+    ensureAdminSignature(): AccountUpdate {
+      const protocolData = ProtocolData.unpack(
+        this.protocolDataPacked.getAndRequireEquals()
+      );
+      return AccountUpdate.createSigned(protocolData.admin);
+    }
+
+    /**
+     * @notice Shared function that checks governance acceptance, verifies the proof,
+     *         ensures preconditions, and returns the existing protocol data + operation.
+     */
+    async runGovUpdateCommon(
+      methodCode: Field,
+      resolutionSpec: ZkusdProtocolUpdateSpec,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ): Promise<{
+      protocolDataBefore: ProtocolData;
+      operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
+    }> {
+      // Verify governance acceptance
+      const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);
+      const govAcceptance = await gov.canExecuteGovResolution(
+        methodCode,
+        resolutionSpec,
+        resolutionWitness
+      );
+      govAcceptance.assertTrue(
+        'ZkUSD government contract disallowed the update proof.'
+      );
+
+      // Check blockchain-level preconditions (time, block length, etc.)
+      const blockchainState = await this.buildBlockchainState();
+
+      requireBlockchainPreconditions({
+        preconditions: resolutionSpec.blockchainPreconditions,
+        blockchainState,
+      });
+
+      // Check protocol-level preconditions
+      const protocolState = await this.buildProtocolState();
+      protocolState
+        .isValidForPreconditions(resolutionSpec.protocolUpdatePreconditions)
+        .assertTrue();
+
+      // Fetch the current on-chain protocol data
+      const packedData = this.protocolDataPacked.getAndRequireEquals();
+      const protocolDataBefore = ProtocolData.unpack(packedData);
+
+      // Extract the update operation from the proof
+      const operation = resolutionSpec.protocolUpdateOperation;
+
+      // Return all we need for the actual update
+      return { protocolDataBefore, operation };
+    }
+
+    /**
+     *
+     * ZKUSD TOKEN STANDARD ADMIN METHODS
+     * We need to use the admin signature for the token standard management, this will be a multisig.
+     *
+     */
 
     /**
      * @notice  Returns true if the account update is valid
@@ -1110,7 +1113,6 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canChangeAdmin(_admin: PublicKey) {
-      //We need the admin signature to change the admin
       await this.ensureAdminSignature();
       return Bool(true);
     }
@@ -1121,7 +1123,6 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canPause(): Promise<Bool> {
-      //We need the admin signature to pause the token, we will only do this in case of upgrades
       await this.ensureAdminSignature();
       return Bool(true);
     }
@@ -1132,30 +1133,8 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canResume(): Promise<Bool> {
-      //We need the admin signature to resume the token
       await this.ensureAdminSignature();
       return Bool(true);
-    }
-
-    async buildProtocolState(): Promise<ZkusdUpdatedProtocolState> {
-      const protocolData = ProtocolData.unpack(
-        this.protocolDataPacked.getAndRequireEquals()
-      );
-      return new ZkusdUpdatedProtocolState({
-        emergencyStop: protocolData.emergencyStop,
-        collateralRatio: protocolData.collateralRatio,
-        liquidationBonusRatio: protocolData.liquidationBonusRatio,
-        validPriceBlockCount: protocolData.validPriceBlockCount,
-        oracleWhitelistHash: this.oracleWhitelistHash.getAndRequireEquals(),
-        configMerkleRoot: this.configMerkleRoot.getAndRequireEquals(),
-      });
-    }
-
-    async buildBlockchainState(): Promise<ZkusdUpdateMinaBlockchainState> {
-      return {
-        currentSlot: this.currentSlot,
-        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
-      };
     }
 
     /**
@@ -1164,7 +1143,8 @@ export function ZkUsdEngineContract(args: {
      */
     @method.returns(Bool)
     public async canChangeVerificationKey(_vk: VerificationKey): Promise<Bool> {
-      return Bool(true); // TODO change it to read the permission instead
+      await this.ensureAdminSignature();
+      return Bool(true);
     }
   }
 
