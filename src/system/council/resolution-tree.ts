@@ -1,4 +1,5 @@
 import { Field, MerkleTree, MerkleWitness } from 'o1js';
+import { ZkusdProtocolUpdateSpec } from '../update/input';
 
 /**
  * Height of the Merkle tree for passed proposals - resolutions.
@@ -85,6 +86,20 @@ export class ResolutionTree extends MerkleTree {
     }
 
     throw new Error('Resolution tree is full and the update was not found.');
+  }
+
+  /**
+   * Provides a witness for a specific index in the tree.
+   *
+   * @param index - The index where the update hash should be inserted.
+   */
+  public getWitnessWrapped(
+    index: bigint | number | ZkusdProtocolUpdateSpec
+  ): InstanceType<typeof ResolutionTree.Witness> { 
+    if (index instanceof ZkusdProtocolUpdateSpec) {
+      return this.getWitnessWrapped(index.govResolutionIndex.toBigint());
+    }
+    return new ResolutionTree.Witness(this.getWitness(BigInt(index)));
   }
 }
 

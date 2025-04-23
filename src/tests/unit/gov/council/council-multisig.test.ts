@@ -14,21 +14,20 @@ import {
 
 import {
   MultiSigZkusdProtocolUpdateProgram,
-  ZKUSD_COUNCIL_TREE_HEIGHT,
-  ZkusdCouncilMemberWitness,
   pubkeyToCouncilSeatLeaf,
 } from '../../../../proofs/gov/council-multisig.js';
 import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
 import { BoolOperation } from '../../../../system/update/simple-operations.js';
 import { ZkusdProtocolUpdateOutput } from '../../../../system/update/output.js';
+import { CouncilTree } from '../../../../system/council/council-tree.js';
 
 // A small helper for building and proving membership in a Merkle tree
 class CouncilMerkleTree {
   height: number;
   tree: MerkleTree;
-  constructor(height: number) {
-    this.height = height;
-    this.tree = new MerkleTree(height);
+  constructor() {
+    this.height = CouncilTree.HEIGHT;
+    this.tree = new MerkleTree(this.height);
     // Pre-fill tree with zero leaves
   }
 
@@ -42,8 +41,8 @@ class CouncilMerkleTree {
     return this.tree.getRoot();
   }
 
-  getWitness(index: number): ZkusdCouncilMemberWitness {
-    return new ZkusdCouncilMemberWitness(this.tree.getWitness(BigInt(index)));
+  getWitness(index: number): CouncilTree.Witness {
+    return new CouncilTree.Witness(this.tree.getWitness(BigInt(index)));
   }
 }
 
@@ -81,7 +80,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
     wrongPublicKey = wrongPrivateKey.toPublicKey();
 
     // Build a Merkle tree for the council
-    councilTree = new CouncilMerkleTree(ZKUSD_COUNCIL_TREE_HEIGHT);
+    councilTree = new CouncilMerkleTree();
     councilTree.setMember(seatIndex, councilPublicKey);
     councilMerkleRoot = councilTree.getRoot();
   });
@@ -256,7 +255,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       secondCouncilPrivateKey = PrivateKey.random();
       secondCouncilPublicKey = secondCouncilPrivateKey.toPublicKey();
 
-      secondTree = new CouncilMerkleTree(ZKUSD_COUNCIL_TREE_HEIGHT);
+      secondTree = new CouncilMerkleTree();
       secondTree.setMember(seatIndex2, secondCouncilPublicKey);
       secondCouncilMerkleRoot = secondTree.getRoot();
 
@@ -266,7 +265,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       // seatIndex2 -> secondCouncilPublicKey
 
       // That can be done easily by building one combined tree:
-      const combinedTree = new CouncilMerkleTree(ZKUSD_COUNCIL_TREE_HEIGHT);
+      const combinedTree = new CouncilMerkleTree();
       combinedTree.setMember(seatIndex, councilPublicKey);
       combinedTree.setMember(seatIndex2, secondCouncilPublicKey);
       const combinedRoot = combinedTree.getRoot();

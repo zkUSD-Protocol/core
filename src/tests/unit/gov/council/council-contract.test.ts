@@ -1,10 +1,7 @@
 import {
-  Bool,
   Field,
-  MerkleMap,
-  MerkleTree,
   Poseidon,
-  Provable,
+  Signature,
   UInt32,
 } from 'o1js';
 import { describe, it, before } from 'node:test';
@@ -13,121 +10,73 @@ import assert from 'node:assert';
 import { TestHelper } from '../../../test-helper.js';
 import { KeyPair } from '../../../../types/utility.js';
 import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
-import {
-  MultiSigZkusdProtocolUpdateProgram,
-  ZkusdGoverningCouncilVoteProof,
-} from '../../../../proofs/gov/council-multisig.js';
-import {
-  ZKUSD_GOV_UPDATE_TREE_HEIGHT,
-  ZkusdGovUpdateWitness,
-} from '../../../../system/governance.js';
-import { countBits } from '../../../../contracts/zkusd-governing-council.js';
-import {
-  CouncilProposalPassedEvent,
-  CouncilProposalSupportChangeEvent,
-  getNewCouncilMembers,
-} from '../../../../system/council/events.js';
-import { prepareCouncilMembers, rebuildProposalMerkleMap, rebuildResolutionMerkleTree, getNextEmptyResolutionIndex, generateVoteProof} from '../../../../system/council/common.js';
+import { ResolutionTree } from '../../../../system/council/resolution-tree.js';
+import { ProposalMap } from '../../../../system/council/proposal-merkle-map.js';
+import { CouncilProposalPassedEvent, CouncilProposalSupportChangeEvent } from '../../../../system/council/events.js';
 
 describe('zkUSD Multisig Council Test Suite', () => {
   let testHelper: TestHelper<'local'>;
-  let council: KeyPair[];
-  let proposalMerkleMap = new MerkleMap();
-  let resolutionMerkleTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
   let updateSpec: ZkusdProtocolUpdateSpec;
-  let govResolutionIndex: Number;
-  let councilMerkleTree: MerkleTree;
+
+  let seat0: KeyPair;
+  let seat1: KeyPair;
+  let cclient = () => testHelper.councilClient;
+  let councilTree = async() => cclient().trees.councilTree.get();
+  let proposalMap = async() => cclient().trees.proposalMap.get();
+  let resolutionTree = async() => cclient().trees.resolutionTree.get();
 
   before(async () => {
     // Initialize test environment
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
     await testHelper.deployTokenContracts();
-
     await testHelper.createLocalAgents('alice');
-
-    council = await prepareCouncilMembers(testHelper);
-
-    councilMerkleTree = testHelper.council.buildAndVerifyCouncilMerkleTree(
-      council.map((keypair) => keypair.publicKey)
-    );
+    seat0 = testHelper.networkKeys.council![0];
+    seat1 = testHelper.networkKeys.council![1];
   });
-  it('should be possible to rebuild council merkle tree from emitted events', async () => {
-    const contractEvents = await testHelper.council.fetchEvents();
 
-    const councilKeys = getNewCouncilMembers(contractEvents);
+  it('client gets a tree matching its onchain root', async () => {
 
-    const councilMerkleTreeFromEvents =
-      testHelper.council.buildAndVerifyCouncilMerkleTree(councilKeys);
+    const tree = await councilTree();
+    const contractRoot = await testHelper.councilClient.councilContract.councilMembersMerkleRoot.fetch();
+
+    if (!contractRoot) {
+      throw new Error('Contract root is undefined');
+    }
+    const treeRoot = tree.getRoot();
 
     assert.ok(
-      councilMerkleTreeFromEvents
-        .getRoot()
-        .equals(councilMerkleTree.getRoot())
-        .toBoolean()
+      contractRoot.equals(treeRoot).toBoolean(),
+      'Tree root does not match contract root'
     );
   });
 
   it('should be possible for a council member to create a proposal', async () => {
-    const contractEventsBefore = await testHelper.council.fetchEvents();
 
-    proposalMerkleMap = rebuildProposalMerkleMap(contractEventsBefore);
-    resolutionMerkleTree = rebuildResolutionMerkleTree(contractEventsBefore);
-    govResolutionIndex = Number(
-      getNextEmptyResolutionIndex(resolutionMerkleTree).toBigint()
-    );
+    updateSpec = ZkusdProtocolUpdateSpec.empty();
 
-    const councilMerkleTree =
-      testHelper.council.buildAndVerifyCouncilMerkleTree(
-        council.map((keypair) => keypair.publicKey)
-      );
+    const signature = Signature.create(seat0.privateKey, updateSpec.toFields());
 
-    const councilSeatIndex = 0;
-    const voteBitArray = Field(2 ** councilSeatIndex); // The seat index is encoded as 2^index
-    const councilMember = council[councilSeatIndex];
+    const voteProof = await cclient().createVoteProof({updateSpec, signature, seat: 0});
 
-    const voteProof = await generateVoteProof(
-      councilMember,
-      councilMerkleTree,
-      councilSeatIndex,
-      govResolutionIndex as number
-    );
-    updateSpec = voteProof.publicInput;
+    const contractEventsBefore = await testHelper.councilClient.councilContract.fetchEvents();
 
-    const { proposalWitness, proposalCurrentVoteBitArray, resolutionWitness } =
-      supportProposalHelper(voteProof, proposalMerkleMap, resolutionMerkleTree);
+    const result = await cclient().submitVote(voteProof, seat0);
 
-    const [rootBefore] = proposalWitness.computeRootAndKey(
-      proposalCurrentVoteBitArray
-    );
+    assert.ok(result.transactionIncluded, 'Transaction was not included');
 
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.council.supportProposal(
-          voteProof,
-          proposalWitness,
-          proposalCurrentVoteBitArray,
-          resolutionWitness
-        );
-      },
-      { name: 'Council member casts a single vote proof' }
-    );
-
-    // verify if the vote was registered for the proposal.
-    const [newRoot] = proposalWitness.computeRootAndKey(voteBitArray);
+    const refreshedMap = await proposalMap(); 
+    const newRoot = refreshedMap.getRoot();
     // ensure that the root is set to this
-    const actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
-    if (!actualRoot) {
+    const rootBefore = await testHelper.councilClient.councilContract.proposalsMerkleMapRoot.fetch();
+    if (!rootBefore) {
       throw new Error('Proposal root is undefined');
     }
     assert.ok(
-      newRoot.equals(actualRoot).toBoolean(),
+      newRoot.equals(rootBefore).toBoolean(),
       'Proposal root does not match'
     );
-    // update the tree to match the root
-    proposalMerkleMap.set(voteProof.publicOutput.proposalHash, voteBitArray);
 
-    const contractEventsAfter = await testHelper.council.fetchEvents();
+    const contractEventsAfter = await cclient().councilContract.fetchEvents();
 
     //length of events should differ by 1
     assert.strictEqual(
@@ -143,10 +92,10 @@ describe('zkUSD Multisig Council Test Suite', () => {
       .data as unknown as CouncilProposalSupportChangeEvent;
 
     // check if the eventData matches the expected values
-    assert.ok(eventData.proposalTreeRootBefore.equals(rootBefore).toBoolean());
-    assert.ok(eventData.acceptedVoteBitArray.equals(voteBitArray).toBoolean());
+    assert.ok(eventData.proposalMapRootBefore.equals(rootBefore).toBoolean());
+    assert.ok(eventData.acceptedVoteBitArray.equals(voteProof.publicOutput.cummulatedVoteBitArray).toBoolean());
     assert.ok(
-      eventData.proposalHash
+      eventData.updateHash 
         .equals(Poseidon.hash(updateSpec.toFields()))
         .toBoolean()
     );
@@ -158,41 +107,29 @@ describe('zkUSD Multisig Council Test Suite', () => {
   });
 
   it('should not be possible to pass a proposal with unsufficient amount of votes', async () => {
-    const actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
+    const actualRoot = (await testHelper.councilClient.trees.proposalMap.get()).getRoot();
     if (!actualRoot) {
       throw new Error('Proposal root is undefined');
     }
 
     const proposalHash = Poseidon.hash(updateSpec.toFields());
-    const proposalWitness = proposalMerkleMap.getWitness(proposalHash);
-    const proposalCurrentVoteBitArray = proposalMerkleMap.get(proposalHash);
-    const resolutionWitness = new ZkusdGovUpdateWitness(
-      resolutionMerkleTree.getWitness(updateSpec.govResolutionIndex.toBigint())
-    );
+    const proposalCurrentVoteBitArray = (await proposalMap()).get(proposalHash);
 
     const voteThreshold =
-      await testHelper.council.standardProposalPassThreshold.fetch();
+      await testHelper.councilClient.councilContract.standardProposalPassThreshold.fetch();
 
-    voteThreshold?.assertGreaterThan(countBits(proposalCurrentVoteBitArray));
+    voteThreshold?.assertGreaterThan(ProposalMap.countBits(proposalCurrentVoteBitArray));
 
-    const contractEventsBefore = await testHelper.council.fetchEvents();
-    await assert.rejects(async () => {
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          await testHelper.council.passProposal(
-            updateSpec,
-            proposalWitness,
-            proposalCurrentVoteBitArray,
-            resolutionWitness
-          );
-        },
-        {
-          name: 'Alice tries to pass a proposal without it passing the threshold of votes.',
-        }
-      );
+    const contractEventsBefore = await cclient().councilContract.fetchEvents();
+    const result = await cclient().tryPassProposal(updateSpec, seat0); 
+    assert.ok(!result.transactionIncluded, 'Transaction was included');
+
+    // now lets test the force flag, it should throw 
+    assert.rejects(async () => {
+      await cclient().tryPassProposal(updateSpec, seat0, { force: true });
     });
-    const contractEventsAfter = await testHelper.council.fetchEvents();
+
+    const contractEventsAfter = await testHelper.councilClient.councilContract.fetchEvents();
 
     //length of events should be the same
     assert.strictEqual(contractEventsAfter.length, contractEventsBefore.length);
@@ -200,130 +137,55 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
   it('should not be possible to add a second vote using the same seat', async () => {
     const councilSeatIndex = 0;
-    const voteBitArray = Field(2 ** councilSeatIndex); // The seat index is encoded as 2^index
-    const councilMember = council[councilSeatIndex];
+    const councilMember = seat0;
 
-    const proposalCurrentVoteBitArray = proposalMerkleMap.get(
-      Poseidon.hash(updateSpec.toFields())
-    );
-    const expectedRoot = proposalMerkleMap.getRoot();
+    const newProof = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(councilMember.privateKey, updateSpec.toFields()),
+      seat: councilSeatIndex,
+    });
 
-    let actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
-    if (!actualRoot) {
-      throw new Error('Proposal root is undefined');
-    }
-    assert.ok(
-      expectedRoot.equals(actualRoot).toBoolean(),
-      'Proposal root does not match'
-    );
+    const contractEventsBefore = await cclient().councilContract.fetchEvents();
+    const result = await cclient().submitVote(newProof, councilMember);
+    // should accept the transaction but the vote count does not increase, i.e. it 
+    // still misses another vote
+    assert.ok(result.transactionIncluded, 'Transaction was not included');
+    assert.ok(!result.votesMissing, 'Votes missing');
 
-    const voteProof = await generateVoteProof(
-      councilMember,
-      councilMerkleTree,
-      councilSeatIndex,
-      govResolutionIndex as number
-    );
-    updateSpec = voteProof.publicInput;
-
-    const contractEventsBefore = await testHelper.council.fetchEvents();
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.council.supportProposalHelper(
-          voteProof,
-          proposalMerkleMap,
-          resolutionMerkleTree
-        );
-      },
-      { name: 'Same seat casts another vote' }
-    );
-    const contractEventsAfter = await testHelper.council.fetchEvents();
+    // even though the tx is submitted no new event should be emitted as no change 
+    // to the root occurred 
+    const contractEventsAfter = await cclient().councilContract.fetchEvents();
     //length of events should be the same
     assert.strictEqual(contractEventsAfter.length, contractEventsBefore.length);
 
-    actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
+    const actualRoot = await cclient().councilContract.proposalsMerkleMapRoot.fetch();
     if (!actualRoot) {
       throw new Error('Proposal root is undefined');
     }
     assert.ok(
-      expectedRoot.equals(actualRoot).toBoolean(),
+      actualRoot.equals(actualRoot).toBoolean(),
       'Proposal root does not match'
     );
   });
 
   it('should be possible add a vote to an existing proposal and then pass it', async () => {
-    const proposalHash = Poseidon.hash(updateSpec.toFields());
-    const councilSeatIndex = 1;
-    const voteBitArray = Field(2 ** councilSeatIndex); // The seat index is encoded as 2^index
-    const councilMember = council[councilSeatIndex];
+    const voteProof = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(seat1.privateKey, updateSpec.toFields()),
+      seat: 1,
+    });
+    const submitResult = await cclient().submitVote(voteProof, seat1);
+    assert.ok(submitResult.transactionIncluded, 'Transaction was not included'); 
+    assert.ok(!submitResult.votesMissing, 'Votes missing');
 
-    const proposalCurrentVoteBitArray = proposalMerkleMap.get(proposalHash);
-    const newVoteBitArrayValue = proposalCurrentVoteBitArray.add(voteBitArray);
-    const expectedRoot = proposalMerkleMap.getRoot();
+    // now lets pass the proposal
+    // check the event emission as well
+    const contractEventsBefore = await cclient().councilContract.fetchEvents();
+    const passResults = await cclient().tryPassProposal(updateSpec, seat0);
+    assert.ok(passResults.transactionIncluded, 'Transaction was not included');
+    assert.ok(!passResults.votesMissing, 'Votes missing');
 
-    let actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
-    if (!actualRoot) {
-      throw new Error('Proposal root is undefined');
-    }
-    assert.ok(
-      expectedRoot.equals(actualRoot).toBoolean(),
-      'Proposal root does not match'
-    );
-
-    const voteProof = await generateVoteProof(
-      councilMember,
-      councilMerkleTree,
-      councilSeatIndex,
-      govResolutionIndex as number
-    );
-
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.council.supportProposalHelper(
-          voteProof,
-          proposalMerkleMap,
-          resolutionMerkleTree
-        );
-      },
-      { name: 'Another Seat cast a vote' }
-    );
-
-    const proposalWitness = proposalMerkleMap.getWitness(proposalHash);
-
-    const [newRoot] = proposalWitness.computeRootAndKey(newVoteBitArrayValue);
-
-    actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
-    if (!actualRoot) {
-      throw new Error('Proposal root is undefined');
-    }
-    assert.ok(
-      newRoot.equals(actualRoot).toBoolean(),
-      'Proposal root does not match'
-    );
-
-    proposalMerkleMap.set(proposalHash, newVoteBitArrayValue);
-
-    // new vote is now casted let's retry passing the proposal
-    const newproposalWitness = proposalMerkleMap.getWitness(proposalHash);
-    const resolutionWitness = new ZkusdGovUpdateWitness(
-      resolutionMerkleTree.getWitness(updateSpec.govResolutionIndex.toBigint())
-    );
-
-    const contractEventsBefore = await testHelper.council.fetchEvents();
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.council.passProposal(
-          updateSpec,
-          newproposalWitness,
-          newVoteBitArrayValue,
-          resolutionWitness
-        );
-      },
-      { name: 'Alice tries to pass a proposal with sufficient votes' }
-    );
-    const contractEventsAfter = await testHelper.council.fetchEvents();
+    const contractEventsAfter = await cclient().councilContract.fetchEvents();  
     //length of events should differ by 1
     assert.strictEqual(
       contractEventsAfter.length,
@@ -336,15 +198,18 @@ describe('zkUSD Multisig Council Test Suite', () => {
     const eventData = lastEvent.event
       .data as unknown as CouncilProposalPassedEvent;
     // check if the eventData matches the expected values
-    assert.ok(eventData.proposalHash.equals(proposalHash).toBoolean());
+    assert.ok(eventData.updateHash.equals(Poseidon.hash(updateSpec.toFields())).toBoolean());
     assert.ok(
       eventData.resolutionIndex
         .equals(updateSpec.govResolutionIndex)
         .toBoolean()
+    );  
+    // lets check noow if the resolutiuon ws included in the resolution tree
+    const resolutionWitness = (await resolutionTree()).getWitnessWrapped(
+      updateSpec.govResolutionIndex.toBigint()
     );
-
-    const actualResolutionRoot =
-      await testHelper.council.resolutionsMerkleRoot.fetch();
+    const proposalHash = Poseidon.hash(updateSpec.toFields());
+    const actualResolutionRoot = await cclient().councilContract.resolutionsMerkleRoot.fetch();
     if (!actualResolutionRoot) {
       throw 'Could not fetch resolution merkle root';
     }
@@ -352,138 +217,82 @@ describe('zkUSD Multisig Council Test Suite', () => {
       resolutionWitness.calculateRoot(proposalHash);
 
     assert.ok(actualResolutionRoot.equals(expectedResolutionRoot).toBoolean());
-
-    resolutionMerkleTree.setLeaf(
-      updateSpec.govResolutionIndex.toBigint(),
-      proposalHash
-    );
   });
 
   it('should be possible to rollup votes and pass the proposal using the rollup', async () => {
-    const councilMerkleTree =
-      testHelper.council.buildAndVerifyCouncilMerkleTree(
-        council.map((keypair) => keypair.publicKey)
-      );
-
-    const councilSeatIndex = 0;
-    const voteBitArray = Field(2 ** councilSeatIndex); // The seat index is encoded as 2^index
-    const councilMember = council[councilSeatIndex];
-
-    const voteProof = await generateVoteProof(
-      councilMember,
-      councilMerkleTree,
-      councilSeatIndex,
-      Number(updateSpec.govResolutionIndex.add(UInt32.from(1)).toBigint())
-    );
-    updateSpec = voteProof.publicInput;
-    const proposalHash = Poseidon.hash(updateSpec.toFields());
-
-    const anothercouncilSeatIndex = 1;
-    const anothervoteBitArray = Field(2 ** anothercouncilSeatIndex); // The seat index is encoded as 2^index
-    const anothercouncilMember = council[anothercouncilSeatIndex];
-
-    const anothervoteProof = await generateVoteProof(
-      anothercouncilMember,
-      councilMerkleTree,
-      anothercouncilSeatIndex,
-      Number(updateSpec.govResolutionIndex.toBigint())
-    );
-
-    // now we haave two proofs lets merge them
-    const mergedVotesProof =
-      await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-        voteProof.publicInput,
-        voteProof,
-        anothervoteProof
-      );
-
-    const { proposalWitness, proposalCurrentVoteBitArray, resolutionWitness } =
-      supportProposalHelper(
-        mergedVotesProof.proof,
-        proposalMerkleMap,
-        resolutionMerkleTree
-      );
-    const contractEventsBefore = await testHelper.council.fetchEvents();
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.council.supportProposal(
-          mergedVotesProof.proof,
-          proposalWitness,
-          proposalCurrentVoteBitArray,
-          resolutionWitness
-        );
-      },
-      { name: 'alice sends a rollup vote' }
-    );
-
-    const rolledupBitArray = voteBitArray.add(anothervoteBitArray);
-
-    // verify if the vote was registered for the proposal.
-    const [newRoot] = proposalWitness.computeRootAndKey(rolledupBitArray);
-    // ensure that the root is set to this
-    const actualRoot = await testHelper.council.proposalsMerkleMapRoot.fetch();
+    // lets create two vote proofs then merge them 
+    const voteProof = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(seat0.privateKey, updateSpec.toFields()),
+      seat: 0,
+    }); 
+    const anotherVoteProof = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(seat1.privateKey, updateSpec.toFields()),
+      seat: 1,
+    }); 
+    const mergedVotesProof = await cclient().mergeVoteProofs(
+      voteProof,
+      anotherVoteProof
+    );  
+    const result = await cclient().submitVote(mergedVotesProof, seat0);
+    assert.ok(result.transactionIncluded, 'Transaction was not included');
+    assert.ok(!result.votesMissing, 'Votes missing');
+    
+    // lets check if the vote was registered
+    const actualRoot = await cclient().councilContract.proposalsMerkleMapRoot.fetch();
     if (!actualRoot) {
       throw new Error('Proposal root is undefined');
     }
+    const proposalHash = Poseidon.hash(updateSpec.toFields());
+    const proposalWitness = (await proposalMap()).getWitness(proposalHash);
+    const onChainVoteBitArray = (await proposalMap()).get(proposalHash);
+    const onchainProposalMapRoot = await cclient().councilContract.proposalsMerkleMapRoot.fetch();
+    if (!onchainProposalMapRoot) {
+      throw new Error('Proposal root is undefined');
+    }
+    // make sure that witness computes this root
+    const [newRoot] = proposalWitness.computeRootAndKey(onChainVoteBitArray);
     assert.ok(
-      newRoot.equals(actualRoot).toBoolean(),
+      newRoot.equals(onchainProposalMapRoot).toBoolean(),
       'Proposal root does not match'
     );
-    // update the tree to match the root
-    proposalMerkleMap.set(
-      voteProof.publicOutput.proposalHash,
-      rolledupBitArray
-    );
-
-    // new vote is now casted let's retry passing the proposal
-    const newproposalWitness = proposalMerkleMap.getWitness(proposalHash);
+    // double check that the rollup had this amount of votes
+    const rolledupBitArray = mergedVotesProof.publicOutput.cummulatedVoteBitArray;
+    
+    //is equal 
     assert.ok(
-      newproposalWitness
-        .computeRootAndKey(rolledupBitArray)[0]
-        .equals(actualRoot)
-        .toBoolean(),
-      'Proposal root from new witness does not match'
-    );
-
-    await testHelper.includeTx(
-      testHelper.agents.alice.keys,
-      async () => {
-        await testHelper.council.passProposal(
-          updateSpec,
-          newproposalWitness,
-          rolledupBitArray,
-          resolutionWitness
-        );
-      },
-      { name: 'Alice tries to pass a proposal #2' }
-    );
-    const contractEventsAfter = await testHelper.council.fetchEvents();
-
-    // length of events should differ by 2
+      rolledupBitArray.equals(onChainVoteBitArray).toBoolean(),
+      'Rollup does not match'
+    );  
+    // saving events
+    const contractEventsBefore = await cclient().councilContract.fetchEvents(); 
+    const passResult = await cclient().tryPassProposal(updateSpec, seat0);
+    assert.ok(passResult.transactionIncluded, 'Transaction was not included');
+    const contractEventsAfter = await cclient().councilContract.fetchEvents();
+    //length of events should differ by 1
     assert.strictEqual(
       contractEventsAfter.length,
-      contractEventsBefore.length + 2
-    );
+      contractEventsBefore.length + 1
+    );  
 
-    const actualResolutionRoot =
-      await testHelper.council.resolutionsMerkleRoot.fetch();
-    if (!actualResolutionRoot) {
+    // check if proposal is installed in the resolution tree
+    const resolutionWitness = (await resolutionTree()).getWitnessWrapped(
+      updateSpec
+    );
+    const onchainResolutionRoot = await cclient().councilContract.resolutionsMerkleRoot.fetch();
+    if (!onchainResolutionRoot) {
       throw 'Could not fetch resolution merkle root';
     }
     const expectedResolutionRoot =
-      resolutionWitness.calculateRoot(proposalHash);
+      resolutionWitness.calculateRoot(Poseidon.hash(updateSpec.toFields()));
 
-    assert.ok(actualResolutionRoot.equals(expectedResolutionRoot).toBoolean());
+    assert.ok(onchainResolutionRoot.equals(expectedResolutionRoot).toBoolean());
 
-    resolutionMerkleTree.setLeaf(
-      updateSpec.govResolutionIndex.toBigint(),
-      proposalHash
-    );
   });
 
   it('should be possible to rebuild the resolution and proposal tree with gathered events', async () => {
-    const events = await testHelper.council.fetchEvents();
+    const events = await cclient().councilContract.fetchEvents();
 
     const proposalEvents = events.filter(
       (event) => event.type === 'ProposalSupported'
@@ -492,18 +301,18 @@ describe('zkUSD Multisig Council Test Suite', () => {
       (event) => event.type === 'ProposalPassed'
     );
 
-    const proposalTree = new MerkleMap();
-    const resolutionTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
+    const proposalMap = new ProposalMap();
+    const resolutionTree = new ResolutionTree();
 
     proposalEvents.forEach((event) => {
       const eventData = event.event
         .data as unknown as CouncilProposalSupportChangeEvent;
 
-      const votes = proposalTree.get(eventData.proposalHash);
+      const votes = proposalMap.get(eventData.updateHash);
       // since you cannot retract a vote this is fine
       if (eventData.acceptedVoteBitArray.greaterThan(votes).toBoolean()) {
-        proposalTree.set(
-          eventData.proposalHash,
+        proposalMap.set(
+          eventData.updateHash,
           eventData.acceptedVoteBitArray
         );
       }
@@ -514,15 +323,15 @@ describe('zkUSD Multisig Council Test Suite', () => {
         .data as unknown as CouncilProposalPassedEvent;
       resolutionTree.setLeaf(
         eventData.resolutionIndex.toBigint(),
-        eventData.proposalHash
+        eventData.updateHash
       );
     });
 
-    const proposalTreeRoot = proposalTree.getRoot();
+    const proposalTreeRoot = proposalMap.getRoot();
     const resolutionTreeRoot = resolutionTree.getRoot();
 
     const actualProposalTreeRoot =
-      await testHelper.council.proposalsMerkleMapRoot.fetch();
+      await cclient().councilContract.proposalsMerkleMapRoot.fetch();
     if (!actualProposalTreeRoot) {
       throw new Error('Proposal root is undefined');
     }
@@ -532,7 +341,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
     );
 
     const actualResolutionTreeRoot =
-      await testHelper.council.resolutionsMerkleRoot.fetch();
+      await cclient().councilContract.resolutionsMerkleRoot.fetch();
 
     if (!actualResolutionTreeRoot) {
       throw new Error('Resolution root is undefined');
@@ -546,34 +355,29 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
   it('should not be possible to use existing resolution index', async () => {
     const councilSeatIndex = 0;
-    const councilMember = council[councilSeatIndex];
+    const councilMember = seat0;
 
-    const voteProof = await generateVoteProof(
-      councilMember,
-      councilMerkleTree,
-      councilSeatIndex,
-      1
-    );
+    const voteProof = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(councilMember.privateKey, updateSpec.toFields()),
+      seat: councilSeatIndex,
+    });
 
     updateSpec = voteProof.publicInput;
 
-    const contractEventsBefore = await testHelper.council.fetchEvents();
+    const contractEventsBefore = await cclient().councilContract.fetchEvents();
 
+    // use client instead with option force
     await assert.rejects(async () => {
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          await testHelper.council.supportProposalHelper(
-            voteProof,
-            proposalMerkleMap,
-            resolutionMerkleTree
-          );
-        },
-        { name: 'New proposal for the same resolution tx' }
+      await cclient().submitVote(
+        voteProof,  
+        seat0,
+        { force: true }  
       );
-    });
+    },
+  );
 
-    const contractEventsAfter = await testHelper.council.fetchEvents();
+    const contractEventsAfter = await cclient().councilContract.fetchEvents();
     //length of events should be the same
     assert.strictEqual(contractEventsAfter.length, contractEventsBefore.length);
   });
@@ -584,61 +388,29 @@ describe('zkUSD Multisig Council Test Suite', () => {
      * Helper that executes the view‑method inside a dry transaction
      * and returns its Bool result.
      */
-    async function queryCanExecute(
+    async function applyResolution(
       spec: ZkusdProtocolUpdateSpec,
-      witness: ZkusdGovUpdateWitness
-    ): Promise<Bool> {
-      let ok: Bool = Bool(false);
-      await testHelper.includeTx(
-        testHelper.agents.alice.keys,
-        async () => {
-          ok = await testHelper.council.canExecuteGovResolution(
-            Field(42),
-            spec,
-            witness
-          );
-        },
-        { name: `canExecuteGovResolution #${nameCounter}` }
+    ): Promise<boolean> {
+      const result = await cclient().applyPassedProposalToEngine(
+        spec,
+        testHelper.agents.alice.keys
       );
-      return ok;
+      return result.transactionIncluded;
     }
 
     it('returns *true* for a resolution that actually passed', async () => {
-      const contractEvents = await testHelper.council.fetchEvents();
-      resolutionMerkleTree = rebuildResolutionMerkleTree(contractEvents);
-
-      const witnessAtUpdateSpecResolutionIndex = new ZkusdGovUpdateWitness(
-        resolutionMerkleTree.getWitness(
-          updateSpec.govResolutionIndex.toBigint()
-        )
+      const res = await applyResolution(
+        updateSpec
       );
-
-      const witnessAtIndexGovResolutionIndex = new ZkusdGovUpdateWitness(
-        resolutionMerkleTree.getWitness(
-          updateSpec.govResolutionIndex.toBigint()
-        )
-      );
-
-      const res = await queryCanExecute(
-        updateSpec,
-        witnessAtUpdateSpecResolutionIndex
-      );
-      assert.ok(res.toBoolean(), 'expected execution to be allowed');
+      assert.ok(res, 'expected execution to be allowed');
     });
 
     it('rejects when the proposal hash does **not** match the witness', async () => {
       // Same resolution slot, but totally different proposal data → hash mismatch
       const badSpec = ZkusdProtocolUpdateSpec.empty();
       badSpec.govResolutionIndex = updateSpec.govResolutionIndex;
-
-      const witness = new ZkusdGovUpdateWitness(
-        resolutionMerkleTree.getWitness(
-          updateSpec.govResolutionIndex.toBigint()
-        )
-      );
-
       await assert.rejects(async () => {
-        await queryCanExecute(badSpec, witness);
+        await applyResolution(badSpec);
       });
     });
 
@@ -648,15 +420,8 @@ describe('zkUSD Multisig Council Test Suite', () => {
         UInt32.from(1)
       );
 
-      const witness = new ZkusdGovUpdateWitness(
-        // witness still points at the *old* (passed) index
-        resolutionMerkleTree.getWitness(
-          updateSpec.govResolutionIndex.toBigint()
-        )
-      );
-
       await assert.rejects(async () => {
-        await queryCanExecute(badSpec, witness);
+        await applyResolution(badSpec);
       });
     });
   });
@@ -676,31 +441,8 @@ describe('countBits helper', () => {
 
   vectors.forEach(([val, want]) => {
     it(`counts popcount(${val.toString()}) = ${want}`, () => {
-      const got = countBits(Field(val)).toBigInt();
+      const got = ProposalMap.countBits(Field(val)).toBigInt();
       assert.strictEqual(got, BigInt(want));
     });
   });
 });
-
-function supportProposalHelper(
-  voteProof: ZkusdGoverningCouncilVoteProof,
-  proposalTree: MerkleMap,
-  resolutionTree: MerkleTree
-) {
-  const proposalWitness = proposalTree.getWitness(
-    voteProof.publicOutput.proposalHash
-  );
-  const resolutionWitness = new ZkusdGovUpdateWitness(
-    resolutionTree.getWitness(
-      voteProof.publicInput.govResolutionIndex.toBigint()
-    )
-  );
-  const proposalCurrentVoteBitArray = proposalTree.get(
-    voteProof.publicOutput.proposalHash
-  );
-  return {
-    proposalWitness,
-    proposalCurrentVoteBitArray,
-    resolutionWitness,
-  };
-}

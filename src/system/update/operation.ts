@@ -9,6 +9,7 @@ import {
 /**
  * The fields of ZkusdProtocolUpdateOperation.
  * This is just a TypeScript type, not a class.
+ * NOTE: each operation must implement `isNoop(): Bool`.
  */
 export type ZkusdProtocolUpdateOperationFields = {
   emergencyStop: BoolOperation;
@@ -37,23 +38,15 @@ export class ZkusdProtocolUpdateOperation extends Struct({
   newVerificationKey: FieldOperation,
   vaultDebtCeiling: UInt64Operation,
 }) {
-  /**
-   * Creates a new operation from a partial set of fields,
-   * filling missing fields with no-ops.
-   */
   static create(
     partial: Partial<ZkusdProtocolUpdateOperationFields>
   ): ZkusdProtocolUpdateOperation {
-    // Fill in no-ops for missing fields
     const filled = {
       emergencyStop: partial.emergencyStop ?? BoolOperation.noop(),
-      vaultCreationDisabled:
-        partial.vaultCreationDisabled ?? BoolOperation.noop(),
+      vaultCreationDisabled: partial.vaultCreationDisabled ?? BoolOperation.noop(),
       collateralRatio: partial.collateralRatio ?? UInt8Operation.noop(),
-      validPriceBlockCount:
-        partial.validPriceBlockCount ?? UInt8Operation.noop(),
-      liquidationBonusRatio:
-        partial.liquidationBonusRatio ?? UInt8Operation.noop(),
+      validPriceBlockCount: partial.validPriceBlockCount ?? UInt8Operation.noop(),
+      liquidationBonusRatio: partial.liquidationBonusRatio ?? UInt8Operation.noop(),
       oracleWhitelistHash: partial.oracleWhitelistHash ?? FieldOperation.noop(),
       configMerkleRoot: partial.configMerkleRoot ?? FieldOperation.noop(),
       newVerificationKey: partial.newVerificationKey ?? FieldOperation.noop(),

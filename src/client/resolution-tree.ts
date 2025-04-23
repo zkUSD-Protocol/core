@@ -1,7 +1,7 @@
 import { Field, MerkleTree, UInt32 } from 'o1js';
-import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../system/governance.js';
 import { CouncilProposalPassedEvent } from '../system/council/events.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
+import { ResolutionTree } from '../system/council/resolution-tree.js';
 
 export interface IResolutionMerkleTreeProvider {
   getNextEmptyResolutionIndex(): Promise<UInt32>;
@@ -33,7 +33,7 @@ export class ContractEventsResolutionMerkleTreeProvider
 export function rebuildResolutionMerkleTree(
   events: Array<{ type: string; event: { data: any } }>
 ): MerkleTree {
-  const resolutionTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
+  const resolutionTree = new ResolutionTree();
 
   const resolutionEvents = events.filter(
     (event) => event.type === 'ProposalPassed'
@@ -41,7 +41,7 @@ export function rebuildResolutionMerkleTree(
   for (const event of resolutionEvents) {
     const eventData = event.event.data as CouncilProposalPassedEvent;
     const resolutionIndex = eventData.resolutionIndex.toBigint();
-    const proposalHash = eventData.proposalHash as Field;
+    const proposalHash = eventData.updateHash as Field;
 
     resolutionTree.setLeaf(resolutionIndex, proposalHash);
   }

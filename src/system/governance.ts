@@ -32,20 +32,7 @@ export class InitialCouncilMembers extends Struct({
   static MaxLength = InitialCouncilMembersMaxCount; // limited by the event size
 }
 
-/**
- * Height of the Merkle tree for ZKUSD governance updates.
- *
- * Supports up to 2^19 = 524,288 entries.
- */
-export const ZKUSD_GOV_UPDATE_TREE_HEIGHT = 20;
 
-/**
- * Merkle Witness class used to prove membership or updates in the
- * ZKUSD governance Merkle tree.
- */
-export class ZkusdGovUpdateWitness extends MerkleWitness(
-  ZKUSD_GOV_UPDATE_TREE_HEIGHT
-) {}
 
 /**
  * Constructor type for the ZkUsdGovernmentContract.

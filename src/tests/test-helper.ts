@@ -55,28 +55,21 @@ import { ProtocolData } from '../system/engine.js';
 import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
-import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import {
-  MultiSigZkusdProtocolUpdateProgram,
   ZkusdGoverningCouncilVoteProof,
 } from '../proofs/gov/council-multisig.js';
-import { ZkusdGovUpdateWitness } from '../system/governance.js';
 import { MinaChainPreconditions } from '../system/update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../system/update/protocol-preconditions.js';
-import {
-  generateVoteProof,
-  rebuildCouncilMembersAndTree,
-  rebuildProposalMerkleMap,
-  rebuildResolutionMerkleTree,
-} from '../system/council/common.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 import {
   BoolOperation,
   FieldOperation,
   UInt64Operation,
 } from '../system/update/simple-operations.js';
-import { ZkusdProtocolUpdateOperation, ZkusdProtocolUpdateOperationFields } from '../system/update/operation.js';
-import { getNextEmptyResolutionIndex } from '../client/resolution-tree.js';
+import { ZkusdProtocolUpdateOperationFields } from '../system/update/operation.js';
+import { ResolutionTree } from '../system/council/resolution-tree.js';
+import { IZkusdGoverningCouncilClient, ZkusdGoverningCouncilClient } from '../client/council-client.js';
+import { MockFieldsSigner } from '../signers/mock-field-signer.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -109,7 +102,6 @@ export class TestAmounts {
   static COLLATERAL_2_MINA = UInt64.from(2e9); // 2 Mina
   static COLLATERAL_1_MINA = UInt64.from(1e9); // 1 Mina
 
-  // zkUSD amounts
   static DEBT_100_ZKUSD = UInt64.from(100e9); // 100 zkUSD
   static DEBT_50_ZKUSD = UInt64.from(50e9); // 50 zkUSD
   static DEBT_40_ZKUSD = UInt64.from(40e9); // 40 zkUSD
@@ -157,9 +149,10 @@ export class TestHelper<E extends string> {
   agents: Record<string, AgentKeys> = {};
   oracles: Record<string, KeyPair> = {};
 
+  updateProofSigner: MockFieldsSigner = new MockFieldsSigner();
+  councilClient: IZkusdGoverningCouncilClient;
   token: ContractInstance<ReturnType<typeof FungibleTokenContract>>;
   engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
-  council: ZkusdGoverningCouncilContract;
   vaultVerificationKeyHash?: Field;
   oracleAggregationVk: VerificationKey;
   whitelist: OracleWhitelist = new OracleWhitelist({
@@ -446,7 +439,8 @@ export class TestHelper<E extends string> {
     this.token = deployedContracts.token;
     this.engine = deployedContracts.engine;
     this.oracleAggregationVk = deployedContracts.oracleAggregationVk;
-    this.council = deployedContracts.gov;
+    this.councilClient = ZkusdGoverningCouncilClient.withDataFromContractEvents(deployedContracts.gov, this.txMgr);
+
 
     if (['local', 'lightnet'].includes(this.mina.network.chainId)) {
       for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
@@ -833,18 +827,14 @@ export class TestHelper<E extends string> {
     }
     return vaultState as VaultState;
   }
-
   private async proposeAndExecuteUpdate(
     update: Partial<ZkusdProtocolUpdateOperationFields>,
     contractCall: (
       updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) => Promise<void>,
-    options: {
-      cache?: boolean;
-    } = {}
+    options: { cache?: boolean } = {}
   ) {
-    const operation = ZkusdProtocolUpdateOperation.create(update);
     for (const key of Object.keys(update)) {
       const value = update[key as keyof ZkusdProtocolUpdateOperationFields];
       if (value && !value.isNoop().toBoolean()) {
@@ -854,165 +844,55 @@ export class TestHelper<E extends string> {
 
     const cache = options.cache ?? true;
 
-    // 1. Fetch events and rebuild on-chain state
-    const events = await this.council.fetchEvents();
-    const { councilTree } = rebuildCouncilMembersAndTree(events);
-    const proposalMap = rebuildProposalMerkleMap(events);
-    const resolutionTree = rebuildResolutionMerkleTree(events);
+    // Create update spec
+    const updateSpec = await this.councilClient.createUpdateSpec({
+      operation: update,
+      blockchainPreconditions: MinaChainPreconditions.always(),
+      protocolPreconditions: ZkusdProtocolPreconditions.always(),
+    });
 
-    // Create directory for cached proofs if needed
+    // Prepare cache path
     const cachedProofsPath = path.join(
-      path.dirname(new URL(import.meta.url).pathname), // Gets the directory where test-helper.ts is located
+      path.dirname(new URL(import.meta.url).pathname),
       'temp'
     );
-
     if (cache) {
-      try {
-        await fs.promises.mkdir(cachedProofsPath, { recursive: true });
-      } catch (err) {
-        console.warn(`Failed to create cache directory: ${err}`);
-      }
+      await fs.promises.mkdir(cachedProofsPath, { recursive: true }).catch((err) =>
+        console.warn(`Failed to create cache directory: ${err}`)
+      );
     }
 
-    // 2. Compute new resolution index and updateSpec
-    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
-    const updateSpec = ZkusdProtocolUpdateSpec.singleOperation(
-      govResolutionIndex,
-      operation,
-      {
-        blockchainPreconditions: MinaChainPreconditions.always(),
-        protocolPreconditions: ZkusdProtocolPreconditions.always(),
-      }
-    );
-
-    // Check for cached proofs if caching is enabled
-    let mergedVoteProof: ZkusdGoverningCouncilVoteProof | undefined;
-
-    // Create a deterministic but simpler hash for the cache key
-    const operationStr = JSON.stringify(operation);
-    const councilRootStr = councilTree.getRoot().toString();
-    const resolutionIndexStr = govResolutionIndex.toString();
-
-    // Use crypto module to create a hash from the combined strings
-    const hashInput = operationStr + councilRootStr + resolutionIndexStr;
-    const proofHash = crypto
-      .createHash('sha256')
-      .update(hashInput)
-      .digest('hex');
-
-    const proofCachePath = path.join(
-      cachedProofsPath,
-      `vote_proof_${proofHash}.json`
-    );
+    const councilRoot = (await this.councilClient.trees.councilTree.get()).getRoot();
+    const proofHash = await generateProofCacheKey(updateSpec, councilRoot);
+    const proofCachePath = path.join(cachedProofsPath, `vote_proof_${proofHash}.json`);
 
     console.time('Timing vote proof generation');
 
-    if (cache) {
-      try {
-        const fileExists = await fs.promises
-          .access(proofCachePath)
-          .then(() => true)
-          .catch(() => false);
+    let mergedVoteProof = cache
+      ? await loadCachedProof(proofCachePath)
+      : undefined;
 
-        if (fileExists) {
-          console.log(`Using cached proof from ${proofCachePath}`);
-          const cachedMergedProofJson = await fs.promises.readFile(
-            proofCachePath,
-            'utf8'
-          );
-          const cachedMergedProofData = JSON.parse(cachedMergedProofJson);
-
-          mergedVoteProof = await ZkusdGoverningCouncilVoteProof.fromJSON(
-            cachedMergedProofData.merged as JsonProof
-          );
-        }
-      } catch (err) {
-        console.warn(`Failed to load cached proof: ${err}`);
-      }
-    }
-
-    // Generate votes if no cached proof was found
     if (!mergedVoteProof) {
-      // 3. Generate council votes
-      const councilKeyPairs = this.networkKeys.council!;
-      const vote1 = await generateVoteProof(
-        councilKeyPairs[0],
-        councilTree,
-        0,
-        Number(govResolutionIndex.toBigint()),
+      mergedVoteProof = await generateVoteProofs(
+        this.councilClient,
+        this.networkKeys.council!,
         updateSpec
       );
-      const vote2 = await generateVoteProof(
-        councilKeyPairs[1],
-        councilTree,
-        1,
-        Number(govResolutionIndex.toBigint()),
-        updateSpec
-      );
-
-      // 4. Merge votes
-      const programOutput = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-        vote1.publicInput,
-        vote1,
-        vote2
-      );
-
-      mergedVoteProof = programOutput.proof;
-
       if (cache) {
-        try {
-          const cacheData = {
-            merged: mergedVoteProof.toJSON(),
-            metadata: {
-              operation,
-              councilRoot: councilTree.getRoot().toString(),
-              resolutionIndex: govResolutionIndex.toString(),
-              timestamp: new Date().toISOString(),
-            },
-          };
-
-          await fs.promises.writeFile(
-            proofCachePath,
-            JSON.stringify(cacheData, null, 2)
-          );
-        } catch (err) {
-          console.warn(`Failed to cache proof: ${err}`);
-        }
+        await cacheProof(proofCachePath, mergedVoteProof, updateSpec, councilRoot);
       }
     }
-    const finalProof: ZkusdGoverningCouncilVoteProof = mergedVoteProof;
-
-    const proposalHash = mergedVoteProof.publicOutput.proposalHash;
-    const voteBits = mergedVoteProof.publicOutput.cummulatedVoteBitArray;
 
     console.timeEnd('Timing vote proof generation');
 
-    // 5. Support proposal
-    await this.includeTx(this.deployer, async () => {
-      await this.council.supportProposalHelper(
-        finalProof,
-        proposalMap,
-        resolutionTree
-      );
-    });
+    await this.councilClient.submitVote(mergedVoteProof, this.deployer);
+    await this.councilClient.tryPassProposal(updateSpec, this.deployer);
 
-    proposalMap.set(proposalHash, voteBits);
-    const proposalWitness = proposalMap.getWitness(proposalHash);
-
-    // 6. Pass proposal
-    const resolutionWitness = new ZkusdGovUpdateWitness(
-      resolutionTree.getWitness(govResolutionIndex.toBigint())
+    const resolutionTree = await this.councilClient.trees.resolutionTree.get();
+    const resolutionWitness = resolutionTree.getWitnessWrapped(
+      updateSpec.govResolutionIndex.toBigint()
     );
-    await this.includeTx(this.deployer, async () => {
-      await this.council.passProposal(
-        updateSpec,
-        proposalWitness,
-        voteBits,
-        resolutionWitness
-      );
-    });
 
-    // 7. Execute contract call
     await this.includeTx(this.deployer, () =>
       contractCall(updateSpec, resolutionWitness)
     );
@@ -1056,16 +936,14 @@ export class TestHelper<E extends string> {
         `   • MINA: ${agentAccount?.balance.toBigInt() / BigInt(1e9)} MINA`
       );
       console.log(
-        `   • zkUSD: ${
-          agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
+        `   • zkUSD: ${agentZkUsdAccount?.balance.toBigInt() / BigInt(1e9)
         } zkUSD`
       );
 
       console.log(`\n🏦 Vault Details:`);
       console.log(`   • Address: ${agent.vault!.publicKey.toBase58()}`);
       console.log(
-        `   • Collateral: ${
-          vault.collateralAmount.toBigInt() / BigInt(1e9)
+        `   • Collateral: ${vault.collateralAmount.toBigInt() / BigInt(1e9)
         } MINA`
       );
       console.log(
@@ -1277,7 +1155,7 @@ class PriceInputManager {
       for (const proof of proofs) {
         if (
           BigInt(proof.blockHeight) + BigInt(this.priceValidity) >=
-            blockH.toBigint() + minimalValidity &&
+          blockH.toBigint() + minimalValidity &&
           // and already valid!
           blockH.toBigint() >= BigInt(proof.blockHeight)
         ) {
@@ -1325,4 +1203,68 @@ class PriceInputManager {
 
     return oraclePriceSubmissions;
   }
+}
+
+
+// --- helper function: create a hash key for a given update spec and council root ---
+async function generateProofCacheKey(
+  updateSpec: ZkusdProtocolUpdateSpec,
+  councilRoot: Field
+): Promise<string> {
+  const operationStr = JSON.stringify(updateSpec);
+  const hashInput = operationStr + councilRoot.toString();
+  return crypto.createHash('sha256').update(hashInput).digest('hex');
+}
+
+// --- helper function: try loading a cached proof ---
+async function loadCachedProof(filePath: string): Promise<ZkusdGoverningCouncilVoteProof | undefined> {
+  try {
+    const fileExists = await fs.promises.access(filePath).then(() => true).catch(() => false);
+    if (!fileExists) return undefined;
+
+    const json = await fs.promises.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(json);
+    return await ZkusdGoverningCouncilVoteProof.fromJSON(parsed.merged as JsonProof);
+  } catch (err) {
+    console.warn(`Failed to load cached proof: ${err}`);
+    return undefined;
+  }
+}
+
+// --- helper function: save proof to cache ---
+async function cacheProof(
+  filePath: string,
+  proof: ZkusdGoverningCouncilVoteProof,
+  updateSpec: ZkusdProtocolUpdateSpec,
+  councilRoot: Field
+): Promise<void> {
+  try {
+    const cacheData = {
+      merged: proof.toJSON(),
+      metadata: {
+        operation: updateSpec.protocolUpdateOperation.toString(),
+        councilRoot: councilRoot.toString(),
+        resolutionIndex: updateSpec.govResolutionIndex.toString(),
+        timestamp: new Date().toISOString(),
+      },
+    };
+    await fs.promises.writeFile(filePath, JSON.stringify(cacheData, null, 2));
+  } catch (err) {
+    console.warn(`Failed to cache proof: ${err}`);
+  }
+}
+
+// --- helper function: generate merged vote proof from council keypairs ---
+async function generateVoteProofs(
+  councilClient: IZkusdGoverningCouncilClient,
+  councilKeyPairs: KeyPair[],
+  updateSpec: ZkusdProtocolUpdateSpec
+): Promise<ZkusdGoverningCouncilVoteProof> {
+  const signature1 = Signature.create(councilKeyPairs[0].privateKey, updateSpec.toFields());
+  const vote1 = await councilClient.createVoteProof({ updateSpec, signature: signature1, seat: 0 });
+
+  const signature2 = Signature.create(councilKeyPairs[1].privateKey, updateSpec.toFields());
+  const vote2 = await councilClient.createVoteProof({ updateSpec, signature: signature2, seat: 1 });
+
+  return await councilClient.mergeVoteProofs(vote1, vote2);
 }

@@ -1,4 +1,4 @@
-import { AccountUpdate, PrivateKey, PublicKey, UInt64 } from 'o1js';
+import { PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';

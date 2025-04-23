@@ -56,7 +56,6 @@ import {
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
 import {
   ZkUsdGovernmentConstructor,
-  ZkusdGovUpdateWitness,
 } from '../system/governance.js';
 import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
 import {
@@ -65,6 +64,7 @@ import {
 } from '../system/update/blockchain-state.js';
 import { ZkusdUpdateProtocolState } from '../system/update/protocol-state.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
+import { ResolutionTree } from '../system/council/resolution-tree.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -573,7 +573,7 @@ export function ZkUsdEngineContract(args: {
 
     @method async govUpdateVaultDebtCeiling(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateVaultDebtCeiling,
@@ -600,7 +600,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async govToggleEmergencyStop(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovStopProtocol,
@@ -628,7 +628,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async govUpdateValidPriceBlockCount(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateValidPriceBlockCount,
@@ -658,7 +658,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async govUpdateLiquidationBonusRatio(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateLiquidationBonusRatio,
@@ -685,7 +685,7 @@ export function ZkUsdEngineContract(args: {
 
     @method async govUpdateCollateralRatio(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       // perform common checks
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
@@ -725,7 +725,7 @@ export function ZkUsdEngineContract(args: {
     @method async govUpdateOracleWhitelist(
       whitelist: OracleWhitelist,
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       //Precondition
       const previousHash = this.oracleWhitelistHash.getAndRequireEquals();
@@ -762,7 +762,7 @@ export function ZkUsdEngineContract(args: {
     @method async govUpdateEngineVerificationKey(
       newVerificationKey: VerificationKey,
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       //Precondition
 
@@ -794,7 +794,7 @@ export function ZkUsdEngineContract(args: {
 
     @method async govUpdateConfigMerkleRoot(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       const { operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovUpdateOracleWhitelist,
@@ -822,7 +822,7 @@ export function ZkUsdEngineContract(args: {
 
     @method async govToggleVaultCreation(
       updateSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovToggleVaultCreation,
@@ -1096,7 +1096,7 @@ export function ZkUsdEngineContract(args: {
     async runGovUpdateCommon(
       methodCode: Field,
       resolutionSpec: ZkusdProtocolUpdateSpec,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ): Promise<{
       protocolDataBefore: ProtocolData;
       operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is

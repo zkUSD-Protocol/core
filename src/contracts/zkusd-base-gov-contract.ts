@@ -7,8 +7,8 @@ import {
   Struct,
 } from 'o1js';
 
-import { ZkusdGovUpdateWitness } from '../system/governance.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
+import { ResolutionTree } from '../system/council/resolution-tree.js';
 
 export class ZkUsdGovernmentContract extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
@@ -23,7 +23,7 @@ export class ZkUsdGovernmentContract extends SmartContract {
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
     resolutionUpdateSpec: ZkusdProtocolUpdateSpec,
-    resolutionWitness: ZkusdGovUpdateWitness
+    resolutionWitness: ResolutionTree.Witness
   ) {
     Provable.log('base method called');
     return Bool(false);

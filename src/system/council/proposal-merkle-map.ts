@@ -1,4 +1,4 @@
-import { Field, MerkleMap, Provable, UInt8 } from 'o1js';
+import { Field, Gadgets, MerkleMap, Provable, UInt8 } from 'o1js';
 import { CouncilTree } from './council-tree';
 
 /**
@@ -36,5 +36,25 @@ export class ProposalMap extends MerkleMap {
     }
     const ret = UInt8.Unsafe.fromField(voteCount);
     return ret;
+  }
+
+  /**
+   * Sums two vote bit arrays.
+   *
+   * Bitwise ORs the two arrays to combine votes.
+   *
+   * @param leftBitArray - The first vote bit array.
+   * @param rightBitArray - The second vote bit array.
+   * @returns A `Field` representing the combined votes.
+   */
+  public static sumVotesProvably(
+    leftBitArray: Field,
+    rightBitArray: Field
+  ): Field {
+    return Gadgets.or(
+      leftBitArray,
+      rightBitArray,
+      CouncilTree.MAX_SIZE
+    );
   }
 }

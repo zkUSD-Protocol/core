@@ -1,4 +1,4 @@
-import { Field, MerkleTree, MerkleWitness, Poseidon, PublicKey } from 'o1js';
+import { Field, MerkleTree, MerkleWitness, Poseidon, PublicKey, UInt8 } from 'o1js';
 
 /**
  * Height of the Merkle tree for council members.
@@ -95,11 +95,12 @@ export class CouncilTree extends MerkleTree {
   /**
    * Returns the public key at a specific index.
    */
-  public getSeatKey(index: number): PublicKey {
-    if (index < 0 || index >= this._seatingKeys.length) {
-      throw new Error(`Index ${index} is out of bounds`);
+  public getSeatKey(index: number | bigint | UInt8): PublicKey {
+    const i = Number(index instanceof UInt8 ? index.toBigInt() : BigInt(index));
+    if (i < 0 || i >= this._seatingKeys.length) {
+      throw new Error(`Index ${i} is out of bounds`);
     }
-    return this._seatingKeys[index];
+    return this._seatingKeys[i];
   }
 
   /**
@@ -122,7 +123,7 @@ export class CouncilTree extends MerkleTree {
    * @param index - Index in the tree (0-based).
    * @returns A typed Merkle witness.
    */
-  public getWitnessWrapped(index: number): ZkusdCouncilMemberWitness {
+  public getWitnessWrapped(index: number | bigint): ZkusdCouncilMemberWitness {
     return new CouncilTree.Witness(this.getWitness(BigInt(index)));
   }
 

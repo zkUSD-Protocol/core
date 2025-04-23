@@ -2,14 +2,15 @@ import { Field, PublicKey, Struct, UInt32 } from 'o1js';
 import { InitialCouncilMembers } from './../governance.js';
 
 export class CouncilProposalSupportChangeEvent extends Struct({
-  proposalTreeRootBefore: Field,
+  proposalMapRootBefore: Field,
   acceptedVoteBitArray: Field,
-  proposalHash: Field,
+  updateHash: Field,
   resolutionIndex: UInt32,
 }) {}
 
 export class CouncilProposalPassedEvent extends Struct({
-  proposalHash: Field,
+  resolutionTreeRootBefore: Field,
+  updateHash: Field,
   resolutionIndex: UInt32,
 }) {}
 

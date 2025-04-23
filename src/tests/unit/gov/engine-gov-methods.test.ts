@@ -1,4 +1,4 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import {
   Bool,
@@ -7,9 +7,8 @@ import {
   Poseidon,
   UInt32,
   UInt8,
-  MerkleTree,
-  MerkleMap,
   UInt64,
+  Signature,
 } from 'o1js';
 import { TestHelper } from '../../test-helper.js';
 import { ZkusdProtocolUpdateSpec } from '../../../system/update/input.js';
@@ -18,15 +17,7 @@ import {
   ValidityRangeUInt32,
 } from '../../../system/update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../../../system/update/protocol-preconditions.js';
-import {
-  generateVoteProof,
-  getNextEmptyResolutionIndex,
-  rebuildCouncilMembersAndTree,
-  rebuildProposalMerkleMap,
-  rebuildResolutionMerkleTree,
-} from '../../../system/council/common.js';
 import { MultiSigZkusdProtocolUpdateProgram } from '../../../proofs/gov/council-multisig.js';
-import { ZkusdGovUpdateWitness } from '../../../system/governance.js';
 import {
   BoolOperation,
   FieldOperation,
@@ -36,6 +27,9 @@ import {
 import { OracleWhitelist } from '../../../system/oracle.js';
 import { BoolPrecondition } from '../../../system/update/simple-preconditions.js';
 import { ZkusdProtocolUpdateOperation } from '../../../system/update/operation.js';
+import { ResolutionTree } from '../../../system/council/resolution-tree.js';
+import { CouncilTree } from '../../../system/council/council-tree.js';
+import { ProposalMap } from '../../../system/council/proposal-merkle-map.js';
 
 let testHelper: TestHelper<'local'>;
 const engine = () => testHelper.engine.contract;
@@ -55,9 +49,9 @@ const ORACLE_WL_HASH = Poseidon.hash(
 const CONFIG_ROOT_VAL = Field.random();
 const VAULT_DEBT_CEILING_VAL = UInt64.from(5e14);
 
-function makeDefaultAcceptedSpec(resIndex: UInt32) {
+function makeDefaultAcceptedSpec(resIndex: bigint | number) {
   const spec = ZkusdProtocolUpdateSpec.empty();
-  spec.govResolutionIndex = resIndex;
+  spec.govResolutionIndex = UInt32.from(resIndex);
   spec.protocolUpdateOperation = ZkusdProtocolUpdateOperation.create({
     emergencyStop: BoolOperation.set(EMERGENCY_STOP_VAL),
     validPriceBlockCount: UInt8Operation.set(VALID_PRICE_BLOCK_COUNT_VAL),
@@ -90,7 +84,7 @@ const testsToRun: TestCase[] = [
       return { newValue: VAULT_CREATION_DISABLED_VAL };
     },
     async verifyState(v) {
-      (await engine().getProtocolData()).vaultCreationDisabled.assertEquals(v);
+      (engine().getProtocolData()).vaultCreationDisabled.assertEquals(v);
     },
     event: 'VaultCreationToggled',
   },
@@ -237,10 +231,11 @@ type TestCase = {
 /* -------------------------------------------------------------------------- */
 
 describe('Engine – governance‑controlled setters', () => {
-  let updateWitness: ZkusdGovUpdateWitness;
-  let councilTree: MerkleTree;
-  let proposalMap: MerkleMap;
-  let resolutionTree: MerkleTree;
+  let updateWitness: ResolutionTree.Witness;
+  let councilTree: CouncilTree;
+  let proposalMap: ProposalMap;
+  let resolutionTree: ResolutionTree;
+  let cclient = () => testHelper.councilClient;
 
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
@@ -248,66 +243,35 @@ describe('Engine – governance‑controlled setters', () => {
     await testHelper.createLocalAgents('alice');
     await testHelper.createLocalAgents('bob');
 
-    const events = await testHelper.council.fetchEvents();
-    ({ councilTree } = rebuildCouncilMembersAndTree(events));
-    proposalMap = rebuildProposalMerkleMap(events);
-    resolutionTree = rebuildResolutionMerkleTree(events);
+    councilTree = await cclient().trees.councilTree.get();
+    proposalMap = await cclient().trees.proposalMap.get();
+    resolutionTree = await cclient().trees.resolutionTree.get();
 
-    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
+    const govResolutionIndex = resolutionTree.getNextEmptyIndex();
     updateSpec = makeDefaultAcceptedSpec(govResolutionIndex);
 
     const councilKeyPairs = testHelper.networkKeys.council!;
-    const voteA = await generateVoteProof(
-      councilKeyPairs[0],
-      councilTree,
-      0,
-      Number(govResolutionIndex.toBigint()),
-      updateSpec
-    );
-    const voteB = await generateVoteProof(
-      councilKeyPairs[1],
-      councilTree,
-      1,
-      Number(govResolutionIndex.toBigint()),
-      updateSpec
-    );
-
-    const merged = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-      voteA.publicInput,
-      voteA,
-      voteB
-    );
-
-    const proposalHash = merged.proof.publicOutput.proposalHash;
-    const voteBits = merged.proof.publicOutput.cummulatedVoteBitArray;
-
-    await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
-      await testHelper.council.supportProposalHelper(
-        merged.proof,
-        proposalMap,
-        resolutionTree
-      );
+    const voteA = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(councilKeyPairs[0].privateKey, updateSpec.toFields()),
+      seat: councilKeyPairs[0].publicKey,
     });
-    console.log('Im here', proposalHash.toString());
-
-    proposalMap.set(proposalHash, voteBits);
-    const proposalWitness = proposalMap.getWitness(proposalHash);
-
-    await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
-      await testHelper.council.passProposal(
-        updateSpec,
-        proposalWitness,
-        voteBits,
-        new ZkusdGovUpdateWitness(
-          resolutionTree.getWitness(govResolutionIndex.toBigint())
-        )
-      );
+    const voteB = await cclient().createVoteProof({
+      updateSpec,
+      signature: Signature.create(councilKeyPairs[1].privateKey, updateSpec.toFields()),
+      seat: councilKeyPairs[1].publicKey,
     });
 
-    resolutionTree.setLeaf(govResolutionIndex.toBigint(), proposalHash);
-    updateWitness = new ZkusdGovUpdateWitness(
-      resolutionTree.getWitness(govResolutionIndex.toBigint())
-    );
+    const merged = await cclient().mergeVoteProofs(voteA, voteB);
+    const proposalHash = merged.publicOutput.proposalHash;
+    const voteBits = merged.publicOutput.cummulatedVoteBitArray;
+
+    const results = await cclient().submitVote(merged, testHelper.agents.alice.keys, { force: true });
+    assert(results.transactionIncluded);
+    assert(results.votesMissing === 0n);
+    const passResults = await cclient().tryPassProposal(updateSpec, testHelper.agents.alice.keys, { force: true });
+    assert(passResults.transactionIncluded);
+    updateWitness = resolutionTree.getWitnessWrapped(govResolutionIndex);
   });
 
   for (const tc of testsToRun) {
@@ -334,8 +298,8 @@ describe('Engine – governance‑controlled setters', () => {
       it('❌ gov rejects → fails', async () => {
         const { newValue } = tc.makeOperation();
         const badSpecIndex = updateSpec.govResolutionIndex.add(1);
-        const spec = makeDefaultAcceptedSpec(badSpecIndex);
-        const witness = new ZkusdGovUpdateWitness(
+        const spec = makeDefaultAcceptedSpec(badSpecIndex.toBigint());
+        const witness = new ResolutionTree.Witness(
           resolutionTree.getWitness(badSpecIndex.toBigint())
         );
         await assert.rejects(async () => {
@@ -354,7 +318,7 @@ describe('Engine – governance‑controlled setters', () => {
 
       it('❌ bad blockchain preconditions → fails', async () => {
         const { newValue } = tc.makeOperation();
-        const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex);
+        const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex.toBigint());
         badSpec.blockchainPreconditions = new MinaChainPreconditions({
           slotIndexValidityRange:
             MinaChainPreconditions.always().slotIndexValidityRange,
@@ -379,7 +343,7 @@ describe('Engine – governance‑controlled setters', () => {
 
       it('❌ bad protocol preconditions → fails', async () => {
         const { newValue } = tc.makeOperation();
-        const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex);
+        const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex.toBigint());
         badSpec.protocolUpdatePreconditions = ZkusdProtocolPreconditions.create(
           {
             emergencyStop: BoolPrecondition.equal(true),

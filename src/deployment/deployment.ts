@@ -4,7 +4,6 @@ import { getNetworkKeys, NetworkKeyPairs } from '../config/keys.js';
 import {
   AccountUpdate,
   Bool,
-  Provable,
   UInt64,
   UInt8,
   VerificationKey,
@@ -17,9 +16,9 @@ import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import {
-  MAX_ZKUSD_COUNCIL_SIZE,
   MultiSigZkusdProtocolUpdateProgram,
 } from '../proofs/gov/council-multisig.js';
+import { CouncilTree } from '../system/council/council-tree.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -271,9 +270,9 @@ export class DeploymentService {
       const threshold = Math.floor(
         CouncilVoteThresholdRatio * councilKeys?.length
       );
-      if (threshold > MAX_ZKUSD_COUNCIL_SIZE) {
+      if (threshold > CouncilTree.MAX_SIZE)  {
         throw new Error(
-          `Council size exceeds the maximum size of ${MAX_ZKUSD_COUNCIL_SIZE}`
+          `Council size exceeds the maximum size of ${CouncilTree.MAX_SIZE}`
         );
       }
 

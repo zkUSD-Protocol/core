@@ -1,7 +1,6 @@
 import {
   Field,
   Gadgets,
-  MerkleWitness,
   Poseidon,
   PublicKey,
   SelfProof,
@@ -10,17 +9,12 @@ import {
 } from 'o1js';
 import { ZkusdProtocolUpdateSpec } from '../../system/update/input.js';
 import { ZkusdProtocolUpdateOutput } from '../../system/update/output.js';
+import { CouncilTree } from '../../system/council/council-tree.js';
 
 // --------------- Council
 
-export const MAX_ZKUSD_COUNCIL_SIZE = 240; // so that we get bitwise operations which cap at 240 bits per field (more (up to 254) may result in potential underconstraint issues in the circuit)
 export const MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE: bigint =
-  2n ** BigInt(MAX_ZKUSD_COUNCIL_SIZE);
-export const ZKUSD_COUNCIL_TREE_HEIGHT = 9; // will fit the 240 council members
-
-export class ZkusdCouncilMemberWitness extends MerkleWitness(
-  ZKUSD_COUNCIL_TREE_HEIGHT
-) {}
+  1n << BigInt(CouncilTree.MAX_SIZE);
 
 /** Generic multisig zkusd protocol update program */
 export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
@@ -72,7 +66,7 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
         rightOutput.cummulatedVoteBitArray = Gadgets.or(
           rightOutput.cummulatedVoteBitArray,
           leftOutput.cummulatedVoteBitArray,
-          MAX_ZKUSD_COUNCIL_SIZE
+          CouncilTree.MAX_SIZE
         );
 
         return { publicOutput: rightOutput };
@@ -82,7 +76,7 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
       privateInputs: [
         Signature,
         PublicKey,
-        ZkusdCouncilMemberWitness,
+        CouncilTree.Witness,
         Field,
         Field,
       ],
@@ -90,7 +84,7 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
         publicInput: ZkusdProtocolUpdateSpec,
         updateSignature: Signature,
         signaturePublicKey: PublicKey,
-        councilMemberWitness: ZkusdCouncilMemberWitness,
+        councilMemberWitness: CouncilTree.Witness,
         councilMemberMerkleRoot: Field,
         councilMemberTreeIndexFieldValue: Field // for the seat with an index of 3, this should be 2^3 = 8
       ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
@@ -102,7 +96,7 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
         x.assertGreaterThan(Field(0));
         let xMinus1 = x.sub(Field(1));
 
-        let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
+        let andValue = Gadgets.and(x, xMinus1, CouncilTree.MAX_SIZE);
         andValue.assertEquals(Field(0));
 
         // verify the vote (signature)
@@ -144,6 +138,7 @@ export const MultiSigZkusdProtocolUpdateProgram = ZkProgram({
   },
 });
 
+// TODO use the algorithm from the tree to compute the leaf
 export function pubkeyToCouncilSeatLeaf(
   councilKey: PublicKey,
   index: number
@@ -157,15 +152,6 @@ function pubkeyToCouncilSeatLeaf_(
   indexFieldValue: Field
 ): Field {
   return Poseidon.hash([indexFieldValue, ...councilKey.toFields()]);
-}
-
-function assertOneBitSet(x: Field) {
-  // we want to check: x != 0, and (x & (x - 1)) == 0
-  x.assertGreaterThan(Field(0));
-  let xMinus1 = x.sub(Field(1));
-
-  let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
-  andValue.assertEquals(Field(0));
 }
 
 export class ZkusdGoverningCouncilVoteProof extends ZkProgram.Proof(
