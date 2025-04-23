@@ -235,16 +235,16 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       .calculateRoot(Field.from(0))
       .assertEquals(resolutionsMerkleRoot, 'Invalid resolution witness');
 
-    // now check if the vote count is above the treshold
-    const treshold = this.standardProposalPassThreshold.getAndRequireEquals();
+    // now check if the vote count is above the threshold
+    const threshold = this.standardProposalPassThreshold.getAndRequireEquals();
     const bits = proposalCurrentVoteBitArray.toBits();
     let voteCount = Field.from(0);
     for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
       voteCount = Provable.if(bits[i], voteCount.add(1), voteCount);
     }
-    // voteCount should be equal to or above the treshold
+    // voteCount should be equal to or above the threshold
     voteCount.assertGreaterThanOrEqual(
-      treshold.value,
+      threshold.value,
       'Vote count is below the threshold'
     );
 
