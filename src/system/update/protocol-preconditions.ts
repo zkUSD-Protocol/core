@@ -1,5 +1,10 @@
 import { Field, Struct } from 'o1js';
-import { BoolPrecondition, HashPrecondition, UInt8Precondition } from './simple-preconditions.js';
+import {
+  BoolPrecondition,
+  HashPrecondition,
+  UInt64Precondition,
+  UInt8Precondition,
+} from './simple-preconditions.js';
 
 export type ZkusdProtocolPreconditionsFields = {
   emergencyStop: BoolPrecondition;
@@ -8,7 +13,9 @@ export type ZkusdProtocolPreconditionsFields = {
   liquidationBonusRatio: UInt8Precondition;
   oracleWhitelistHash: HashPrecondition;
   configMerkleRoot: HashPrecondition;
-}
+  vaultCreationDisabled: BoolPrecondition;
+  vaultDebtCeiling: UInt64Precondition;
+};
 
 /**
  * This class wraps any constraints on the protocol state. Each field either
@@ -21,6 +28,8 @@ export class ZkusdProtocolPreconditions extends Struct({
   liquidationBonusRatio: UInt8Precondition,
   oracleWhitelistHash: HashPrecondition,
   configMerkleRoot: HashPrecondition,
+  vaultCreationDisabled: BoolPrecondition,
+  vaultDebtCeiling: UInt64Precondition,
 }) {
   /**
    * Returns a precondition that is always satisfied.
@@ -30,14 +39,25 @@ export class ZkusdProtocolPreconditions extends Struct({
     return ZkusdProtocolPreconditions.create();
   }
 
-  static create(args?: Partial<ZkusdProtocolPreconditionsFields>): ZkusdProtocolPreconditions {
+  static create(
+    args?: Partial<ZkusdProtocolPreconditionsFields>
+  ): ZkusdProtocolPreconditions {
     return new ZkusdProtocolPreconditions({
       emergencyStop: args?.emergencyStop || BoolPrecondition.unconstrained(),
-      collateralRatio: args?.collateralRatio || UInt8Precondition.unconstrained(),
-      validPriceBlockCount: args?.validPriceBlockCount || UInt8Precondition.unconstrained(),
-      liquidationBonusRatio: args?.liquidationBonusRatio || UInt8Precondition.unconstrained(),
-      oracleWhitelistHash: args?.oracleWhitelistHash || HashPrecondition.unconstrained(),
-      configMerkleRoot: args?.configMerkleRoot || HashPrecondition.unconstrained(),
+      collateralRatio:
+        args?.collateralRatio || UInt8Precondition.unconstrained(),
+      validPriceBlockCount:
+        args?.validPriceBlockCount || UInt8Precondition.unconstrained(),
+      liquidationBonusRatio:
+        args?.liquidationBonusRatio || UInt8Precondition.unconstrained(),
+      oracleWhitelistHash:
+        args?.oracleWhitelistHash || HashPrecondition.unconstrained(),
+      configMerkleRoot:
+        args?.configMerkleRoot || HashPrecondition.unconstrained(),
+      vaultCreationDisabled:
+        args?.vaultCreationDisabled || BoolPrecondition.unconstrained(),
+      vaultDebtCeiling:
+        args?.vaultDebtCeiling || UInt64Precondition.unconstrained(),
     });
   }
   toFields(): Field[] {
@@ -48,6 +68,8 @@ export class ZkusdProtocolPreconditions extends Struct({
       ...this.liquidationBonusRatio.toFields(),
       ...this.oracleWhitelistHash.toFields(),
       ...this.configMerkleRoot.toFields(),
+      ...this.vaultCreationDisabled.toFields(),
+      ...this.vaultDebtCeiling.toFields(),
     ];
   }
 }

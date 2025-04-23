@@ -184,8 +184,10 @@ export function mkStatusFailedBeforeSending(
   return { kind: 'FailedBeforeSending', errors: [err] } as FailedBeforeSending;
 }
 
-export function isTransactionStatusKind(kind:string): kind is TransactionStatusKind {
-  try{
+export function isTransactionStatusKind(
+  kind: string
+): kind is TransactionStatusKind {
+  try {
     const statuses: string[] = [
       'Scheduled',
       'AwaitingForOtherTx',

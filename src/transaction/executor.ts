@@ -82,7 +82,9 @@ type TransactionLifecycle = {
   waitingPromise: TrackedPromise<AwaitedTransaction>;
 };
 
-type FullTransactionLifecycle = {depsAwaitingPromise: TrackedPromise<unknown>} & TransactionLifecycle;
+type FullTransactionLifecycle = {
+  depsAwaitingPromise: TrackedPromise<unknown>;
+} & TransactionLifecycle;
 
 /** Configuration options for executing a transaction. */
 interface TransactionExecutionConfig {
@@ -106,7 +108,7 @@ interface PreparedTransaction {
     publicKey: string | PublicKey,
     tokenId?: Field
   ) => Promise<NonceLock>;
-  updateLifecycle: ITransactionLifecycleApi,
+  updateLifecycle: ITransactionLifecycleApi;
   setStatuses: (
     status: TransactionStatus | 'unchanged',
     lifecycleStatus: TxLifecycleStatus | 'unchanged'

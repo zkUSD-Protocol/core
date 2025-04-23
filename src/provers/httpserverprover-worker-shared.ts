@@ -87,7 +87,7 @@ export async function startProvingLoop(
 
 export async function startStatusPostingLoop(
   config: HttpServerProverWorkerConfig,
-  workerJobContext: WorkerJobContext,
+  workerJobContext: WorkerJobContext
 ) {
   console.log('Starting status posting loop');
   const { workerId, epmBaseUrl, statusPostingIntervalMs: interval } = config;

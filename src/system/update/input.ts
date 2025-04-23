@@ -9,7 +9,10 @@
 import { Field, Struct, UInt32 } from 'o1js';
 import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
 import { MinaChainPreconditions } from './blockchain-preconditions.js';
-import { ZkusdProtocolUpdateOperation } from './operation.js';
+import {
+  ZkusdProtocolUpdateOperation,
+  ZkusdProtocolUpdateOperationFields,
+} from './operation.js';
 
 /**
  * Represents a full specification for a ZKUSD protocol update.
@@ -26,7 +29,6 @@ export class ZkusdProtocolUpdateSpec extends Struct({
   blockchainPreconditions: MinaChainPreconditions,
   protocolUpdateOperation: ZkusdProtocolUpdateOperation,
 }) {
-
   /**
    * Creates an empty (no-op) protocol update spec.
    *
@@ -63,13 +65,23 @@ export class ZkusdProtocolUpdateSpec extends Struct({
    */
   static singleOperation(
     resolutionIndex: string | number | bigint | UInt32,
-    protocolUpdateOperation: ZkusdProtocolUpdateOperation,
+    protocolUpdateOperation:
+      | ZkusdProtocolUpdateOperation
+      | Partial<ZkusdProtocolUpdateOperationFields>,
     args?: {
       blockchainPreconditions?: MinaChainPreconditions;
       protocolPreconditions?: ZkusdProtocolPreconditions;
     }
   ): ZkusdProtocolUpdateSpec {
-    return mkProtocolUpdateInput(resolutionIndex, protocolUpdateOperation, args);
+    // if protocolUpdateOperation is not an instance of ZkusdProtocolUpdateOperation,
+    // create it from the partial fields
+    let operation: ZkusdProtocolUpdateOperation;
+    if (protocolUpdateOperation instanceof ZkusdProtocolUpdateOperation) {
+      operation = protocolUpdateOperation;
+    } else {
+      operation = ZkusdProtocolUpdateOperation.create(protocolUpdateOperation);
+    }
+    return mkProtocolUpdateInput(resolutionIndex, operation, args);
   }
 
   /**

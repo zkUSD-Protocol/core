@@ -126,7 +126,7 @@ async function compileContracts(
     zkUsdTokenAddress: config.tokenPublicKey,
     minaPriceInputZkProgramVkHash: oracleAggregationVk.hash,
     zkUsdGovernmentAddress: config.governmentPublicKey,
-    GovernmentClass: ZkusdGoverningCouncilContract
+    GovernmentClass: ZkusdGoverningCouncilContract,
   });
 
   // 3. Extract FungibleToken class from ZkUsdEngine

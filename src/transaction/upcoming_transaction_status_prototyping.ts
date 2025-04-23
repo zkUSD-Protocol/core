@@ -403,7 +403,6 @@
 //   }
 // }
 
-
 // const usageExample = () => {
 // // Suppose we store the current status in a variable:
 // let currentStatus: TransactionStatus = {

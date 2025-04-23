@@ -319,4 +319,35 @@ describe('zkUSD Vault Mint Test Suite', () => {
       }
     );
   });
+  it('should fail to mint if resulting debt exceeds the vault debt ceiling', async () => {
+    // Set the vault debt ceiling to 10 zkUSD (assuming helper exists)
+    const currentAliceVaultDebt = (await th.retrieveAgentVaultState('alice')).debtAmount;
+    
+    await th.setProtocolDebtCeiling(currentAliceVaultDebt.add(TestAmounts.DEBT_10_ZKUSD));
+
+    // Alice mints up to the ceiling (should succeed)
+    await th.includeTx(th.agents.alice.keys, async () => {
+      await th.engine.contract.mintZkUsd(
+        th.agents.alice.vault!.publicKey,
+        TestAmounts.DEBT_10_ZKUSD,
+        oneUsdPrice
+      );
+    });
+
+    // Alice tries to mint 1 more zkUSD (should fail)
+    await assert.rejects(
+      async () => {
+        await th.includeTx(th.agents.alice.keys, async () => {
+          await th.engine.contract.mintZkUsd(
+            th.agents.alice.vault!.publicKey,
+            TestAmounts.DEBT_1_ZKUSD,
+            oneUsdPrice
+          );
+        });
+      },
+      (err: any) => {
+        return err.message.includes('debt ceiling');
+      }
+    );
+  });
 });
