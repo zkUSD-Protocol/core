@@ -1,4 +1,4 @@
-import { PrivateKey, PublicKey, Transaction, UInt32, UInt64 } from 'o1js';
+import { Field, PrivateKey, PublicKey, Signature, Transaction, UInt32, UInt64 } from 'o1js';
 import { Signed } from '../o1js-compat/signed';
 import { SignerZkappCommand } from '../o1js-compat/zkappcommand';
 import { KeyPair } from '../types/utility';
@@ -29,3 +29,8 @@ type Signer<T extends TxSignerType> = <P extends boolean>(args: {
     extraSigners: PrivateKey[];
   };
 }) => TrackedPromise<{ signedTx: SignedTxType<P>[T] }>;
+
+
+export interface FieldsSigner {
+    signFields: (fields: Field[]) => Promise<Signature>
+}

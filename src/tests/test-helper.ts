@@ -62,7 +62,7 @@ import {
   rebuildCouncilMembersAndTree,
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
-} from './unit/gov/council/common.js';
+} from '../system/council/common.js';
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 import {
   BoolOperation,

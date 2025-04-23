@@ -27,7 +27,7 @@ import {
   CouncilProposalSupportChangeEvent,
   getNewCouncilMembers,
 } from '../../../../system/council-events.js';
-import { generateVoteProof, prepareCouncilMembers } from './common.js';
+import { generateVoteProof, prepareCouncilMembers } from '../../../../system/council/common.js';
 
 describe('zkUSD Multisig Council Test Suite', () => {
   let testHelper: TestHelper<'local'>;

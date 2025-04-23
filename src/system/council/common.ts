@@ -2,18 +2,18 @@ import {
   CouncilProposalPassedEvent,
   CouncilProposalSupportChangeEvent,
   getNewCouncilMembers,
-} from '../../../../system/council-events.js';
+} from '../council/events.js';
 import { MerkleMap, Field, MerkleTree, Signature, UInt32 } from 'o1js';
-import { KeyPair } from '../../../../types/utility.js';
+import { KeyPair } from '../../types/utility.js';
 import {
   MultiSigZkusdProtocolUpdateProgram,
   ZkusdCouncilMemberWitness,
   ZkusdGoverningCouncilVoteProof,
-} from '../../../../proofs/gov/council-multisig.js';
-import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
-import { TestHelper } from '../../../test-helper.js';
-import { ZkusdGoverningCouncilContract } from '../../../../contracts/zkusd-governing-council.js';
-import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../../../../system/governance.js';
+} from '../../proofs/gov/council-multisig.js';
+import { ZkusdProtocolUpdateSpec } from '../update/input.js';
+import { TestHelper } from '../../tests/test-helper.js';
+import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
+import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../governance.js';
 
 export async function generateVoteProof(
   councilMember: KeyPair,

@@ -24,7 +24,7 @@ import {
   rebuildCouncilMembersAndTree,
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
-} from './council/common.js';
+} from '../../../system/council/common.js';
 import { MultiSigZkusdProtocolUpdateProgram } from '../../../proofs/gov/council-multisig.js';
 import { ZkusdGovUpdateWitness } from '../../../system/governance.js';
 import {

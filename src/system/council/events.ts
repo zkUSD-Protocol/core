@@ -1,5 +1,5 @@
-import { Field, Provable, PublicKey, Struct, UInt32 } from 'o1js';
-import { InitialCouncilMembers } from './governance.js';
+import { Field, PublicKey, Struct, UInt32 } from 'o1js';
+import { InitialCouncilMembers } from './../governance.js';
 
 export class CouncilProposalSupportChangeEvent extends Struct({
   proposalTreeRootBefore: Field,
