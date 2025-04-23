@@ -13,7 +13,7 @@ import {
   VerificationKey,
 } from 'o1js';
 import fs from 'fs';
-
+import path from 'path';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 
 import { FungibleTokenContract } from '@minatokens/token';
@@ -57,8 +57,14 @@ import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import {
+  MultiSigZkusdProtocolUpdateProgram,
+  ZkusdGoverningCouncilVoteProof,
+} from '../proofs/gov/council-multisig.js';
+import { ZkusdGovUpdateWitness } from '../system/governance.js';
+import { MinaChainPreconditions } from '../system/update/blockchain-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../system/update/protocol-preconditions.js';
+import {
   generateVoteProof,
-  getNextEmptyResolutionIndex,
   rebuildCouncilMembersAndTree,
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
@@ -66,13 +72,11 @@ import {
 import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
 import {
   BoolOperation,
+  FieldOperation,
   UInt64Operation,
 } from '../system/update/simple-operations.js';
-import { MinaChainPreconditions } from '../system/update/blockchain-preconditions.js';
-import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
-import { ZkusdProtocolPreconditions } from '../system/update/protocol-preconditions.js';
-import { MultiSigZkusdProtocolUpdateProgram } from '../proofs/gov/council-multisig.js';
-import { ZkusdGovUpdateWitness } from '../system/governance.js';
+import { ZkusdProtocolUpdateOperation, ZkusdProtocolUpdateOperationFields } from '../system/update/operation.js';
+import { getNextEmptyResolutionIndex } from '../client/resolution-tree.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -407,87 +411,6 @@ export class TestHelper<E extends string> {
   public zkusdCompilationData() {
     return this._deploymentService.compilationData;
   }
-  private async proposeAndExecuteUpdate(
-    operation: any,
-    contractCall: (
-      updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
-      resolutionWitness: ZkusdGovUpdateWitness
-    ) => Promise<void>
-  ) {
-    // 1. Fetch events and rebuild on-chain state
-    const events = await this.council.fetchEvents();
-    const { councilTree } = rebuildCouncilMembersAndTree(events);
-    const proposalMap = rebuildProposalMerkleMap(events);
-    const resolutionTree = rebuildResolutionMerkleTree(events);
-
-    // 2. Compute new resolution index and updateSpec
-    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
-    const updateSpec = ZkusdProtocolUpdateSpec.singleOperation(
-      govResolutionIndex,
-      operation,
-      {
-        blockchainPreconditions: MinaChainPreconditions.always(),
-        protocolPreconditions: ZkusdProtocolPreconditions.always(),
-      }
-    );
-
-    // 3. Generate council votes
-    const councilKeyPairs = this.networkKeys.council!;
-    const vote1= await generateVoteProof(
-      councilKeyPairs[0],
-      councilTree,
-      0,
-      Number(govResolutionIndex.toBigint()),
-      updateSpec
-    )
-    const vote2 = await generateVoteProof(
-      councilKeyPairs[1],
-        councilTree,
-        1,
-        Number(govResolutionIndex.toBigint()),
-        updateSpec
-    )
-
-    // 4. Merge votes
-    const merged = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-      vote1.publicInput,
-      vote1,
-      vote2
-    );
-
-    const proposalHash = merged.proof.publicOutput.proposalHash;
-    const voteBits = merged.proof.publicOutput.cummulatedVoteBitArray;
-
-    // 5. Support proposal
-    await this.includeTx(this.agents.alice.keys, async () => {
-      await this.council.supportProposalHelper(
-        merged.proof,
-        proposalMap,
-        resolutionTree
-      );
-    });
-
-    proposalMap.set(proposalHash, voteBits);
-    const proposalWitness = proposalMap.getWitness(proposalHash);
-
-    // 6. Pass proposal
-    const resolutionWitness = new ZkusdGovUpdateWitness(
-      resolutionTree.getWitness(govResolutionIndex.toBigint())
-    );
-    await this.includeTx(this.agents.alice.keys, async () => {
-      await this.council.passProposal(
-        updateSpec,
-        proposalWitness,
-        voteBits,
-        resolutionWitness
-      );
-    });
-
-    // 7. Execute contract call
-    await this.includeTx(this.agents.alice.keys, () =>
-      contractCall(updateSpec, resolutionWitness)
-    );
-  }
 
   public async setProtocolDebtCeiling(debtCeiling: UInt64) {
     return this.proposeAndExecuteUpdate(
@@ -559,22 +482,42 @@ export class TestHelper<E extends string> {
         console.log('Updating oracle whitelist');
       }
 
-      await this.includeTx(
-        this.deployer,
-        async () => {
-          await this.engine.contract.updateOracleWhitelist(this.whitelist);
-        },
+      await this.proposeAndExecuteUpdate(
         {
-          name: `Update Oracle Whitelist`,
-          extraSigners: [this.networkKeys.protocolAdmin.privateKey],
-          executor: 'local', // use local executor when tx is not supported by workers
-        }
+          oracleWhitelistHash: FieldOperation.set(
+            OracleWhitelist.hash(this.whitelist)
+          ),
+        },
+        (updateSpec, resolutionWitness) =>
+          this.engine.contract.govUpdateOracleWhitelist(
+            this.whitelist,
+            updateSpec,
+            resolutionWitness
+          )
       );
     } else {
       throw new Error(
         `Only use it on lightnet and local  found: ${this.mina.network.chainId}`
       );
     }
+  }
+
+  async updateOracleWhitelist(whitelist: OracleWhitelist) {
+    const oracleWhitelistHash = OracleWhitelist.hash(whitelist);
+
+    this.whitelist = whitelist;
+
+    return this.proposeAndExecuteUpdate(
+      {
+        oracleWhitelistHash: FieldOperation.set(oracleWhitelistHash),
+      },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govUpdateOracleWhitelist(
+          whitelist,
+          updateSpec,
+          resolutionWitness
+        )
+    );
   }
 
   stringifyAgent(
@@ -789,7 +732,7 @@ export class TestHelper<E extends string> {
     return await Promise.all(vaultCreationTxs.map((t) => t.awaitIncluded()));
   }
 
-  async stopTheProtocol() {
+  public async stopTheProtocol() {
     const packedProtocolData =
       await this.engine.contract.protocolDataPacked.fetch();
 
@@ -800,25 +743,27 @@ export class TestHelper<E extends string> {
     //Check to see if the protocol is already stopped
     const protocolData = ProtocolData.unpack(packedProtocolData);
     if (protocolData.emergencyStop.toBoolean()) {
-      console.log('Protocol is already stopped');
-      return;
+      throw new Error('Protocol is already stopped');
     }
 
     this.protocolStopCounter++;
-    await this.includeTx(
-      this.deployer,
-      async () => {
-        await this.engine.contract.toggleEmergencyStop(Bool(true));
-      },
+
+    return this.proposeAndExecuteUpdate(
       {
-        name: `Stop the protocol #${this.protocolStopCounter}`,
-        extraSigners: [this.networkKeys.protocolAdmin.privateKey],
-        executor: 'local', // use local executor for tx not supported by workers
+        emergencyStop: BoolOperation.set(true),
+      },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govToggleEmergencyStop(
+          updateSpec,
+          resolutionWitness
+        ),
+      {
+        cache: true,
       }
     );
   }
 
-  async resumeTheProtocol() {
+  public async resumeTheProtocol() {
     const packedProtocolData =
       await this.engine.contract.protocolDataPacked.fetch();
 
@@ -828,21 +773,19 @@ export class TestHelper<E extends string> {
 
     const protocolData = ProtocolData.unpack(packedProtocolData);
     if (!protocolData.emergencyStop.toBoolean()) {
-      console.log('Protocol is already running');
-      return;
+      throw new Error('Protocol is already running');
     }
-
     this.protocolResumeCounter++;
-    await this.includeTx(
-      this.deployer,
-      async () => {
-        await this.engine.contract.toggleEmergencyStop(Bool(false));
-      },
+
+    return this.proposeAndExecuteUpdate(
       {
-        executor: 'local', // use local executor for tx not supported by workers
-        name: `Resume the protocol #${this.protocolResumeCounter}`,
-        extraSigners: [this.networkKeys.protocolAdmin.privateKey],
-      }
+        emergencyStop: BoolOperation.set(false),
+      },
+      (updateSpec, resolutionWitness) =>
+        this.engine.contract.govToggleEmergencyStop(
+          updateSpec,
+          resolutionWitness
+        )
     );
   }
 
@@ -889,6 +832,190 @@ export class TestHelper<E extends string> {
       throw new Error(`Vault for ${agentName} does not exist`);
     }
     return vaultState as VaultState;
+  }
+
+  private async proposeAndExecuteUpdate(
+    update: Partial<ZkusdProtocolUpdateOperationFields>,
+    contractCall: (
+      updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
+      resolutionWitness: ZkusdGovUpdateWitness
+    ) => Promise<void>,
+    options: {
+      cache?: boolean;
+    } = {}
+  ) {
+    const operation = ZkusdProtocolUpdateOperation.create(update);
+    for (const key of Object.keys(update)) {
+      const value = update[key as keyof ZkusdProtocolUpdateOperationFields];
+      if (value && !value.isNoop().toBoolean()) {
+        console.log('Generating proof for operation', key);
+      }
+    }
+
+    const cache = options.cache ?? true;
+
+    // 1. Fetch events and rebuild on-chain state
+    const events = await this.council.fetchEvents();
+    const { councilTree } = rebuildCouncilMembersAndTree(events);
+    const proposalMap = rebuildProposalMerkleMap(events);
+    const resolutionTree = rebuildResolutionMerkleTree(events);
+
+    // Create directory for cached proofs if needed
+    const cachedProofsPath = path.join(
+      path.dirname(new URL(import.meta.url).pathname), // Gets the directory where test-helper.ts is located
+      'temp'
+    );
+
+    if (cache) {
+      try {
+        await fs.promises.mkdir(cachedProofsPath, { recursive: true });
+      } catch (err) {
+        console.warn(`Failed to create cache directory: ${err}`);
+      }
+    }
+
+    // 2. Compute new resolution index and updateSpec
+    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
+    const updateSpec = ZkusdProtocolUpdateSpec.singleOperation(
+      govResolutionIndex,
+      operation,
+      {
+        blockchainPreconditions: MinaChainPreconditions.always(),
+        protocolPreconditions: ZkusdProtocolPreconditions.always(),
+      }
+    );
+
+    // Check for cached proofs if caching is enabled
+    let mergedVoteProof: ZkusdGoverningCouncilVoteProof | undefined;
+
+    // Create a deterministic but simpler hash for the cache key
+    const operationStr = JSON.stringify(operation);
+    const councilRootStr = councilTree.getRoot().toString();
+    const resolutionIndexStr = govResolutionIndex.toString();
+
+    // Use crypto module to create a hash from the combined strings
+    const hashInput = operationStr + councilRootStr + resolutionIndexStr;
+    const proofHash = crypto
+      .createHash('sha256')
+      .update(hashInput)
+      .digest('hex');
+
+    const proofCachePath = path.join(
+      cachedProofsPath,
+      `vote_proof_${proofHash}.json`
+    );
+
+    console.time('Timing vote proof generation');
+
+    if (cache) {
+      try {
+        const fileExists = await fs.promises
+          .access(proofCachePath)
+          .then(() => true)
+          .catch(() => false);
+
+        if (fileExists) {
+          console.log(`Using cached proof from ${proofCachePath}`);
+          const cachedMergedProofJson = await fs.promises.readFile(
+            proofCachePath,
+            'utf8'
+          );
+          const cachedMergedProofData = JSON.parse(cachedMergedProofJson);
+
+          mergedVoteProof = await ZkusdGoverningCouncilVoteProof.fromJSON(
+            cachedMergedProofData.merged as JsonProof
+          );
+        }
+      } catch (err) {
+        console.warn(`Failed to load cached proof: ${err}`);
+      }
+    }
+
+    // Generate votes if no cached proof was found
+    if (!mergedVoteProof) {
+      // 3. Generate council votes
+      const councilKeyPairs = this.networkKeys.council!;
+      const vote1 = await generateVoteProof(
+        councilKeyPairs[0],
+        councilTree,
+        0,
+        Number(govResolutionIndex.toBigint()),
+        updateSpec
+      );
+      const vote2 = await generateVoteProof(
+        councilKeyPairs[1],
+        councilTree,
+        1,
+        Number(govResolutionIndex.toBigint()),
+        updateSpec
+      );
+
+      // 4. Merge votes
+      const programOutput = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+        vote1.publicInput,
+        vote1,
+        vote2
+      );
+
+      mergedVoteProof = programOutput.proof;
+
+      if (cache) {
+        try {
+          const cacheData = {
+            merged: mergedVoteProof.toJSON(),
+            metadata: {
+              operation,
+              councilRoot: councilTree.getRoot().toString(),
+              resolutionIndex: govResolutionIndex.toString(),
+              timestamp: new Date().toISOString(),
+            },
+          };
+
+          await fs.promises.writeFile(
+            proofCachePath,
+            JSON.stringify(cacheData, null, 2)
+          );
+        } catch (err) {
+          console.warn(`Failed to cache proof: ${err}`);
+        }
+      }
+    }
+    const finalProof: ZkusdGoverningCouncilVoteProof = mergedVoteProof;
+
+    const proposalHash = mergedVoteProof.publicOutput.proposalHash;
+    const voteBits = mergedVoteProof.publicOutput.cummulatedVoteBitArray;
+
+    console.timeEnd('Timing vote proof generation');
+
+    // 5. Support proposal
+    await this.includeTx(this.deployer, async () => {
+      await this.council.supportProposalHelper(
+        finalProof,
+        proposalMap,
+        resolutionTree
+      );
+    });
+
+    proposalMap.set(proposalHash, voteBits);
+    const proposalWitness = proposalMap.getWitness(proposalHash);
+
+    // 6. Pass proposal
+    const resolutionWitness = new ZkusdGovUpdateWitness(
+      resolutionTree.getWitness(govResolutionIndex.toBigint())
+    );
+    await this.includeTx(this.deployer, async () => {
+      await this.council.passProposal(
+        updateSpec,
+        proposalWitness,
+        voteBits,
+        resolutionWitness
+      );
+    });
+
+    // 7. Execute contract call
+    await this.includeTx(this.deployer, () =>
+      contractCall(updateSpec, resolutionWitness)
+    );
   }
 
   async printAgentState() {

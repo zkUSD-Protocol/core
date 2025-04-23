@@ -30,17 +30,8 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
     );
   });
 
-  it('should allow the protocol to be stopped with the admin key', async () => {
-    await th.includeTx(
-      th.deployer,
-      async () => {
-        await th.engine.contract.toggleEmergencyStop(Bool(true));
-      },
-      {
-        extraSigners: [th.networkKeys.protocolAdmin.privateKey],
-        name: 'toggleEmergencyStop #1',
-      }
-    );
+  it('should allow the protocol to be stopped', async () => {
+    await th.stopTheProtocol();
 
     const protocolDataPacked =
       await th.engine.contract.protocolDataPacked.fetch();
@@ -50,22 +41,9 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
     const emergencyStopFlag = protocolData.emergencyStop;
 
     assert.deepStrictEqual(emergencyStopFlag, Bool(true));
-
-    await th.resumeTheProtocol();
   });
 
   it('should emit the emergency stop event', async () => {
-    await th.includeTx(
-      th.deployer,
-      async () => {
-        await th.engine.contract.toggleEmergencyStop(Bool(true));
-      },
-      {
-        name: 'toggleEmergencyStop #2',
-        extraSigners: [th.networkKeys.protocolAdmin.privateKey],
-      }
-    );
-
     const contractEvents = await th.engine.contract.fetchEvents();
     const latestEvent = contractEvents[0];
 
@@ -75,35 +53,10 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
       latestEvent.event.data.emergencyStop,
       Bool(true)
     );
+  });
 
+  it('should allow the protocol to be resumed', async () => {
     await th.resumeTheProtocol();
-  });
-
-  it('should not allow the protocol to be stopped without the admin key', async () => {
-    await assert.rejects(async () => {
-      await th.includeTx(
-        th.agents.alice.keys,
-        async () => {
-          await th.engine.contract.toggleEmergencyStop(Bool(true));
-        },
-        { name: 'toggleEmergencyStop #3' }
-      );
-    }, /Transaction verification failed/i);
-  });
-
-  it('should allow the protocol to be resumed with the admin key', async () => {
-    await th.stopTheProtocol();
-
-    await th.includeTx(
-      th.deployer,
-      async () => {
-        await th.engine.contract.toggleEmergencyStop(Bool(false));
-      },
-      {
-        name: 'toggleEmergencyStop #4',
-        extraSigners: [th.networkKeys.protocolAdmin.privateKey],
-      }
-    );
 
     const emergencyStopFlag =
       await th.engine.contract.protocolDataPacked.fetch();
@@ -125,22 +78,6 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
     );
   });
 
-  it('should not allow the protocol to be resumed without the admin key', async () => {
-    await th.stopTheProtocol();
-
-    await assert.rejects(async () => {
-      await th.includeTx(
-        th.agents.alice.keys,
-        async () => {
-          await th.engine.contract.toggleEmergencyStop(Bool(false));
-        },
-        { name: 'toggleEmergencyStop #5' }
-      );
-    }, /Transaction verification failed/i);
-
-    await th.resumeTheProtocol();
-  });
-
   it('should not allow vault actions when the protocol is stopped', async () => {
     await th.stopTheProtocol();
 
@@ -158,13 +95,9 @@ describe('zkUSD Price Feed Emergency Stop Test Suite', () => {
         { name: 'mintZkUsd #1' }
       );
     }, new RegExp(ZkUsdEngineErrors.EMERGENCY_HALT));
-
-    await th.resumeTheProtocol();
   });
 
   it('should allow vault actions when the protocol is resumed', async () => {
-    await th.stopTheProtocol();
-
     await assert.rejects(async () => {
       await th.includeTx(
         th.agents.alice.keys,

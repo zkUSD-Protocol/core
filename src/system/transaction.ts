@@ -1,6 +1,8 @@
 import { JsonProof } from 'o1js';
 import { SizedArray } from '../types/utility';
 import { OracleWhitelist } from './oracle';
+import { ZkusdGovUpdateWitness } from './governance';
+import { ZkusdProtocolUpdateSpec } from './update/input';
 
 export enum ZkusdEngineTransactionType {
   // vault
@@ -52,19 +54,18 @@ export interface UpdateAdminArgs extends BaseZkusdEngineTransactionArgs {
   newAdmin: string;
 }
 
-export interface ToggleEmergencyStopArgs
-  extends BaseZkusdEngineTransactionArgs {
-  shouldStop: boolean;
+export interface GovUpdateArgs extends BaseZkusdEngineTransactionArgs {
+  updateSpec: ZkusdProtocolUpdateSpec;
+  resolutionWitness: ZkusdGovUpdateWitness;
 }
 
-export interface OracleWhitelistArgs extends BaseZkusdEngineTransactionArgs {
+export interface ToggleEmergencyStopArgs extends GovUpdateArgs {}
+
+export interface OracleWhitelistArgs extends GovUpdateArgs {
   oracleWhitelist: SizedArray<string, typeof OracleWhitelist.MAX_PARTICIPANTS>;
 }
 
-export interface UpdateValidPriceBlockCountArgs
-  extends BaseZkusdEngineTransactionArgs {
-  newValidPriceBlockCount: number;
-}
+export interface UpdateValidPriceBlockCountArgs extends GovUpdateArgs {}
 
 export interface SenderTransferArgs extends BaseZkusdEngineTransactionArgs {
   from: string;

@@ -10,7 +10,7 @@
  */
 
 import { MerkleWitness, Provable, PublicKey, Struct, UInt32 } from 'o1js';
-import { ZkUsdGovernmentContract } from '../contracts/zkusd-governing-council.js';
+import { ZkUsdGovernmentContract } from '../contracts/zkusd-base-gov-contract.js';
 
 /**
  * Maximum number of initial council members allowed.

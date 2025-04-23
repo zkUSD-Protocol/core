@@ -18,7 +18,7 @@ import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
  * This struct is primarily used to check if the protocol state satisfies
  * the expected update preconditions before applying a protocol update.
  */
-export class ZkusdUpdatedProtocolState extends Struct({
+export class ZkusdUpdateProtocolState extends Struct({
   emergencyStop: Bool,
   collateralRatio: UInt8,
   validPriceBlockCount: UInt8,
@@ -58,7 +58,7 @@ export class ZkusdUpdatedProtocolState extends Struct({
  */
 function theUpdatePreconditionsMatchProtocolState(args: {
   preconditions: ZkusdProtocolPreconditions;
-  protocolState: ZkusdUpdatedProtocolState;
+  protocolState: ZkusdUpdateProtocolState;
 }): Bool {
   const { preconditions, protocolState } = args;
 

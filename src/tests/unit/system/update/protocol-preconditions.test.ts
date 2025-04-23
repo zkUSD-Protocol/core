@@ -2,7 +2,7 @@
  *  tests/protocol-preconditions.test.ts
  *
  *  Unit‑tests for:
- *    • ZkusdUpdatedProtocolState.isValidForPreconditions()
+ *    • ZkusdUpdateProtocolState.isValidForPreconditions()
  *
  *  Uses Node’s native runner (node:test) and the `o1js` primitives.
  *****************************************************************************************/
@@ -12,7 +12,7 @@ import assert from 'node:assert';
 
 import { Bool, Field, UInt8, UInt64 } from 'o1js';
 
-import { ZkusdUpdatedProtocolState } from '../../../../system/update/protocol-state.js';
+import { ZkusdUpdateProtocolState } from '../../../../system/update/protocol-state.js';
 import { ZkusdProtocolPreconditions } from '../../../../system/update/protocol-preconditions.js';
 
 import {
@@ -26,7 +26,7 @@ import {
 /*                           Test Setup Utilities                             */
 /* -------------------------------------------------------------------------- */
 
-let protocolState: ZkusdUpdatedProtocolState;
+let protocolState: ZkusdUpdateProtocolState;
 let hash1: Field, hash2: Field;
 let debtCeiling: UInt64;
 
@@ -40,7 +40,7 @@ beforeEach(() => {
   // 10 000 000 is arbitrary: just a realistic non‑edge value.
   debtCeiling = UInt64.from(10_000_000n);
 
-  protocolState = new ZkusdUpdatedProtocolState({
+  protocolState = new ZkusdUpdateProtocolState({
     emergencyStop: Bool(false),
     collateralRatio: UInt8.from(150),
     validPriceBlockCount: UInt8.from(12),
@@ -56,9 +56,7 @@ beforeEach(() => {
 /*                              Test Suite                                    */
 /* -------------------------------------------------------------------------- */
 
-describe('ZkusdUpdatedProtocolState.isValidForPreconditions()', () => {
-  /* ------------------------------- Baselines ------------------------------ */
-
+describe('ZkusdUpdateProtocolState.isValidForPreconditions()', () => {
   it('returns true when all preconditions are unconstrained', () => {
     const unconstrained = ZkusdProtocolPreconditions.create();
     assert.ok(protocolState.isValidForPreconditions(unconstrained).toBoolean());
@@ -178,7 +176,7 @@ describe('ZkusdUpdatedProtocolState.isValidForPreconditions()', () => {
   /* ------------------------------ Edge‑value checks ------------------------------ */
 
   it('handles edge values for UInt8 and UInt64 fields', () => {
-    const edgeState = new ZkusdUpdatedProtocolState({
+    const edgeState = new ZkusdUpdateProtocolState({
       emergencyStop: Bool(false),
       collateralRatio: UInt8.from(0),
       validPriceBlockCount: UInt8.from(255),

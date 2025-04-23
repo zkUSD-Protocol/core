@@ -20,7 +20,7 @@ export class ZkUsdGovernmentContract extends SmartContract {
   // @state(IpnsAddr) zkusdProtocolDataRootIpns = State<IpnsAddr>(); // IPNS address of the protocol data root. (not used yet)
 
   @method.returns(Bool)
-  public async canExecteGovResolution(
+  public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
     resolutionUpdateSpec: ZkusdProtocolUpdateSpec,
     resolutionWitness: ZkusdGovUpdateWitness

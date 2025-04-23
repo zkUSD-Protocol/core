@@ -215,10 +215,6 @@ export class DeploymentService {
       { force: true }
     );
     this._networkKeys.government.publicKey, { force: true };
-    Provable.log(
-      'governance address - deployment',
-      this._networkKeys.government.publicKey
-    );
 
     if (!tokenAccount || force) {
       if (!force) console.log('Contracts dont exist - deploying....');
@@ -295,7 +291,7 @@ export class DeploymentService {
         },
         {
           extraSigners: [this._networkKeys.government.privateKey],
-          name: 'Deploying & initilializing Gov contracts',
+          name: 'Deploying & initializing Gov contracts',
           executor: 'local',
         }
       );

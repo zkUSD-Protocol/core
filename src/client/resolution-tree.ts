@@ -1,7 +1,7 @@
 import { Field, MerkleTree, UInt32 } from 'o1js';
-import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../system/governance';
-import { CouncilProposalPassedEvent } from '../system/council-events';
-import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council';
+import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../system/governance.js';
+import { CouncilProposalPassedEvent } from '../system/council/events.js';
+import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 
 export interface IResolutionMerkleTreeProvider {
   getNextEmptyResolutionIndex(): Promise<UInt32>;
