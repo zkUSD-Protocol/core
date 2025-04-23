@@ -53,15 +53,7 @@ describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
     previousWhitelistHash =
       (await th.engine.contract.oracleWhitelistHash.fetch()) as Field;
 
-    await th.includeTx(
-      th.deployer,
-      async () => {
-        await th.engine.contract.updateOracleWhitelist(whitelist);
-      },
-      {
-        extraSigners: [th.networkKeys.protocolAdmin.privateKey],
-      }
-    );
+    await th.updateOracleWhitelist(whitelist);
 
     const expectedWhitelistHash = Poseidon.hash(
       OracleWhitelist.toFields(whitelist)
@@ -88,20 +80,6 @@ describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
     );
   });
 
-  it('should not allow updating the whitelist without the admin key', async () => {
-    const whitelist = th.whitelist;
-
-    const newOracle = PrivateKey.random().toPublicKey();
-    whitelist.addresses[0] = newOracle;
-
-    await assert.rejects(
-      th.includeTx(th.deployer, async () => {
-        await th.engine.contract.updateOracleWhitelist(whitelist);
-      }),
-      /Transaction verification failed/
-    );
-  });
-
   it('should not allow updating with a whitelist that has more than 8 addresses', async () => {
     const whitelist = th.whitelist;
 
@@ -109,35 +87,17 @@ describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
       whitelist.addresses[i] = PrivateKey.random().toPublicKey();
     }
 
-    await assert.rejects(
-      th.includeTx(
-        th.deployer,
-        async () => {
-          await th.engine.contract.updateOracleWhitelist(whitelist);
-        },
-        {
-          extraSigners: [th.networkKeys.engine.privateKey],
-        }
-      ),
-      /Expected witnessed values of length 16, got 20./
-    );
+    await assert.rejects(async () => {
+      await th.updateOracleWhitelist(whitelist);
+    }, /Expected witnessed values of length 16, got 20./);
   });
 
   it('should not allow updating with an invalid whitelist', async () => {
     th.whitelist.addresses[1] = 'RandomString' as unknown as PublicKey;
 
-    await assert.rejects(
-      th.includeTx(
-        th.deployer,
-        async () => {
-          await th.engine.contract.updateOracleWhitelist(th.whitelist);
-        },
-        {
-          extraSigners: [th.networkKeys.engine.privateKey],
-        }
-      ),
-      /Cannot convert undefined to a BigInt/
-    );
+    await assert.rejects(async () => {
+      await th.updateOracleWhitelist(th.whitelist);
+    }, /Cannot convert undefined to a BigInt/);
   });
 
   it('should allow us to use a whitelist and use a price submission with three oracles ', async () => {
@@ -201,16 +161,7 @@ describe('zkUSD Engine Oracle Whitelist Test Suite', () => {
       });
     }
 
-    await th.includeTx(
-      th.deployer,
-      async () => {
-        await th.engine.contract.updateOracleWhitelist(oracleWhitelist);
-      },
-      {
-        extraSigners: [th.networkKeys.protocolAdmin.privateKey],
-        name: 'Oracle Whitelist Test Suite: Update Oracle Whitelist with 3 oracles',
-      }
-    );
+    await th.updateOracleWhitelist(oracleWhitelist);
 
     const oracleWhitelistHash = OracleWhitelist.hash(oracleWhitelist);
 

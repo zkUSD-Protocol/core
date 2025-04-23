@@ -52,7 +52,6 @@ export class ZkUsdGovernmentContract extends SmartContract {
     resolutionUpdateSpec: ZkusdProtocolUpdateSpec,
     resolutionWitness: ZkusdGovUpdateWitness
   ) {
-    Provable.log('base method called');
     return Bool(false);
   }
 

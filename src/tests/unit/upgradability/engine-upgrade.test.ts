@@ -12,6 +12,7 @@ import {
   Field,
   Poseidon,
   UInt32,
+  UInt64,
   UInt8,
   VerificationKey,
 } from 'o1js';
@@ -162,6 +163,8 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       emergencyStop: Bool(false),
       collateralRatio: UInt8.from(150),
       liquidationBonusRatio: UInt8.from(110),
+      vaultDebtCeiling: UInt64.from(200_000n * BigInt(1e9)), // 200k USD
+      vaultCreationDisabled: Bool(false),
     }).pack();
 
     const expectedOracleWhitelistHash = OracleWhitelist.hash(th.whitelist);
@@ -240,6 +243,8 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       emergencyStop: Bool(false),
       collateralRatio: UInt8.from(150),
       liquidationBonusRatio: UInt8.from(110),
+      vaultDebtCeiling: UInt64.from(200_000n * BigInt(1e9)), // 200k USD
+      vaultCreationDisabled: Bool(false),
     }).pack();
 
     const expectedOracleWhitelistHash = OracleWhitelist.hash(th.whitelist);

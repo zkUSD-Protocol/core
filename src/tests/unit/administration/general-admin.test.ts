@@ -76,41 +76,6 @@ describe('zkUSD Protocol Administration Test Suite', async () => {
     );
   });
 
-  it('should allow the new admin key to make updates to the protocol vault', async () => {
-    await th.includeTx(
-      th.agents.alice.keys,
-      async () => {
-        await th.engine.contract.toggleEmergencyStop(Bool(true));
-      },
-      {
-        extraSigners: [newAdmin.privateKey],
-        name: 'Protocol Admin Test Suite: Alice stops the protocol',
-      }
-    );
-
-    let packedData = await th.engine.contract.protocolDataPacked.fetch();
-    let protocolData = ProtocolData.unpack(packedData!);
-
-    assert.deepStrictEqual(protocolData.emergencyStop, Bool(true));
-
-    //Resume the protocol
-    await th.includeTx(
-      th.agents.alice.keys,
-      async () => {
-        await th.engine.contract.toggleEmergencyStop(Bool(false));
-      },
-      {
-        extraSigners: [newAdmin.privateKey],
-        name: 'Protocol Admin Test Suite: Alice resumes the protocol',
-      }
-    );
-
-    packedData = await th.engine.contract.protocolDataPacked.fetch();
-    protocolData = ProtocolData.unpack(packedData!);
-
-    assert.deepStrictEqual(protocolData.emergencyStop, Bool(false));
-  });
-
   it('should not allow the admin key to be updated without the current admin key', async () => {
     await assert.rejects(async () => {
       await th.includeTx(

@@ -34,7 +34,6 @@ export async function generateVoteProof(
     councilTree.getWitness(BigInt(seatIndex))
   );
 
-  console.log('Creating vote (correct signature, correct membership)...');
   const { proof } = await MultiSigZkusdProtocolUpdateProgram.createVote(
     updateSpec,
     signature,

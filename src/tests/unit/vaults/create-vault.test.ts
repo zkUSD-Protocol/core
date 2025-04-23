@@ -119,6 +119,7 @@ describe('zkUSD Deployment Test Suite', () => {
   });
 
   it('should not allow vault creation when creation is disabled', async () => {
+    await testHelper.createLocalAgents('frank');
     await testHelper.createVaults('frank');
     await testHelper.toggleVaultCreation();
     await assert.rejects(async () => {
