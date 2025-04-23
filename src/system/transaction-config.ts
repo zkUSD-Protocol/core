@@ -127,8 +127,9 @@ function mkZkusdTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
     [ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT]: {
       method: ZkusdEngineTransactionType.UPDATE_VALID_PRICE_BLOCK_COUNT,
       buildTx: async (args) => {
-        await engine.updateValidPriceBlockCount(
-          UInt8.from(args.newValidPriceBlockCount)
+        await engine.govUpdateValidPriceBlockCount(
+          args.updateSpec,
+          args.resolutionWitness
         );
       },
     },
@@ -140,13 +141,20 @@ function mkZkusdTransactionConfigs(engine: InstanceType<ZkUsdEngine>): {
             PublicKey.fromBase58(addr)
           ),
         });
-        await engine.updateOracleWhitelist(whitelist);
+        await engine.govUpdateOracleWhitelist(
+          whitelist,
+          args.updateSpec,
+          args.resolutionWitness
+        );
       },
     },
     [ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP]: {
       method: ZkusdEngineTransactionType.TOGGLE_EMERGENCY_STOP,
       buildTx: async (args) => {
-        await engine.toggleEmergencyStop(Bool(args.shouldStop));
+        await engine.govToggleEmergencyStop(
+          args.updateSpec,
+          args.resolutionWitness
+        );
       },
     },
     [ZkusdEngineTransactionType.TRANSFER]: {
