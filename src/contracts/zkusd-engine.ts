@@ -813,6 +813,11 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    /**
+     * @notice  Updates the config merkle root
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govUpdateConfigMerkleRoot(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
@@ -841,6 +846,11 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    /**
+     * @notice  Toggles the vault creation
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govToggleVaultCreation(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness

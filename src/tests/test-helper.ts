@@ -660,26 +660,20 @@ export class TestHelper<E extends string> {
         continue;
       }
 
-      const tx = await this.engineTx(
-        agent.keys,
-        {
-          transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
-          args: {
-            transactionId: `Minting ${amount} zkUSD for ${name}`,
-            vaultAddress: agent.vault!.publicKey.toBase58(),
-            zkusdAmount: amount.toString(),
-            minaPriceProof: (
-              await this.priceInputMgr.requestProof(
-                oneUsd,
-                this.minimalPriceValidity
-              )
-            ).proof,
-          },
+      const tx = await this.engineTx(agent.keys, {
+        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
+        args: {
+          transactionId: `Minting ${amount} zkUSD for ${name}`,
+          vaultAddress: agent.vault!.publicKey.toBase58(),
+          zkusdAmount: amount.toString(),
+          minaPriceProof: (
+            await this.priceInputMgr.requestProof(
+              oneUsd,
+              this.minimalPriceValidity
+            )
+          ).proof,
         },
-        {
-          printTx: true,
-        }
-      );
+      });
 
       agentMintTxs.push(tx);
     }
@@ -834,7 +828,7 @@ export class TestHelper<E extends string> {
     return vaultState as VaultState;
   }
 
-  private async proposeAndExecuteUpdate(
+  async proposeAndExecuteUpdate(
     operation: any,
     contractCall: (
       updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
@@ -842,6 +836,7 @@ export class TestHelper<E extends string> {
     ) => Promise<void>,
     options: {
       cache?: boolean;
+      returnTxHandle?: boolean;
     } = {}
   ) {
     for (const key of Object.keys(operation)) {
@@ -851,6 +846,7 @@ export class TestHelper<E extends string> {
     }
 
     const cache = options.cache ?? true;
+    const returnTxHandle = options.returnTxHandle ?? false;
 
     // 1. Fetch events and rebuild on-chain state
     const events = await this.council.fetchEvents();
@@ -1010,10 +1006,21 @@ export class TestHelper<E extends string> {
       );
     });
 
-    // 7. Execute contract call
-    await this.includeTx(this.deployer, () =>
-      contractCall(updateSpec, resolutionWitness)
-    );
+    if (returnTxHandle) {
+      return await this.tx(
+        this.deployer,
+        async () => {
+          await contractCall!(updateSpec, resolutionWitness);
+        },
+        {
+          executor: 'local',
+        }
+      );
+    } else {
+      await this.includeTx(this.deployer, () =>
+        contractCall!(updateSpec, resolutionWitness)
+      );
+    }
   }
 
   async printAgentState() {
