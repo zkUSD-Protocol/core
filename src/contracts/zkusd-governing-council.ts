@@ -185,13 +185,17 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
 
   async deploy(args?: ZkUsdDeployArgs): Promise<void> {
     await super.deploy(args);
-    // TODO switch from the default to hardcoded permissions
     this.account.permissions.set({
       ...Permissions.default(),
-      setPermissions: Permissions.impossible(),
-      setVerificationKey: Permissions.VerificationKey.signature(),
       editState: Permissions.proof(),
       send: Permissions.proof(),
+      receive: Permissions.none(),
+      setDelegate: Permissions.signature(),
+      setPermissions: Permissions.impossible(),
+      setVerificationKey: Permissions.VerificationKey.signature(),
+      setZkappUri: Permissions.signature(),
+      editActionState: Permissions.proof(),
+      setTokenSymbol: Permissions.signature(),
     });
   }
 
