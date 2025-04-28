@@ -53,6 +53,8 @@ describe('zkUSD Vault Burn Test Suite', () => {
 
     const vaultStartingState = await th.retrieveAgentVaultState('alice');
 
+    console.log('alcie keys', th.agents.alice.keys.publicKey.toBase58());
+
     await th.includeTx(
       th.agents.alice.keys,
       async () => {
@@ -61,7 +63,9 @@ describe('zkUSD Vault Burn Test Suite', () => {
           TestAmounts.DEBT_1_ZKUSD
         );
       },
-      { name: 'Burn Test Suite: Alice burns 1 zkUSD' }
+      {
+        name: 'Burn Test Suite: Alice burns 1 zkUSD',
+      }
     );
 
     const vaultFinalState = await th.retrieveAgentVaultState('alice');

@@ -221,7 +221,7 @@ export function ZkUsdEngineContract(args: {
       const owner = this.sender.getAndRequireSignature();
 
       //Get the vault & add the precondition
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       //Update the owner
       vault.updateOwner(newOwner, owner);
@@ -280,7 +280,7 @@ export function ZkUsdEngineContract(args: {
         this.deriveTokenId()
       );
 
-      const params = await this.getVaultParams();
+      const params = this.getVaultParams();
       Vault(params).initialize(newVaultUpdate, owner);
 
       //Emit the NewVault event
@@ -302,7 +302,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async depositCollateral(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       //Create the account update for the collateral deposit
       const collateralDeposit = AccountUpdate.createSigned(
@@ -353,7 +353,7 @@ export function ZkUsdEngineContract(args: {
       //Ensure the protocol is not stopped
       this.ensureProtocolNotStopped();
 
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       //Get the owner of the collateral
       const owner = this.sender.getAndRequireSignature();
@@ -408,7 +408,7 @@ export function ZkUsdEngineContract(args: {
       //Ensure the protocol is not stopped
       this.ensureProtocolNotStopped();
 
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -462,11 +462,10 @@ export function ZkUsdEngineContract(args: {
      */
     @method async burnZkUsd(vaultAddress: PublicKey, amount: UInt64) {
       //Get the vault
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       //Get the owner of the zkUSD
-      // we have sender signature from zkUSD.burn
-      // TODO verify
+      //we have sender signature from zkUSD.burn
       const owner = this.sender.getUnconstrained();
 
       //Get the zkUSD token contract
@@ -502,11 +501,11 @@ export function ZkUsdEngineContract(args: {
       vaultAddress: PublicKey,
       minaPriceInput: MinaPriceInput
     ) {
-      //Ensure the protocol is not stopped // TODO reconsider
+      //Ensure the protocol is not stopped
       this.ensureProtocolNotStopped();
 
       // //Get the vault
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       // //Get the zkUSD token contract
       const zkUSD = new ZkUsdEngine.FungibleToken(
@@ -572,6 +571,11 @@ export function ZkUsdEngineContract(args: {
      *
      */
 
+    /**
+     * @notice  Updates the vault debt ceiling
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govUpdateVaultDebtCeiling(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
@@ -597,7 +601,9 @@ export function ZkUsdEngineContract(args: {
       );
     }
     /**
-     * Toggle emergency stop via governance
+     * @notice  Toggles the emergency stop
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govToggleEmergencyStop(
       updateSpec: ZkusdProtocolUpdateSpec,
@@ -625,7 +631,9 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * Update valid price block count via governance
+     * @notice  Updates the valid price block count
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateValidPriceBlockCount(
       updateSpec: ZkusdProtocolUpdateSpec,
@@ -655,7 +663,9 @@ export function ZkUsdEngineContract(args: {
     }
 
     /**
-     * Update liquidation bonus ratio via governance
+     * @notice  Updates the liquidation bonus ratio
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateLiquidationBonusRatio(
       updateSpec: ZkusdProtocolUpdateSpec,
@@ -684,6 +694,11 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    /**
+     * @notice  Updates the collateral ratio
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govUpdateCollateralRatio(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
@@ -723,6 +738,12 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    /**
+     * @notice  Updates the oracle whitelist
+     * @param   whitelist The oracle whitelist
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govUpdateOracleWhitelist(
       whitelist: OracleWhitelist,
       updateSpec: ZkusdProtocolUpdateSpec,
@@ -758,18 +779,17 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
-    // This must use a different UpdateSpec that contains
-    // the engine vk in its inputs.
+    /**
+     * @notice  Updates the engine verification key
+     * @param   newVerificationKey The new verification key
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govUpdateEngineVerificationKey(
       newVerificationKey: VerificationKey,
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
     ) {
-      //Precondition
-
-      // TODO maybe we could save the old vkh in the state to then
-      // verify the precondition
-
       const { operation } = await this.runGovUpdateCommon(
         ZkUsdEngineMethodCodes.GovCRITICALUpdateVerificationKey,
         updateSpec,
@@ -793,6 +813,11 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    /**
+     * @notice  Updates the config merkle root
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govUpdateConfigMerkleRoot(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
@@ -821,6 +846,11 @@ export function ZkUsdEngineContract(args: {
       );
     }
 
+    /**
+     * @notice  Toggles the vault creation
+     * @param   updateSpec The update spec from the governance proposal
+     * @param   resolutionWitness The resolution witness ensuring it has passed quorum
+     */
     @method async govToggleVaultCreation(
       updateSpec: ZkusdProtocolUpdateSpec,
       resolutionWitness: ZkusdGovUpdateWitness
@@ -894,7 +924,7 @@ export function ZkUsdEngineContract(args: {
      * @notice  Returns the vault parameters based on the protocol data
      * @returns The vault parameters
      */
-    public async getVaultParams(): Promise<VaultParams> {
+    public getVaultParams(): VaultParams {
       const protocolData = ProtocolData.unpack(
         this.protocolDataPacked.getAndRequireEquals()
       );
@@ -905,8 +935,8 @@ export function ZkUsdEngineContract(args: {
      * @notice  Returns the vault class based on the protocol data
      * @returns The vault class
      */
-    public async getVaultClass(): Promise<ReturnType<typeof Vault>> {
-      return Vault(await this.getVaultParams());
+    public getVaultClass(): ReturnType<typeof Vault> {
+      return Vault(this.getVaultParams());
     }
 
     /**
@@ -914,14 +944,12 @@ export function ZkUsdEngineContract(args: {
      * @param   vaultAddress The address of the vault
      * @returns The vault
      */
-    public async retrieveVault(vaultAddress: PublicKey) {
+    public retrieveVault(vaultAddress: PublicKey) {
       const vaultUpdate = AccountUpdate.create(
         vaultAddress,
         this.deriveTokenId()
       );
-      return Vault(await this.getVaultParams()).getAndRequireEquals(
-        vaultUpdate
-      );
+      return Vault(this.getVaultParams()).getAndRequireEquals(vaultUpdate);
     }
 
     /**
@@ -934,7 +962,7 @@ export function ZkUsdEngineContract(args: {
       minaPrice: MinaPrice
     ): Promise<UInt64> {
       //Get the vault & add the precondition
-      const vault = await this.retrieveVault(vaultAddress);
+      const vault = this.retrieveVault(vaultAddress);
 
       //Return the health factor
       return vault.getHealthFactor(minaPrice);
@@ -1064,8 +1092,7 @@ export function ZkUsdEngineContract(args: {
      */
     buildBlockchainState(): ZkusdUpdateMinaBlockchainState {
       return {
-        currentSlot: this.currentSlot,
-        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
+        currentSlot: this.network.globalSlotSinceGenesis,
       };
     }
 
