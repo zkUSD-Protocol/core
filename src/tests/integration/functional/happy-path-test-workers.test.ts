@@ -41,8 +41,8 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
     > = {
       local: async () => new LocalTransactionExecutor(),
       external: ExternalTransactionExecutor.initializer({
-        // prover: new HttpServerProver(),
-        prover: new HttpClientProver('http://localhost:3969'),
+        prover: new HttpServerProver(),
+        // prover: new HttpClientProver('http://188.245.244.23:3969'),
         stop: stopExecutor,
       }),
       default: 'external', // use workers by default
@@ -86,8 +86,6 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
     const mike = await th.mina.newAccount();
     const mikeVault = PrivateKey.randomKeypair();
 
-    console.log('Making Mikes vault');
-
     // create vault for mike
     const mcv = await th.engineTx(
       mike,
@@ -102,14 +100,6 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
       { printTx, extraSigners: [mikeVault.privateKey] }
     );
 
-    // mcv.subscribeToLifecycle((status) => {
-    //   console.log('mcv status og', status);
-    // });
-
-    // await mcv.awaitIncluded();
-
-    console.log('Mikes vault created');
-
     // mike deposit
     const mdc = await th.engineTx(
       mike,
@@ -123,13 +113,6 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
       },
       { printTx, waitForIncluded: [mcv] }
     );
-
-    setInterval(() => {
-      console.log('mcv status', mcv.txStatus);
-      console.log('mdc status', mdc.txStatus);
-    }, 1000);
-
-    console.log('Mike deposited collateral');
 
     const minaPriceProof = (
       await th.priceInputMgr.requestProof(TestAmounts.PRICE_1_USD)
@@ -148,12 +131,7 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
       },
       { printTx, waitForIncluded: resumed ? [mdc, resumed] : [mdc] }
     );
-    console.log('mike:');
-    console.log(mike);
-    console.log('mikeVault:');
-    console.log(mikeVault);
-    console.log('mmz:');
-    console.log(mmz);
+
     return {
       mintedHandle: mmz,
       keys: mike,
@@ -193,212 +171,212 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
     assert(mike.mintedHandle, 'Mike minted handle should be defined');
   });
 
-  //   it('should have created the vaults', async () => {
-  //     // create a new actor
-  //     newman = await th.mina.newAccount();
-  //     newmanVault = PrivateKey.randomKeypair();
+  it('should have created the vaults', async () => {
+    // create a new actor
+    newman = await th.mina.newAccount();
+    newmanVault = PrivateKey.randomKeypair();
 
-  //     // create vault for newman
-  //     await th.includeEngineTx(
-  //       newman,
-  //       {
-  //         transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
-  //         args: {
-  //           transactionId: `Newman creates a vault`,
-  //           newAccounts: 2,
-  //           vaultAddress: newmanVault.publicKey.toBase58(),
-  //         },
-  //       },
-  //       { printTx, extraSigners: [newmanVault.privateKey] }
-  //     );
+    // create vault for newman
+    await th.includeEngineTx(
+      newman,
+      {
+        transactionType: ZkusdEngineTransactionType.CREATE_VAULT,
+        args: {
+          transactionId: `Newman creates a vault`,
+          newAccounts: 2,
+          vaultAddress: newmanVault.publicKey.toBase58(),
+        },
+      },
+      { printTx, extraSigners: [newmanVault.privateKey] }
+    );
 
-  //     const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
-  //     // assert defined
-  //     assert.notStrictEqual(vaultState, undefined);
-  //     assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
-  //     assert.deepStrictEqual(vaultState?.collateralAmount.toBigInt(), 0n);
-  //     assert.deepStrictEqual(vaultState?.debtAmount.toBigInt(), 0n);
-  //   });
+    const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
+    // assert defined
+    assert.notStrictEqual(vaultState, undefined);
+    assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
+    assert.deepStrictEqual(vaultState?.collateralAmount.toBigInt(), 0n);
+    assert.deepStrictEqual(vaultState?.debtAmount.toBigInt(), 0n);
+  });
 
-  //   it('should have deposited collateral', async () => {
-  //     // deposit
-  //     await th.includeEngineTx(
-  //       newman,
-  //       {
-  //         transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
-  //         args: {
-  //           transactionId: `Newman deposits collateral`,
-  //           vaultAddress: newmanVault.publicKey.toBase58(),
-  //           collateralAmount: TestAmounts.COLLATERAL_100_MINA.toString(),
-  //         },
-  //       },
-  //       { printTx }
-  //     );
+  it('should have deposited collateral', async () => {
+    // deposit
+    await th.includeEngineTx(
+      newman,
+      {
+        transactionType: ZkusdEngineTransactionType.DEPOSIT_COLLATERAL,
+        args: {
+          transactionId: `Newman deposits collateral`,
+          vaultAddress: newmanVault.publicKey.toBase58(),
+          collateralAmount: TestAmounts.COLLATERAL_100_MINA.toString(),
+        },
+      },
+      { printTx }
+    );
 
-  //     const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
-  //     // assert defined
-  //     assert.notStrictEqual(vaultState, undefined);
-  //     assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
-  //     assert.ok(
-  //       vaultState?.collateralAmount.equals(TestAmounts.COLLATERAL_100_MINA)
-  //     );
-  //     assert.deepStrictEqual(vaultState?.debtAmount.toBigInt(), 0n);
-  //   });
+    const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
+    // assert defined
+    assert.notStrictEqual(vaultState, undefined);
+    assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
+    assert.ok(
+      vaultState?.collateralAmount.equals(TestAmounts.COLLATERAL_100_MINA)
+    );
+    assert.deepStrictEqual(vaultState?.debtAmount.toBigInt(), 0n);
+  });
 
-  //   it('should should have minted zkusd ', async () => {
-  //     const minaPriceProof = (
-  //       await th.priceInputMgr.requestProof(TestAmounts.PRICE_1_USD)
-  //     ).proof;
-  //     // deposit
-  //     await th.includeEngineTx(
-  //       newman,
-  //       {
-  //         transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
-  //         args: {
-  //           transactionId: `Newman mints zkusd`,
-  //           vaultAddress: newmanVault.publicKey.toBase58(),
-  //           zkusdAmount: TestAmounts.DEBT_50_ZKUSD.toString(),
-  //           minaPriceProof,
-  //         },
-  //       },
-  //       { printTx, waitForIncluded: resumed ? [resumed] : [] }
-  //     );
+  it('should should have minted zkusd ', async () => {
+    const minaPriceProof = (
+      await th.priceInputMgr.requestProof(TestAmounts.PRICE_1_USD)
+    ).proof;
+    // deposit
+    await th.includeEngineTx(
+      newman,
+      {
+        transactionType: ZkusdEngineTransactionType.MINT_ZKUSD,
+        args: {
+          transactionId: `Newman mints zkusd`,
+          vaultAddress: newmanVault.publicKey.toBase58(),
+          zkusdAmount: TestAmounts.DEBT_50_ZKUSD.toString(),
+          minaPriceProof,
+        },
+      },
+      { printTx, waitForIncluded: resumed ? [resumed] : [] }
+    );
 
-  //     const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
-  //     // assert defined
-  //     assert.notStrictEqual(vaultState, undefined);
-  //     assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
-  //     assert.ok(
-  //       vaultState?.collateralAmount.lessThan(TestAmounts.COLLATERAL_100_MINA)
-  //     );
-  //     assert.ok(vaultState?.debtAmount.equals(TestAmounts.DEBT_50_ZKUSD));
+    const vaultState = await th.retrieveVaultState(newmanVault.publicKey);
+    // assert defined
+    assert.notStrictEqual(vaultState, undefined);
+    assert.deepStrictEqual(vaultState?.owner, newman.publicKey);
+    assert.ok(
+      vaultState?.collateralAmount.lessThan(TestAmounts.COLLATERAL_100_MINA)
+    );
+    assert.ok(vaultState?.debtAmount.equals(TestAmounts.DEBT_50_ZKUSD));
 
-  //     // Verify mint event was emitted
-  //     const events = await th.engine.contract.fetchEvents();
-  //     const mintEvent = events.find((e) => e.type === 'MintZkUsd');
-  //     assert(mintEvent, 'Mint event should be emitted');
-  //   });
+    // Verify mint event was emitted
+    const events = await th.engine.contract.fetchEvents();
+    const mintEvent = events.find((e) => e.type === 'MintZkUsd');
+    assert(mintEvent, 'Mint event should be emitted');
+  });
 
-  //   it('should should have repaid the debt (burn)', async () => {
-  //     const newmanVaultBefore = await th.retrieveVaultState(
-  //       newmanVault.publicKey
-  //     );
-  //     const newmanZkusdAccountBefore = await th.mina.fetchMinaAccount(
-  //       newman.publicKey,
-  //       { tokenId: th.token.contract.deriveTokenId(), force: true }
-  //     );
+  it('should should have repaid the debt (burn)', async () => {
+    const newmanVaultBefore = await th.retrieveVaultState(
+      newmanVault.publicKey
+    );
+    const newmanZkusdAccountBefore = await th.mina.fetchMinaAccount(
+      newman.publicKey,
+      { tokenId: th.token.contract.deriveTokenId(), force: true }
+    );
 
-  //     // burn
-  //     await th.includeEngineTx(
-  //       newman,
-  //       {
-  //         transactionType: ZkusdEngineTransactionType.BURN_ZKUSD,
-  //         args: {
-  //           transactionId: `Newman burns zkusd`,
-  //           vaultAddress: newmanVault.publicKey.toBase58(),
-  //           zkusdAmount: TestAmounts.DEBT_10_ZKUSD.toString(),
-  //         },
-  //       },
-  //       { printTx }
-  //     );
+    // burn
+    await th.includeEngineTx(
+      newman,
+      {
+        transactionType: ZkusdEngineTransactionType.BURN_ZKUSD,
+        args: {
+          transactionId: `Newman burns zkusd`,
+          vaultAddress: newmanVault.publicKey.toBase58(),
+          zkusdAmount: TestAmounts.DEBT_10_ZKUSD.toString(),
+        },
+      },
+      { printTx }
+    );
 
-  //     const newmanVaultAfter = await th.retrieveVaultState(newmanVault.publicKey);
-  //     const newmanZkusdAccountAfter = await th.mina.fetchMinaAccount(
-  //       newman.publicKey,
-  //       { tokenId: th.token.contract.deriveTokenId(), force: true }
-  //     );
+    const newmanVaultAfter = await th.retrieveVaultState(newmanVault.publicKey);
+    const newmanZkusdAccountAfter = await th.mina.fetchMinaAccount(
+      newman.publicKey,
+      { tokenId: th.token.contract.deriveTokenId(), force: true }
+    );
 
-  //     assert.deepStrictEqual(
-  //       newmanVaultAfter?.debtAmount,
-  //       newmanVaultBefore?.debtAmount.sub(TestAmounts.DEBT_10_ZKUSD)
-  //     );
+    assert.deepStrictEqual(
+      newmanVaultAfter?.debtAmount,
+      newmanVaultBefore?.debtAmount.sub(TestAmounts.DEBT_10_ZKUSD)
+    );
 
-  //     assert.deepStrictEqual(
-  //       newmanZkusdAccountAfter?.balance.toBigInt(),
-  //       newmanZkusdAccountBefore?.balance.toBigInt()! -
-  //         TestAmounts.DEBT_10_ZKUSD.toBigInt()
-  //     );
+    assert.deepStrictEqual(
+      newmanZkusdAccountAfter?.balance.toBigInt(),
+      newmanZkusdAccountBefore?.balance.toBigInt()! -
+        TestAmounts.DEBT_10_ZKUSD.toBigInt()
+    );
 
-  //     // Verify burn event was emitted
-  //     const events = await th.engine.contract.fetchEvents();
-  //     const burnEvent = events.find((e) => e.type === 'BurnZkUsd');
-  //     assert(burnEvent, 'Burn event should be emitted');
-  //   });
+    // Verify burn event was emitted
+    const events = await th.engine.contract.fetchEvents();
+    const burnEvent = events.find((e) => e.type === 'BurnZkUsd');
+    assert(burnEvent, 'Burn event should be emitted');
+  });
 
-  //   it('should allow liquidation of an undercollateralised vault', async () => {
-  //     // get the lower price
-  //     const lowPriceProof = (
-  //       await th.priceInputMgr.requestProof(TestAmounts.PRICE_25_CENT)
-  //     ).proof;
+  it('should allow liquidation of an undercollateralised vault', async () => {
+    // get the lower price
+    const lowPriceProof = (
+      await th.priceInputMgr.requestProof(TestAmounts.PRICE_25_CENT)
+    ).proof;
 
-  //     const newmanBalanceBefore = await th.mina.fetchMinaAccount(
-  //       newman.publicKey
-  //     );
-  //     const newmanZkUsdBefore = await th.mina.fetchMinaAccount(newman.publicKey, {
-  //       tokenId: th.token.contract.deriveTokenId(),
-  //     });
+    const newmanBalanceBefore = await th.mina.fetchMinaAccount(
+      newman.publicKey
+    );
+    const newmanZkUsdBefore = await th.mina.fetchMinaAccount(newman.publicKey, {
+      tokenId: th.token.contract.deriveTokenId(),
+    });
 
-  //     const mikeBalanceBefore = await th.mina.fetchMinaAccount(
-  //       mike.keys.publicKey
-  //     );
-  //     const mikeZkUsdBefore = await th.mina.fetchMinaAccount(
-  //       mike.keys.publicKey,
-  //       {
-  //         tokenId: th.token.contract.deriveTokenId(),
-  //       }
-  //     );
+    const mikeBalanceBefore = await th.mina.fetchMinaAccount(
+      mike.keys.publicKey
+    );
+    const mikeZkUsdBefore = await th.mina.fetchMinaAccount(
+      mike.keys.publicKey,
+      {
+        tokenId: th.token.contract.deriveTokenId(),
+      }
+    );
 
-  //     if (!mike) {
-  //       throw new Error('There was an error initializing Mike');
-  //     }
+    if (!mike) {
+      throw new Error('There was an error initializing Mike');
+    }
 
-  //     // mike's be liquidated
-  //     await th.includeEngineTx(
-  //       mike.keys,
-  //       {
-  //         transactionType: ZkusdEngineTransactionType.LIQUIDATE,
-  //         args: {
-  //           transactionId: `Mike is liquidated by newman`,
-  //           vaultAddress: mike.vault.publicKey.toBase58(),
-  //           minaPriceProof: lowPriceProof,
-  //         },
-  //       },
-  //       { printTx, waitForIncluded: [mike.mintedHandle] }
-  //     );
+    // mike's be liquidated
+    await th.includeEngineTx(
+      mike.keys,
+      {
+        transactionType: ZkusdEngineTransactionType.LIQUIDATE,
+        args: {
+          transactionId: `Mike is liquidated by newman`,
+          vaultAddress: mike.vault.publicKey.toBase58(),
+          minaPriceProof: lowPriceProof,
+        },
+      },
+      { printTx, waitForIncluded: [mike.mintedHandle] }
+    );
 
-  //     // Get initial states
-  //     const newmanBalanceAfter = await th.mina.fetchMinaAccount(newman.publicKey);
-  //     const newmanZkUsdAfter = await th.mina.fetchMinaAccount(newman.publicKey, {
-  //       tokenId: th.token.contract.deriveTokenId(),
-  //     });
+    // Get initial states
+    const newmanBalanceAfter = await th.mina.fetchMinaAccount(newman.publicKey);
+    const newmanZkUsdAfter = await th.mina.fetchMinaAccount(newman.publicKey, {
+      tokenId: th.token.contract.deriveTokenId(),
+    });
 
-  //     // Get initial states
-  //     const mikeBalanceAfter = await th.mina.fetchMinaAccount(
-  //       mike.keys.publicKey
-  //     );
-  //     const mikeZkUsdAfter = await th.mina.fetchMinaAccount(mike.keys.publicKey, {
-  //       tokenId: th.token.contract.deriveTokenId(),
-  //     });
+    // Get initial states
+    const mikeBalanceAfter = await th.mina.fetchMinaAccount(
+      mike.keys.publicKey
+    );
+    const mikeZkUsdAfter = await th.mina.fetchMinaAccount(mike.keys.publicKey, {
+      tokenId: th.token.contract.deriveTokenId(),
+    });
 
-  //     // newman balance higher - he got the collateral
-  //     assert.ok(
-  //       newmanBalanceAfter?.balance.greaterThan(newmanBalanceBefore!.balance)
-  //     );
+    // newman balance higher - he got the collateral
+    assert.ok(
+      newmanBalanceAfter?.balance.greaterThan(newmanBalanceBefore!.balance)
+    );
 
-  //     // mike balance higher - he also got part of the collateral
-  //     assert.ok(
-  //       mikeBalanceAfter?.balance.greaterThan(mikeBalanceBefore!.balance)
-  //     );
+    // mike balance higher - he also got part of the collateral
+    assert.ok(
+      mikeBalanceAfter?.balance.greaterThan(mikeBalanceBefore!.balance)
+    );
 
-  //     // newman zkusd lower - he has repaid
-  //     assert.ok(newmanZkUsdAfter?.balance.lessThan(newmanZkUsdBefore!.balance));
+    // newman zkusd lower - he has repaid
+    assert.ok(newmanZkUsdAfter?.balance.lessThan(newmanZkUsdBefore!.balance));
 
-  //     // mike zkusd unchanged - no debt, but not collateral :(
-  //     assert.ok(mikeZkUsdAfter?.balance.equals(mikeZkUsdBefore!.balance));
+    // mike zkusd unchanged - no debt, but not collateral :(
+    assert.ok(mikeZkUsdAfter?.balance.equals(mikeZkUsdBefore!.balance));
 
-  //     // // Verify liquidation event was emitted
-  //     const events = await th.engine.contract.fetchEvents();
-  //     const liquidationEvent = events.find((e) => e.type === 'Liquidate');
-  //     assert(liquidationEvent, 'Liquidation event should be emitted');
-  //   });
+    // // Verify liquidation event was emitted
+    const events = await th.engine.contract.fetchEvents();
+    const liquidationEvent = events.find((e) => e.type === 'Liquidate');
+    assert(liquidationEvent, 'Liquidation event should be emitted');
+  });
 });

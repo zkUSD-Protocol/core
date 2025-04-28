@@ -327,6 +327,7 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
         ),
       {
         returnTxHandle: true,
+        priority: true,
       }
     );
 

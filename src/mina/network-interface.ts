@@ -7,6 +7,7 @@ import {
   fetchAccount,
   Account as MinaAccount,
   UInt64,
+  fetchLastBlock,
 } from 'o1js';
 import {
   MinaNetwork,
@@ -173,6 +174,9 @@ interface IMinaNetworkInterface extends ZkusdMinaApi {
     publicKey: string | PublicKey,
     options?: { tokenId?: Field | string; force?: boolean }
   ): Promise<MinaAccount | undefined>;
+  getBlockchainLength(): Promise<UInt32>;
+  getCurrentSlot(): Promise<UInt32>;
+  getSlotForTimestamp(timestamp: UInt64): Promise<UInt32>;
   forceFetchAllTxParties(
     tx: Record<string, any> & { transaction: MinaZkappCommand }
   ): Promise<void>;
@@ -317,6 +321,52 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
       } catch {
         return undefined;
       }
+    }
+  }
+
+  public async getBlockchainLength(): Promise<UInt32> {
+    if (this.network.chainId === 'local') {
+      return this.instance.getNetworkState().blockchainLength;
+    } else {
+      return (await fetchLastBlock()).blockchainLength;
+    }
+  }
+
+  public async getCurrentSlot(): Promise<UInt32> {
+    if (this.network.chainId === 'local') {
+      return this.instance.getNetworkState().globalSlotSinceGenesis;
+    } else {
+      return (await fetchLastBlock()).globalSlotSinceGenesis;
+    }
+  }
+
+  public async getSlotForTimestamp(timestamp: UInt64): Promise<UInt32> {
+    const currentSlot = await this.getCurrentSlot();
+    const currentTimestamp = UInt64.from(new Date().getTime());
+    const slotDuration = this.slotDuration;
+
+    // Calculate difference in milliseconds
+    let diffMillis;
+    if (timestamp.greaterThanOrEqual(currentTimestamp).toBoolean()) {
+      // Future timestamp
+      diffMillis = timestamp.sub(currentTimestamp);
+      // Calculate how many slots in the future
+      const slotsInFuture = UInt32.from(
+        diffMillis.div(slotDuration).toBigInt().toString()
+      );
+      return currentSlot.add(slotsInFuture);
+    } else {
+      // Past timestamp
+      diffMillis = currentTimestamp.sub(timestamp);
+      // Return current slot minus the difference in slots (if possible)
+      const diffSlots = UInt32.from(
+        diffMillis.div(slotDuration).toBigInt().toString()
+      );
+      if (diffSlots.greaterThan(currentSlot).toBoolean()) {
+        // Can't go before genesis
+        return UInt32.from(0);
+      }
+      return currentSlot.sub(diffSlots);
     }
   }
 

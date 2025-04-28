@@ -1,15 +1,46 @@
 import { TestAmounts, TestHelper } from '../../test-helper.js';
-import { describe, it, before } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import { UInt64 } from 'o1js';
+import { KeyPair, WithDefault } from '../../../types/utility.js';
+import { ITransactionExecutor } from '../../../transaction/executor.js';
+import { ExternalTransactionExecutor } from '../../../transaction/external-executor.js';
+import { HttpClientProver } from '../../../provers/httpclientprover.js';
+import { IMinaNetworkInterface } from '../../../mina/network-interface.js';
+import { LocalTransactionExecutor } from '../../../transaction/local-executor.js';
+import { transaction } from 'o1js/dist/node/lib/mina/transaction.js';
+import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 
 describe('zkUSD Integration - Functional - Happy Path Vault Path + Engine Updates', () => {
-  let th: TestHelper<'local'>;
+  let th: TestHelper<'external'>;
   let startingFee: UInt64 = UInt64.from(1e8);
+  let stop: () => void;
 
   before(async () => {
-    th = await TestHelper.initLightnetChain();
+    const stopExecutor = new Promise<void>((resolve) => {
+      stop = resolve;
+    });
+
+    const txExecutorInitializers: WithDefault<
+      'local' | 'external',
+      (mina: IMinaNetworkInterface) => Promise<ITransactionExecutor>
+    > = {
+      local: async () => new LocalTransactionExecutor(),
+      external: ExternalTransactionExecutor.initializer({
+        // prover: new HttpServerProver(),
+        prover: new HttpClientProver('http://localhost:3969'),
+        stop: stopExecutor,
+      }),
+      default: 'external', // use workers by default
+    };
+
+    th = await TestHelper.initLightnetChain({ txExecutorInitializers });
+
     await th.setupLightnet();
+  });
+
+  after(async () => {
+    stop();
   });
 
   it('should have deployed the contracts', async () => {
@@ -51,20 +82,14 @@ describe('zkUSD Integration - Functional - Happy Path Vault Path + Engine Update
       { tokenId: th.token.contract.deriveTokenId(), force: true }
     );
 
-    await th.includeTx(
-      th.agents.alice.keys,
-
-      async () => {
-        await th.engine.contract.burnZkUsd(
-          th.agents.alice.vault!.publicKey,
-          TestAmounts.DEBT_1_ZKUSD
-        );
+    await th.includeEngineTx(th.agents.alice.keys, {
+      transactionType: ZkusdEngineTransactionType.BURN_ZKUSD,
+      args: {
+        transactionId: 'Burning 1 zkUSD for alice',
+        vaultAddress: th.agents.alice.vault!.publicKey.toBase58(),
+        zkusdAmount: TestAmounts.DEBT_1_ZKUSD.toString(),
       },
-      {
-        name: 'Happy Path Test Suite: Alice Repays Debt',
-        startingFee,
-      }
-    );
+    });
 
     const aliceVaultAfter = await th.retrieveAgentVaultState('alice');
 
@@ -105,20 +130,14 @@ describe('zkUSD Integration - Functional - Happy Path Vault Path + Engine Update
       UInt64.from(TestAmounts.DEBT_10_CENT_ZKUSD)
     ); // $0.10
 
-    // Bob liquidates Alice's vault
-    await th.includeTx(
-      th.agents.charlie.keys,
-      async () => {
-        await th.engine.contract.liquidate(
-          th.agents.bob.vault!.publicKey,
-          lowPrice
-        );
+    await th.includeEngineTx(th.agents.charlie.keys, {
+      transactionType: ZkusdEngineTransactionType.LIQUIDATE,
+      args: {
+        transactionId: 'Liquidating bobs vault',
+        vaultAddress: th.agents.bob.vault!.publicKey.toBase58(),
+        minaPriceProof: lowPrice.proof.toJSON(),
       },
-      {
-        name: 'Happy Path Test Suite: Charlie liquidates Bobs vault',
-        startingFee,
-      }
-    );
+    });
 
     // Check post-liquidation states
 

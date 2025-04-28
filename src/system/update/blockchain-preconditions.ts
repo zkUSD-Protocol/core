@@ -1,25 +1,25 @@
-import { Field, Struct, UInt32 } from 'o1js';
+import { Field, Struct, UInt32, UInt64 } from 'o1js';
 
 /**
  * Represents a validity range using UInt32 values.
  *
- * Used for checking validity of block slot indices and blockchain lengths.
+ * Used for checking validity of block slots.
  *
  * Properties:
- * - `firstValidBlock` — `UInt32`: Inclusive lower bound of the valid range.
- * - `lastValidBlock` — `UInt32`: Inclusive upper bound of the valid range.
+ * - `firstValidSlot` — `UInt32`: Inclusive lower bound of the valid range.
+ * - `lastValidSlot` — `UInt32`: Inclusive upper bound of the valid range.
  */
 export class ValidityRangeUInt32 extends Struct({
-  firstValidBlock: UInt32,
-  lastValidBlock: UInt32,
+  firstValidSlot: UInt32,
+  lastValidSlot: UInt32,
 }) {
   /**
-   * Converts the ValidityRangeUInt32 into an array of Fields for circuit operations.
+   * Converts the ValidityRangeUInt64 into an array of Fields for circuit operations.
    */
   toFields(): Field[] {
     return [
-      ...this.firstValidBlock.toFields(),
-      ...this.lastValidBlock.toFields(),
+      ...this.firstValidSlot.toFields(),
+      ...this.lastValidSlot.toFields(),
     ];
   }
 
@@ -31,28 +31,28 @@ export class ValidityRangeUInt32 extends Struct({
    */
   static always(): ValidityRangeUInt32 {
     return new ValidityRangeUInt32({
-      firstValidBlock: UInt32.from(0),
-      lastValidBlock: UInt32.from(UInt32.MAXINT()),
+      firstValidSlot: UInt32.from(0),
+      lastValidSlot: UInt32.from(UInt32.MAXINT()),
     });
   }
 
   /**
-   * Creates a validity range from block 0 up to a given last valid block.
+   * Creates a validity range from block 0 up to a given last valid slot.
    *
-   * @param lastValidBlock - The highest valid block index.
+   * @param lastValidSlot - The latest valid slot.
    *
    * @example
    * const range = ValidityRangeUInt32.before(50000);
    */
-  static before(lastValidBlock: UInt32 | bigint | number): ValidityRangeUInt32 {
-    const lastValidBlockUInt32 =
-      lastValidBlock instanceof UInt32
-        ? lastValidBlock
-        : UInt32.from(lastValidBlock);
+  static before(lastValidSlot: UInt32 | bigint | number): ValidityRangeUInt32 {
+    const lastValidSlotUInt32 =
+      lastValidSlot instanceof UInt32
+        ? lastValidSlot
+        : UInt32.from(lastValidSlot);
 
     return new ValidityRangeUInt32({
-      firstValidBlock: UInt32.from(0),
-      lastValidBlock: lastValidBlockUInt32,
+      firstValidSlot: UInt32.from(0),
+      lastValidSlot: lastValidSlotUInt32,
     });
   }
 }
@@ -61,22 +61,19 @@ export class ValidityRangeUInt32 extends Struct({
  * Type alias for the fields required by `MinaChainPreconditions`.
  */
 export type MinaChainPreconditionsFields = {
-  slotIndexValidityRange: ValidityRangeUInt32;
-  blockchainLength: ValidityRangeUInt32;
+  slotValidityRange: ValidityRangeUInt32;
 };
 
 /**
  * Represents preconditions over the Mina blockchain state.
  *
- * Combines slot index validity and blockchain length checks.
+ * Combines slot validity checks.
  *
  * Properties:
- * - `slotIndexValidityRange` — Range for the current slot index validity.
- * - `blockchainLength` — Range for the current blockchain length validity.
+ * - `slotValidityRange` — Range for the current slot validity.
  */
 export class MinaChainPreconditions extends Struct({
-  slotIndexValidityRange: ValidityRangeUInt32,
-  blockchainLength: ValidityRangeUInt32,
+  slotValidityRange: ValidityRangeUInt32,
 }) {
   /**
    * Creates a precondition that always passes (no restrictions).
@@ -91,45 +88,37 @@ export class MinaChainPreconditions extends Struct({
   /**
    * Creates a `MinaChainPreconditions` instance with optional customized ranges.
    *
-   * @param args - Partial object to specify slot and blockchain length validity ranges.
+   * @param args - Partial object to specify slot validity range.
    *
    * @example
    * const preconditions = MinaChainPreconditions.create({
-   *   slotIndexValidityRange: ValidityRangeUInt32.before(50000n)
+   *   slotValidityRange: ValidityRangeUInt32.before(50000n)
    * });
    */
   static create(
     args?: Partial<MinaChainPreconditionsFields>
   ): MinaChainPreconditions {
     return new MinaChainPreconditions({
-      slotIndexValidityRange:
-        args?.slotIndexValidityRange ?? ValidityRangeUInt32.always(),
-      blockchainLength: args?.blockchainLength ?? ValidityRangeUInt32.always(),
+      slotValidityRange:
+        args?.slotValidityRange ?? ValidityRangeUInt32.always(),
     });
   }
 
   /**
-   * Creates preconditions that validate up to specified slot or block numbers.
+   * Creates preconditions that validate up to specified slot.
    *
-   * @param args.block - Upper bound for slot index validity
-   * @param args.slot - Upper bound for blockchain length validity
+   * @param args.slot - Upper bound for slot validity
    *
    * @example
-   * const preconditions = MinaChainPreconditions.before({ slot: 500000 });
+   * const preconditions = MinaChainPreconditions.before({ slot: 50000n });
    */
   static before(args: {
-    block?: UInt32 | bigint | number;
     slot?: UInt32 | bigint | number;
   }): MinaChainPreconditions {
     const preconditions = MinaChainPreconditions.always();
 
-    if (args.block !== undefined) {
-      preconditions.slotIndexValidityRange = ValidityRangeUInt32.before(
-        args.block
-      );
-    }
     if (args.slot !== undefined) {
-      preconditions.blockchainLength = ValidityRangeUInt32.before(args.slot);
+      preconditions.slotValidityRange = ValidityRangeUInt32.before(args.slot);
     }
     return preconditions;
   }
@@ -137,30 +126,30 @@ export class MinaChainPreconditions extends Struct({
   /**
    * Creates a precondition that constrains only the blockchain length.
    *
-   * @param firstValidBlock - Optional lower bound
-   * @param lastValidBlock - Optional upper bound
+   * @param firstValidSlot - Optional lower bound
+   * @param lastValidSlot - Optional upper bound
    *
    * @example
-   * const preconditions = MinaChainPreconditions.blockchainLength(100, 20000);
+   * const preconditions = MinaChainPreconditions.slot(100, 20000);
    */
-  static blockchainLength(
-    firstValidBlock?: UInt32 | bigint | number,
-    lastValidBlock?: UInt32 | bigint | number
+  static slotRange(
+    firstValidSlot?: UInt32 | bigint | number,
+    lastValidSlot?: UInt32 | bigint | number
   ): MinaChainPreconditions {
     const preconditions = MinaChainPreconditions.always();
 
-    preconditions.blockchainLength = new ValidityRangeUInt32({
-      firstValidBlock:
-        firstValidBlock !== undefined
-          ? firstValidBlock instanceof UInt32
-            ? firstValidBlock
-            : UInt32.from(firstValidBlock)
+    preconditions.slotValidityRange = new ValidityRangeUInt32({
+      firstValidSlot:
+        firstValidSlot !== undefined
+          ? firstValidSlot instanceof UInt32
+            ? firstValidSlot
+            : UInt32.from(firstValidSlot)
           : UInt32.from(0),
-      lastValidBlock:
-        lastValidBlock !== undefined
-          ? lastValidBlock instanceof UInt32
-            ? lastValidBlock
-            : UInt32.from(lastValidBlock)
+      lastValidSlot:
+        lastValidSlot !== undefined
+          ? lastValidSlot instanceof UInt32
+            ? lastValidSlot
+            : UInt32.from(lastValidSlot)
           : UInt32.from(UInt32.MAXINT()),
     });
 
@@ -171,9 +160,6 @@ export class MinaChainPreconditions extends Struct({
    * Converts the MinaChainPreconditions into an array of Fields for circuit operations.
    */
   toFields(): Field[] {
-    return [
-      ...this.slotIndexValidityRange.toFields(),
-      ...this.blockchainLength.toFields(),
-    ];
+    return [...this.slotValidityRange.toFields()];
   }
 }

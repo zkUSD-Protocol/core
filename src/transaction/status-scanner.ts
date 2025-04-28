@@ -70,8 +70,7 @@ const mkConfig = async (mina: IMinaNetworkInterface) => {
   return {
     blockTimeMs: BigInt(Number(mina.slotDuration) * 0.9),
     getBlockchainLength: async () => {
-      const latestBlock = await fetchLastBlock(mina.network.mina[0]);
-      return latestBlock.blockchainLength.toBigint();
+      return (await mina.getBlockchainLength()).toBigint();
     },
     queryTransactionStatuses: async (lastBlocks: number) => {
       return mina.queryGraphQL(mkTransactionStatusesQuery({ lastBlocks }));
@@ -298,17 +297,21 @@ class TransactionStatusScanner implements ITransactionStatusScanner {
 
     try {
       const chainLength = await this.config.getBlockchainLength();
+
       const cachedLastBlock = this.lastBlock;
+
       const fromBlock =
         cachedLastBlock === 0n && chainLength > 20n
           ? chainLength - 19n
           : cachedLastBlock + 1n;
 
       const lastBlocks = chainLength - fromBlock + 1n;
+
       if (lastBlocks > 0n) {
         const response = await this.config.queryTransactionStatuses(
           Number(lastBlocks)
         );
+
         this.processNewBlocks(response, fromBlock);
         setTimeout(() => this.doScan(), Number(this.config.blockTimeMs));
       } else {

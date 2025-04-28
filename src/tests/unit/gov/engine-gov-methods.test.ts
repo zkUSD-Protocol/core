@@ -42,6 +42,7 @@ const engine = () => testHelper.engine.contract;
 
 const engineVK = () =>
   testHelper!.zkusdCompilationData()!.zkusdEngineContractVk;
+
 const EMERGENCY_STOP_VAL = Bool(true);
 const VALID_PRICE_BLOCK_COUNT_VAL = UInt8.from(42);
 const LIQ_BONUS_RATIO_VAL = UInt8.from(7);
@@ -288,7 +289,6 @@ describe('Engine – governance‑controlled setters', () => {
         resolutionTree
       );
     });
-    console.log('Im here', proposalHash.toString());
 
     proposalMap.set(proposalHash, voteBits);
     const proposalWitness = proposalMap.getWitness(proposalHash);
@@ -355,14 +355,11 @@ describe('Engine – governance‑controlled setters', () => {
       it('❌ bad blockchain preconditions → fails', async () => {
         const { newValue } = tc.makeOperation();
         const badSpec = makeDefaultAcceptedSpec(updateSpec.govResolutionIndex);
-        badSpec.blockchainPreconditions = new MinaChainPreconditions({
-          slotIndexValidityRange:
-            MinaChainPreconditions.always().slotIndexValidityRange,
-          blockchainLength: new ValidityRangeUInt32({
-            firstValidBlock: UInt32.from(90000),
-            lastValidBlock: UInt32.from(100),
-          }),
-        });
+        const currentSlot = await testHelper.mina.getCurrentSlot();
+        badSpec.blockchainPreconditions = MinaChainPreconditions.slotRange(
+          currentSlot.add(50000),
+          currentSlot.add(50001)
+        );
         await assert.rejects(async () => {
           await testHelper.includeTx(testHelper.agents.alice.keys, async () => {
             if (

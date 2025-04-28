@@ -15,7 +15,7 @@ interface MinaNetwork {
 
 const validPriceBlockCounts: Record<blockchain, number> = {
   local: 1,
-  lightnet: 10,
+  lightnet: 30,
   devnet: 5, // TODO isn't it too high?
   mainnet: 2,
   zeko: 2,

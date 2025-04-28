@@ -101,8 +101,8 @@ describe('zkUSD Upgradability - Engine Upgrade Test Suite', () => {
       { name: 'testing the most basic tx' }
     );
 
-    await th.deployTokenContracts({ force: true });
-    // await th.deployTokenContracts({ force: false });
+    // await th.deployTokenContracts({ force: true });
+    await th.deployTokenContracts({ force: false });
 
     // Verify engine's token account
     const engineTokenAccount = await th.mina.fetchMinaAccount(

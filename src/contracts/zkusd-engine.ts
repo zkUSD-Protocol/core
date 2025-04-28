@@ -1092,8 +1092,7 @@ export function ZkUsdEngineContract(args: {
      */
     buildBlockchainState(): ZkusdUpdateMinaBlockchainState {
       return {
-        currentSlot: this.currentSlot,
-        blockchainLength: this.network.blockchainLength.getAndRequireEquals(),
+        currentSlot: this.network.globalSlotSinceGenesis,
       };
     }
 

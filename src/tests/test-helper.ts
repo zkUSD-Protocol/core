@@ -837,6 +837,7 @@ export class TestHelper<E extends string> {
     options: {
       cache?: boolean;
       returnTxHandle?: boolean;
+      priority?: boolean;
     } = {}
   ) {
     for (const key of Object.keys(operation)) {
@@ -847,6 +848,7 @@ export class TestHelper<E extends string> {
 
     const cache = options.cache ?? true;
     const returnTxHandle = options.returnTxHandle ?? false;
+    const priority = options.priority ?? false;
 
     // 1. Fetch events and rebuild on-chain state
     const events = await this.council.fetchEvents();
@@ -883,12 +885,12 @@ export class TestHelper<E extends string> {
     let mergedVoteProof: ZkusdGoverningCouncilVoteProof | undefined;
 
     // Create a deterministic but simpler hash for the cache key
-    const operationStr = JSON.stringify(operation);
+    const updateSpecStr = JSON.stringify(updateSpec);
     const councilRootStr = councilTree.getRoot().toString();
     const resolutionIndexStr = govResolutionIndex.toString();
 
     // Use crypto module to create a hash from the combined strings
-    const hashInput = operationStr + councilRootStr + resolutionIndexStr;
+    const hashInput = updateSpecStr + councilRootStr + resolutionIndexStr;
     const proofHash = crypto
       .createHash('sha256')
       .update(hashInput)
@@ -982,13 +984,19 @@ export class TestHelper<E extends string> {
     console.timeEnd('Timing vote proof generation');
 
     // 5. Support proposal
-    await this.includeTx(this.deployer, async () => {
-      await this.council.supportProposalHelper(
-        finalProof,
-        proposalMap,
-        resolutionTree
-      );
-    });
+    await this.includeTx(
+      this.deployer,
+      async () => {
+        await this.council.supportProposalHelper(
+          finalProof,
+          proposalMap,
+          resolutionTree
+        );
+      },
+      {
+        executor: 'local',
+      }
+    );
 
     proposalMap.set(proposalHash, voteBits);
     const proposalWitness = proposalMap.getWitness(proposalHash);
@@ -997,14 +1005,20 @@ export class TestHelper<E extends string> {
     const resolutionWitness = new ZkusdGovUpdateWitness(
       resolutionTree.getWitness(govResolutionIndex.toBigint())
     );
-    await this.includeTx(this.deployer, async () => {
-      await this.council.passProposal(
-        updateSpec,
-        proposalWitness,
-        voteBits,
-        resolutionWitness
-      );
-    });
+    await this.includeTx(
+      this.deployer,
+      async () => {
+        await this.council.passProposal(
+          updateSpec,
+          proposalWitness,
+          voteBits,
+          resolutionWitness
+        );
+      },
+      {
+        executor: 'local',
+      }
+    );
 
     if (returnTxHandle) {
       return await this.tx(
@@ -1014,11 +1028,19 @@ export class TestHelper<E extends string> {
         },
         {
           executor: 'local',
+          startingFee: priority ? UInt64.from(1e9) : undefined,
+          statusChangeWaitingTimeoutMs: priority ? 45 * 1000 : undefined,
         }
       );
     } else {
-      await this.includeTx(this.deployer, () =>
-        contractCall!(updateSpec, resolutionWitness)
+      await this.includeTx(
+        this.deployer,
+        () => contractCall!(updateSpec, resolutionWitness),
+        {
+          executor: 'local',
+          startingFee: priority ? UInt64.from(1e9) : undefined,
+          statusChangeWaitingTimeoutMs: priority ? 45 * 1000 : undefined,
+        }
       );
     }
   }
