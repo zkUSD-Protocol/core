@@ -74,7 +74,7 @@ import { MockFieldsSigner } from '../signers/mock-field-signer.js';
 const DEBUG = !!process.env.DEBUG;
 
 /**
- * Logs debug messages if `DEBUG` is enabled.
+ * logs debug messages if `DEBUG` is enabled.
  * Otherwise, it does nothing.
  * @param {...any} args - The arguments to log
  */

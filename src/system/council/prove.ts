@@ -1,7 +1,7 @@
 import { Field, PublicKey, Signature, UInt8 } from "o1js";
-import { CouncilTree } from "./council-tree";
-import { MultiSigZkusdProtocolUpdateProgram } from "../../proofs/gov/council-multisig";
-import { ZkusdProtocolUpdateSpec } from "../update/input";
+import { CouncilTree } from "./council-tree.js";
+import { MultiSigZkusdProtocolUpdateProgram } from "../../proofs/gov/council-multisig.js";
+import { ZkusdProtocolUpdateSpec } from "../update/input.js";
 
 export async function proveProposalSupport(
   updateSpec: ZkusdProtocolUpdateSpec,

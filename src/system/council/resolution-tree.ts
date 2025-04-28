@@ -1,5 +1,5 @@
 import { Field, MerkleTree, MerkleWitness } from 'o1js';
-import { ZkusdProtocolUpdateSpec } from '../update/input';
+import { ZkusdProtocolUpdateSpec } from '../update/input.js';
 
 /**
  * Height of the Merkle tree for passed proposals - resolutions.

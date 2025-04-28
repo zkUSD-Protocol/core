@@ -1,11 +1,11 @@
-import { MinaChainPreconditions } from '../system/update/blockchain-preconditions';
+import { MinaChainPreconditions } from '../system/update/blockchain-preconditions.js';
 import {
   ZkusdProtocolUpdateOperation,
   ZkusdProtocolUpdateOperationFields,
-} from '../system/update/operation';
+} from '../system/update/operation.js';
 import {
   ZkusdProtocolPreconditions,
-} from '../system/update/protocol-preconditions';
+} from '../system/update/protocol-preconditions.js';
 import { Bool, Poseidon, PublicKey, Signature, UInt8 } from 'o1js';
 import {
   MultiSigZkusdProtocolUpdateProgram,

@@ -1,5 +1,5 @@
 import { Field, Gadgets, MerkleMap, Provable, UInt8 } from 'o1js';
-import { CouncilTree } from './council-tree';
+import { CouncilTree } from './council-tree.js';
 
 /**
  * A MerkleMap that stores votes per proposal.

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import { UInt32, Field, PublicKey } from 'o1js';
 import { ContractEvent, HasFetchEvents } from '../../../../system/council/common';
-import { CouncilTree } from '../../../../system/council/council-tree';
+import { CouncilTree } from '../../../../system/council/council-tree.js';
 import { CouncilTreeContractProvider } from '../../../../system/council/event-based-council-tree-provider.js';
 
 /* -------------------------------------------------------------------------- */

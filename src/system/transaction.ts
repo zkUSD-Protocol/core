@@ -1,8 +1,8 @@
 import { JsonProof } from 'o1js';
-import { SizedArray } from '../types/utility';
-import { OracleWhitelist } from './oracle';
-import { ZkusdProtocolUpdateSpec } from './update/input';
-import { ResolutionTree } from './council/resolution-tree';
+import { SizedArray } from '../types/utility.js';
+import { OracleWhitelist } from './oracle.js';
+import { ZkusdProtocolUpdateSpec } from './update/input.js';
+import { ResolutionTree } from './council/resolution-tree.js';
 
 export enum ZkusdEngineTransactionType {
   // vault

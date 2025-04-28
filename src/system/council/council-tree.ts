@@ -69,6 +69,9 @@ export class CouncilTree extends MerkleTree {
     // Check for duplicate public keys
     const seen = new Set<string>();
     for (const key of seatingKeys) {
+      if(key.isEmpty().toBoolean()){
+        continue;
+      }
       const b58 = key.toBase58();
       if (seen.has(b58)) {
         throw new Error(`Duplicate council key detected: ${b58}`);
