@@ -12,30 +12,31 @@ import {
   UInt64,
 } from 'o1js';
 import { TestHelper } from '../../test-helper.js';
-import { ZkusdProtocolUpdateSpec } from '../../../system/update/input.js';
+import { ZkusdProtocolUpdateSpec } from '../../../system/governance-update/input.js';
 import {
   MinaChainPreconditions,
   ValidityRangeUInt32,
-} from '../../../system/update/blockchain-preconditions.js';
-import { ZkusdProtocolPreconditions } from '../../../system/update/protocol-preconditions.js';
+} from '../../../system/governance-update/blockchain-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../../../system/governance-update/protocol-preconditions.js';
 import {
   generateVoteProof,
   getNextEmptyResolutionIndex,
-  rebuildCouncilMembersAndTree,
+  rebuildCouncilMerkleMap,
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
 } from './council/common.js';
-import { MultiSigZkusdProtocolUpdateProgram } from '../../../proofs/gov/council-multisig.js';
+import { GovernanceUpdate } from '../../../proofs/governance-update/prove.js';
 import { ZkusdGovUpdateWitness } from '../../../system/governance.js';
 import {
   BoolOperation,
   FieldOperation,
   UInt64Operation,
   UInt8Operation,
-} from '../../../system/update/simple-operations.js';
+} from '../../../system/governance-update/simple-operations.js';
 import { OracleWhitelist } from '../../../system/oracle.js';
-import { BoolPrecondition } from '../../../system/update/simple-preconditions.js';
-import { ZkusdProtocolUpdateOperation } from '../../../system/update/operation.js';
+import { BoolPrecondition } from '../../../system/governance-update/simple-preconditions.js';
+import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
+import { ZkusdCouncilMerkleMap } from '../../../proofs/council-management/common.js';
 
 let testHelper: TestHelper<'local'>;
 const engine = () => testHelper.engine.contract;
@@ -239,7 +240,7 @@ type TestCase = {
 
 describe('Engine – governance‑controlled setters', () => {
   let updateWitness: ZkusdGovUpdateWitness;
-  let councilTree: MerkleTree;
+  let councilMerkleMap: ZkusdCouncilMerkleMap;
   let proposalMap: MerkleMap;
   let resolutionTree: MerkleTree;
 
@@ -250,7 +251,7 @@ describe('Engine – governance‑controlled setters', () => {
     await testHelper.createLocalAgents('bob');
 
     const events = await testHelper.council.fetchEvents();
-    ({ councilTree } = rebuildCouncilMembersAndTree(events));
+    councilMerkleMap = rebuildCouncilMerkleMap(events);
     proposalMap = rebuildProposalMerkleMap(events);
     resolutionTree = rebuildResolutionMerkleTree(events);
 
@@ -260,24 +261,20 @@ describe('Engine – governance‑controlled setters', () => {
     const councilKeyPairs = testHelper.networkKeys.council!;
     const voteA = await generateVoteProof(
       councilKeyPairs[0],
-      councilTree,
+      councilMerkleMap,
       0,
       Number(govResolutionIndex.toBigint()),
       updateSpec
     );
     const voteB = await generateVoteProof(
       councilKeyPairs[1],
-      councilTree,
+      councilMerkleMap,
       1,
       Number(govResolutionIndex.toBigint()),
       updateSpec
     );
 
-    const merged = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-      voteA.publicInput,
-      voteA,
-      voteB
-    );
+    const merged = await GovernanceUpdate.mergeVotes(updateSpec, voteA, voteB);
 
     const proposalHash = merged.proof.publicOutput.proposalHash;
     const voteBits = merged.proof.publicOutput.cummulatedVoteBitArray;

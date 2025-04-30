@@ -7,7 +7,7 @@ import { Field, Struct } from 'o1js';
  *
  * Properties:
  * - `proposalHash` — `Field`: Hash of the proposal specifications.
- * - `councilMemberMerkleRoot` — `Field`: Merkle root of the council members after the update.
+ * - `councilMerkleMapRoot` — `Field`: Merkle root of the council members after the update.
  * - `cummulatedVoteBitArray` — `Field`: Bit array encoding accumulated votes.
  */
 export class ZkusdProtocolUpdateOutput extends Struct({
@@ -19,7 +19,7 @@ export class ZkusdProtocolUpdateOutput extends Struct({
   /**
    * Merkle root of the council members set.
    */
-  councilMemberMerkleRoot: Field,
+  councilMerkleMapRoot: Field,
 
   /**
    * Bit array (stored as a Field) encoding the accumulated votes.

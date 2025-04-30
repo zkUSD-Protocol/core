@@ -12,45 +12,21 @@ import {
   Proof,
 } from 'o1js';
 
-import {
-  MultiSigZkusdProtocolUpdateProgram,
-  ZKUSD_COUNCIL_TREE_HEIGHT,
-  ZkusdCouncilMemberWitness,
-  pubkeyToCouncilSeatLeaf,
-} from '../../../../proofs/gov/council-multisig.js';
-import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
-import { BoolOperation } from '../../../../system/update/simple-operations.js';
-import { ZkusdProtocolUpdateOutput } from '../../../../system/update/output.js';
+import { GovernanceUpdate } from '../../../../proofs/governance-update/prove.js';
+import { ZKUSD_COUNCIL_TREE_HEIGHT } from '../../../../proofs/council-management/index.js';
+import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
+import { BoolOperation } from '../../../../system/governance-update/simple-operations.js';
+import { ZkusdProtocolUpdateOutput } from '../../../../system/governance-update/output.js';
+import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
 
-// A small helper for building and proving membership in a Merkle tree
-class CouncilMerkleTree {
-  height: number;
-  tree: MerkleTree;
-  constructor(height: number) {
-    this.height = height;
-    this.tree = new MerkleTree(height);
-    // Pre-fill tree with zero leaves
-  }
-
-  setMember(index: number, pubKey: PublicKey) {
-    // For the seat index i, we store Poseidon([2^i, ...pubKey.toFields()])
-    const leaf = pubkeyToCouncilSeatLeaf(pubKey, index);
-    this.tree.setLeaf(BigInt(index), leaf);
-  }
-
-  getRoot(): Field {
-    return this.tree.getRoot();
-  }
-
-  getWitness(index: number): ZkusdCouncilMemberWitness {
-    return new ZkusdCouncilMemberWitness(this.tree.getWitness(BigInt(index)));
-  }
+function getSeatIndex(seatIndex: number) {
+  return Field(2 ** seatIndex);
 }
 
-describe('MultiSigZkusdProtocolUpdateProgram', () => {
+describe('GovernanceUpdate', () => {
   let verificationKey: VerificationKey;
-  let councilMerkleRoot: Field;
-  let councilTree: CouncilMerkleTree;
+  let councilMerkleMapRoot: Field;
+  let councilMerkleMap: ZkusdCouncilMerkleMap;
   let seatIndex = 3; // Example seat index
 
   let councilPrivateKey: PrivateKey;
@@ -64,8 +40,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
 
   before(async () => {
     console.log('Compiling ZkProgram...');
-    const { verificationKey: vk } =
-      await MultiSigZkusdProtocolUpdateProgram.compile();
+    const { verificationKey: vk } = await GovernanceUpdate.compile();
     verificationKey = vk;
     console.log('Compilation complete.');
 
@@ -81,9 +56,12 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
     wrongPublicKey = wrongPrivateKey.toPublicKey();
 
     // Build a Merkle tree for the council
-    councilTree = new CouncilMerkleTree(ZKUSD_COUNCIL_TREE_HEIGHT);
-    councilTree.setMember(seatIndex, councilPublicKey);
-    councilMerkleRoot = councilTree.getRoot();
+    councilMerkleMap = new ZkusdCouncilMerkleMap();
+    councilMerkleMap.set(
+      getSeatIndex(seatIndex),
+      Poseidon.hash(councilPublicKey.toFields())
+    );
+    councilMerkleMapRoot = councilMerkleMap.root;
   });
 
   // ------------------------------------------------------------
@@ -94,17 +72,13 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       // 1. Sign the correct input data
       const signature = Signature.create(councilPrivateKey, updateInputFields);
 
-      // 2. Get the Merkle witness for seatIndex
-      const witness = councilTree.getWitness(seatIndex);
-
       // 3. Generate proof
       console.log('Creating vote (correct signature, correct membership)...');
-      const { proof } = await MultiSigZkusdProtocolUpdateProgram.createVote(
+      const { proof } = await GovernanceUpdate.createVote(
         updateInput,
         signature,
         councilPublicKey,
-        witness,
-        councilMerkleRoot,
+        councilMerkleMap,
         Field(2 ** seatIndex) // The seat index is encoded as 2^index
       );
       console.log('Proof created.');
@@ -118,14 +92,14 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       );
 
       // 5. Check publicOutput
-      const { proposalHash, councilMemberMerkleRoot, cummulatedVoteBitArray } =
+      const { proposalHash, councilMerkleMapRoot, cummulatedVoteBitArray } =
         proof.publicOutput;
       assert(
         proposalHash.equals(Poseidon.hash(updateInputFields)).toBoolean(),
         'Proposal hash mismatch'
       );
       assert(
-        councilMemberMerkleRoot.equals(councilMerkleRoot).toBoolean(),
+        councilMerkleMapRoot.equals(councilMerkleMapRoot).toBoolean(),
         'Merkle root mismatch'
       );
       assert(
@@ -149,17 +123,13 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
         differentFields
       );
 
-      // 3. Attempt to create a vote proof with the *original* updateInput but the wrong signature
-      const witness = councilTree.getWitness(seatIndex);
-
       console.log('Creating vote with mismatched input-signature...');
       await assert.rejects(async () => {
-        await MultiSigZkusdProtocolUpdateProgram.createVote(
+        await GovernanceUpdate.createVote(
           updateInput,
           wrongSignature,
           councilPublicKey,
-          witness,
-          councilMerkleRoot,
+          councilMerkleMap,
           Field(2 ** seatIndex)
         );
       }, 'Expected createVote to fail with incorrect signature');
@@ -172,17 +142,15 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
 
       // 2. Provide a *wrong* seat index or a wrong witness. E.g. seatIndex+1
       const wrongSeatIndex = seatIndex + 1;
-      const witness = councilTree.getWitness(wrongSeatIndex); // Actually won't match the correct key
 
       console.log('Creating vote with a mismatched seat witness...');
       await assert.rejects(async () => {
-        await MultiSigZkusdProtocolUpdateProgram.createVote(
+        await GovernanceUpdate.createVote(
           updateInput,
           signature,
           councilPublicKey,
-          witness,
-          councilMerkleRoot,
-          Field(2 ** wrongSeatIndex)
+          councilMerkleMap,
+          getSeatIndex(wrongSeatIndex)
         );
       }, 'Expected createVote to fail if membership proof does not match actual seat');
       console.log('Proof creation failed as expected.');
@@ -193,17 +161,15 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       const signature = Signature.create(wrongPrivateKey, updateInputFields);
 
       // 2. Provide the correct seat witness for the *real* public key but try the wrong pubKey
-      const witness = councilTree.getWitness(seatIndex);
 
       console.log('Creating vote with the wrong public key...');
       await assert.rejects(async () => {
-        await MultiSigZkusdProtocolUpdateProgram.createVote(
+        await GovernanceUpdate.createVote(
           updateInput,
           signature,
           wrongPublicKey,
-          witness,
-          councilMerkleRoot,
-          Field(2 ** seatIndex)
+          councilMerkleMap,
+          getSeatIndex(seatIndex)
         );
       }, 'Expected createVote to fail if the provided public key is not actually in the tree');
       console.log('Proof creation failed as expected.');
@@ -212,7 +178,7 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
 
   describe('createVote() - malicious multi-bit index test', () => {
     it('should fail if seat index is not a single bit (e.g., 2^3 + 2^5)', async () => {
-      const seatIndexMaliciousValue = Field((1 << 3) + (1 << 5)); // 8 + 32 = 40
+      const seatIndexMaliciousValue = 40; // 8 + 32 = 40
 
       // Suppose we have everything else set up: valid privateKey & signature data
       const privateKey = PrivateKey.random();
@@ -222,18 +188,21 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       // For brevity, assume you build the tree and witness for a seat=40
       // but in reality, your circuit expects seat=3 or seat=5, not BOTH.
       const signature = Signature.create(privateKey, updateInputFields);
-      const witness = councilTree.getWitness(40); // (If 40 is in range of your tree size)
+
+      councilMerkleMap.set(
+        getSeatIndex(seatIndexMaliciousValue),
+        Poseidon.hash(publicKey.toFields())
+      );
 
       await assert.rejects(async () => {
-        await MultiSigZkusdProtocolUpdateProgram.createVote(
+        await GovernanceUpdate.createVote(
           updateInput,
           signature,
           publicKey,
-          witness,
-          councilMerkleRoot,
-          seatIndexMaliciousValue
+          councilMerkleMap,
+          getSeatIndex(seatIndexMaliciousValue)
         );
-      }, 'Expected createVote to fail if the seat index sets multiple bits.');
+      });
     });
   });
 
@@ -245,8 +214,8 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
     let secondCouncilPrivateKey: PrivateKey;
     let secondCouncilPublicKey: PublicKey;
 
-    let secondTree: CouncilMerkleTree;
-    let secondCouncilMerkleRoot: Field;
+    let secondMerkleMap: ZkusdCouncilMerkleMap;
+    let secondcouncilMerkleMapRoot: Field;
 
     let proof1: Proof<ZkusdProtocolUpdateSpec, ZkusdProtocolUpdateOutput>;
     let proof2: Proof<ZkusdProtocolUpdateSpec, ZkusdProtocolUpdateOutput>;
@@ -256,33 +225,40 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
       secondCouncilPrivateKey = PrivateKey.random();
       secondCouncilPublicKey = secondCouncilPrivateKey.toPublicKey();
 
-      secondTree = new CouncilMerkleTree(ZKUSD_COUNCIL_TREE_HEIGHT);
-      secondTree.setMember(seatIndex2, secondCouncilPublicKey);
-      secondCouncilMerkleRoot = secondTree.getRoot();
+      secondMerkleMap = new ZkusdCouncilMerkleMap();
+      secondMerkleMap.set(
+        getSeatIndex(seatIndex2),
+        Poseidon.hash(secondCouncilPublicKey.toFields())
+      );
+      secondcouncilMerkleMapRoot = secondMerkleMap.root;
 
-      // For the merge to pass, *both* proofs must have the SAME publicInput & the SAME councilMemberMerkleRoot
+      // For the merge to pass, *both* proofs must have the SAME publicInput & the SAME councilMerkleMapRoot
       // So let's unify them by building a single tree that has both seats:
       // seatIndex -> councilPublicKey
       // seatIndex2 -> secondCouncilPublicKey
 
       // That can be done easily by building one combined tree:
-      const combinedTree = new CouncilMerkleTree(ZKUSD_COUNCIL_TREE_HEIGHT);
-      combinedTree.setMember(seatIndex, councilPublicKey);
-      combinedTree.setMember(seatIndex2, secondCouncilPublicKey);
-      const combinedRoot = combinedTree.getRoot();
+      const combinedMerkleMap = new ZkusdCouncilMerkleMap();
+      combinedMerkleMap.set(
+        getSeatIndex(seatIndex),
+        Poseidon.hash(councilPublicKey.toFields())
+      );
+      combinedMerkleMap.set(
+        getSeatIndex(seatIndex2),
+        Poseidon.hash(secondCouncilPublicKey.toFields())
+      );
+      const combinedRoot = combinedMerkleMap.root;
 
       // Now generate two separate proofs with the same root, same public input, but different seats.
 
       // First proof
       const signature1 = Signature.create(councilPrivateKey, updateInputFields);
-      const witness1 = combinedTree.getWitness(seatIndex);
-      const { proof: p1 } = await MultiSigZkusdProtocolUpdateProgram.createVote(
+      const { proof: p1 } = await GovernanceUpdate.createVote(
         updateInput,
         signature1,
         councilPublicKey,
-        witness1,
-        combinedRoot,
-        Field(2 ** seatIndex)
+        combinedMerkleMap,
+        getSeatIndex(seatIndex)
       );
       proof1 = p1;
 
@@ -291,21 +267,19 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
         secondCouncilPrivateKey,
         updateInputFields
       );
-      const witness2 = combinedTree.getWitness(seatIndex2);
-      const { proof: p2 } = await MultiSigZkusdProtocolUpdateProgram.createVote(
+      const { proof: p2 } = await GovernanceUpdate.createVote(
         updateInput,
         signature2,
         secondCouncilPublicKey,
-        witness2,
-        combinedRoot,
-        Field(2 ** seatIndex2)
+        combinedMerkleMap,
+        getSeatIndex(seatIndex2)
       );
       proof2 = p2;
     });
 
     it('should correctly merge two valid proofs', async () => {
       console.log('Merging votes from seatIndex and seatIndex2...');
-      const mergedProof = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+      const mergedProof = await GovernanceUpdate.mergeVotes(
         updateInput,
         proof1,
         proof2
@@ -344,22 +318,19 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
         councilPrivateKey,
         differentFields
       );
-      const witness1 = councilTree.getWitness(seatIndex);
 
-      const proofWithDifferentInput =
-        await MultiSigZkusdProtocolUpdateProgram.createVote(
-          differentInput,
-          signatureDifferent,
-          councilPublicKey,
-          witness1,
-          councilMerkleRoot,
-          Field(2 ** seatIndex)
-        );
+      const proofWithDifferentInput = await GovernanceUpdate.createVote(
+        differentInput,
+        signatureDifferent,
+        councilPublicKey,
+        councilMerkleMap,
+        getSeatIndex(seatIndex)
+      );
 
       // Attempt to merge that with a valid proof for the original input
       console.log('Attempting merge with mismatched input proofs...');
       await assert.rejects(async () => {
-        await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+        await GovernanceUpdate.mergeVotes(
           updateInput, // The "current" input is the original
           proof1, // correct input
           proofWithDifferentInput.proof // different input
@@ -370,26 +341,23 @@ describe('MultiSigZkusdProtocolUpdateProgram', () => {
 
     it('should fail to merge if the Merkle roots in the two proofs differ', async () => {
       // proof1 was created from the combined root
-      // We'll make a proof2 from a *different* councilRoot (the "secondCouncilMerkleRoot" lacking seatIndex)
-      // That way, the leftProof.publicOutput.councilMemberMerkleRoot != rightProof.publicOutput.councilMemberMerkleRoot
+      // We'll make a proof2 from a *different* councilRoot (the "secondcouncilMerkleMapRoot" lacking seatIndex)
+      // That way, the leftProof.publicOutput.councilMerkleMapRoot != rightProof.publicOutput.councilMerkleMapRoot
       const signature2 = Signature.create(
         secondCouncilPrivateKey,
         updateInputFields
       );
-      const witness2 = secondTree.getWitness(seatIndex2);
-      const proofMismatchRoot =
-        await MultiSigZkusdProtocolUpdateProgram.createVote(
-          updateInput,
-          signature2,
-          secondCouncilPublicKey,
-          witness2,
-          secondCouncilMerkleRoot,
-          Field(2 ** seatIndex2)
-        );
+      const proofMismatchRoot = await GovernanceUpdate.createVote(
+        updateInput,
+        signature2,
+        secondCouncilPublicKey,
+        secondMerkleMap,
+        Field(2 ** seatIndex2)
+      );
 
       console.log('Attempting merge with mismatched council roots...');
       await assert.rejects(async () => {
-        await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+        await GovernanceUpdate.mergeVotes(
           updateInput,
           proof1,
           proofMismatchRoot.proof

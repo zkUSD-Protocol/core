@@ -1,27 +1,43 @@
 import {
-  CouncilProposalPassedEvent,
-  CouncilProposalSupportChangeEvent,
-  getNewCouncilMembers,
+  CouncilManagementActionEvent,
+  GovernanceProposalPassedEvent,
+  GovernanceProposalSupportChangeEvent,
 } from '../../../../system/council-events.js';
-import { MerkleMap, Field, MerkleTree, Signature, UInt32 } from 'o1js';
+import {
+  MerkleMap,
+  Field,
+  MerkleTree,
+  Signature,
+  UInt32,
+  Poseidon,
+  Bool,
+  UInt8,
+  PublicKey,
+} from 'o1js';
 import { KeyPair } from '../../../../types/utility.js';
 import {
-  MultiSigZkusdProtocolUpdateProgram,
-  ZkusdCouncilMemberWitness,
-  ZkusdGoverningCouncilVoteProof,
-} from '../../../../proofs/gov/council-multisig.js';
-import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
+  GovernanceUpdate,
+  ZkusdGovernanceUpdateVoteProof,
+} from '../../../../proofs/governance-update/prove.js';
+import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
 import { TestHelper } from '../../../test-helper.js';
 import { ZkusdGoverningCouncilContract } from '../../../../contracts/zkusd-governing-council.js';
 import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../../../../system/governance.js';
+import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
+import {
+  ZkusdCouncilManagementActions,
+  ZkusdCouncilManagementInput,
+  ZkusdCouncilManagementOperation,
+  ZkusdCouncilManagementSpec,
+} from '../../../../system/council-management/input.js';
 
 export async function generateVoteProof(
   councilMember: KeyPair,
-  councilTree: MerkleTree,
+  councilMerkleMap: ZkusdCouncilMerkleMap,
   seatIndex: number,
   govResolutionIndex: number = 0,
   updateSpec: ZkusdProtocolUpdateSpec = ZkusdProtocolUpdateSpec.empty()
-): Promise<ZkusdGoverningCouncilVoteProof> {
+): Promise<ZkusdGovernanceUpdateVoteProof> {
   // an example of a update - an empty one, but its okay for these tests.
   updateSpec.govResolutionIndex = UInt32.from(govResolutionIndex);
   const updateInputFields = updateSpec.toFields();
@@ -30,16 +46,11 @@ export async function generateVoteProof(
     updateInputFields
   );
 
-  const witness = new ZkusdCouncilMemberWitness(
-    councilTree.getWitness(BigInt(seatIndex))
-  );
-
-  const { proof } = await MultiSigZkusdProtocolUpdateProgram.createVote(
+  const { proof } = await GovernanceUpdate.createVote(
     updateSpec,
     signature,
     councilMember.publicKey,
-    witness,
-    councilTree.getRoot(),
+    councilMerkleMap,
     Field(2 ** seatIndex) // The seat index is encoded as 2^index
   );
   return proof;
@@ -60,7 +71,7 @@ export function rebuildProposalMerkleMap(
   );
 
   for (const event of proposalEvents) {
-    const eventData = event.event.data as CouncilProposalSupportChangeEvent;
+    const eventData = event.event.data as GovernanceProposalSupportChangeEvent;
     const proposalHash = eventData.proposalHash as Field;
     const acceptedVotes = eventData.acceptedVoteBitArray as Field;
 
@@ -91,7 +102,7 @@ export function rebuildResolutionMerkleTree(
   );
 
   for (const event of resolutionEvents) {
-    const eventData = event.event.data as CouncilProposalPassedEvent;
+    const eventData = event.event.data as GovernanceProposalPassedEvent;
     const resolutionIndex = eventData.resolutionIndex.toBigint();
     const proposalHash = eventData.proposalHash as Field;
 
@@ -111,17 +122,52 @@ export async function prepareCouncilMembers(th: TestHelper<'local'>) {
   return th.networkKeys.council;
 }
 /**
- * Rebuilds the Council PublicKey list and MerkleTree from contract events.
+ * Rebuilds the Council MerkleMap from contract events.
  * @param events The array of council contract events (emitted during lifetime)
- * @returns Object containing: members (PublicKey[]), and the reconstructed MerkleTree
+ * @returns The reconstructed MerkleMap
  */
-export function rebuildCouncilMembersAndTree(
+export function rebuildCouncilMerkleMap(
   events: Array<{ type: string; event: { data: any } }>
-) {
-  const councilKeys = getNewCouncilMembers(events);
-  const councilTree =
-    ZkusdGoverningCouncilContract.buildCouncilMerkleTree(councilKeys);
-  return { councilKeys, councilTree };
+): ZkusdCouncilMerkleMap {
+  const councilTree = new ZkusdCouncilMerkleMap();
+
+  console.log('Rebuilding Council Merkle Map');
+
+  //Reverse the events array
+  events.reverse();
+
+  for (const event of events) {
+    if (event.type === 'CouncilManagementActionEvent') {
+      const eventData = event.event.data as CouncilManagementActionEvent;
+      const action = eventData.action;
+
+      if (action.shouldAdd) {
+        councilTree.set(
+          action.councilSeatPosition,
+          Poseidon.hash(action.councilKey.toFields())
+        );
+      } else {
+        councilTree.set(action.councilSeatPosition, Field.from(0));
+      }
+    }
+  }
+
+  return councilTree;
+}
+
+/**
+ * Extracts all council management operations from the given events.
+ * @param events The array of contract events
+ * @returns An array of ZkusdCouncilManagementOperation objects
+ */
+export function extractCouncilOperationsFromEvents(
+  events: Array<{ type: string; event: { data: any } }>
+): Array<ZkusdCouncilManagementOperation> {
+  //Reverse the events array
+  events.reverse();
+  return events
+    .filter((event) => event.type === 'CouncilManagementActionEvent')
+    .map((event) => event.event.data.action as ZkusdCouncilManagementOperation);
 }
 
 /**

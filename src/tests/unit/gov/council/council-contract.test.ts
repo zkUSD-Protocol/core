@@ -12,28 +12,30 @@ import assert from 'node:assert';
 
 import { TestHelper } from '../../../test-helper.js';
 import { KeyPair } from '../../../../types/utility.js';
-import { ZkusdProtocolUpdateSpec } from '../../../../system/update/input.js';
+import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
 import {
-  MultiSigZkusdProtocolUpdateProgram,
-  ZkusdGoverningCouncilVoteProof,
-} from '../../../../proofs/gov/council-multisig.js';
+  GovernanceUpdate,
+  ZkusdGovernanceUpdateVoteProof,
+} from '../../../../proofs/governance-update/prove.js';
 import {
   ZKUSD_GOV_UPDATE_TREE_HEIGHT,
   ZkusdGovUpdateWitness,
 } from '../../../../system/governance.js';
 import { countBits } from '../../../../contracts/zkusd-governing-council.js';
 import {
-  CouncilProposalPassedEvent,
-  CouncilProposalSupportChangeEvent,
-  getNewCouncilMembers,
+  GovernanceProposalPassedEvent,
+  GovernanceProposalSupportChangeEvent,
 } from '../../../../system/council-events.js';
 import {
+  extractCouncilOperationsFromEvents,
   generateVoteProof,
   getNextEmptyResolutionIndex,
   prepareCouncilMembers,
+  rebuildCouncilMerkleMap,
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
 } from './common.js';
+import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
 
 describe('zkUSD Multisig Council Test Suite', () => {
   let testHelper: TestHelper<'local'>;
@@ -42,7 +44,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
   let resolutionMerkleTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
   let updateSpec: ZkusdProtocolUpdateSpec;
   let govResolutionIndex: Number;
-  let councilMerkleTree: MerkleTree;
+  let councilMerkleMap: ZkusdCouncilMerkleMap;
 
   before(async () => {
     // Initialize test environment
@@ -52,25 +54,25 @@ describe('zkUSD Multisig Council Test Suite', () => {
     await testHelper.createLocalAgents('alice');
 
     council = await prepareCouncilMembers(testHelper);
-
-    councilMerkleTree = testHelper.council.buildAndVerifyCouncilMerkleTree(
-      council.map((keypair) => keypair.publicKey)
-    );
   });
   it('should be possible to rebuild council merkle tree from emitted events', async () => {
     const contractEvents = await testHelper.council.fetchEvents();
 
-    const councilKeys = getNewCouncilMembers(contractEvents);
+    const councilOperations =
+      extractCouncilOperationsFromEvents(contractEvents);
 
-    const councilMerkleTreeFromEvents =
-      testHelper.council.buildAndVerifyCouncilMerkleTree(councilKeys);
+    const councilMerkleMapFromEvents =
+      testHelper.council.buildAndVerifyCouncilMerkleTree(councilOperations);
 
-    assert.ok(
-      councilMerkleTreeFromEvents
-        .getRoot()
-        .equals(councilMerkleTree.getRoot())
-        .toBoolean()
-    );
+    const onChainRoot = await testHelper.council.councilMerkleMapRoot.fetch();
+
+    if (!onChainRoot) {
+      throw new Error('Council merkle map root is undefined');
+    }
+
+    assert.deepStrictEqual(councilMerkleMapFromEvents.root, onChainRoot);
+
+    councilMerkleMap = councilMerkleMapFromEvents;
   });
 
   it('should be possible for a council member to create a proposal', async () => {
@@ -82,18 +84,13 @@ describe('zkUSD Multisig Council Test Suite', () => {
       getNextEmptyResolutionIndex(resolutionMerkleTree).toBigint()
     );
 
-    const councilMerkleTree =
-      testHelper.council.buildAndVerifyCouncilMerkleTree(
-        council.map((keypair) => keypair.publicKey)
-      );
-
     const councilSeatIndex = 0;
     const voteBitArray = Field(2 ** councilSeatIndex); // The seat index is encoded as 2^index
     const councilMember = council[councilSeatIndex];
 
     const voteProof = await generateVoteProof(
       councilMember,
-      councilMerkleTree,
+      councilMerkleMap,
       councilSeatIndex,
       govResolutionIndex as number
     );
@@ -146,7 +143,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
     assert.strictEqual(lastEvent.type, 'ProposalSupported');
 
     const eventData = lastEvent.event
-      .data as unknown as CouncilProposalSupportChangeEvent;
+      .data as unknown as GovernanceProposalSupportChangeEvent;
 
     // check if the eventData matches the expected values
     assert.ok(eventData.proposalTreeRootBefore.equals(rootBefore).toBoolean());
@@ -176,8 +173,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
       resolutionMerkleTree.getWitness(updateSpec.govResolutionIndex.toBigint())
     );
 
-    const voteThreshold =
-      await testHelper.council.standardProposalPassThreshold.fetch();
+    const voteThreshold = await testHelper.council.votePassThreshold.fetch();
 
     voteThreshold?.assertGreaterThan(countBits(proposalCurrentVoteBitArray));
 
@@ -225,7 +221,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     const voteProof = await generateVoteProof(
       councilMember,
-      councilMerkleTree,
+      councilMerkleMap,
       councilSeatIndex,
       govResolutionIndex as number
     );
@@ -278,7 +274,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     const voteProof = await generateVoteProof(
       councilMember,
-      councilMerkleTree,
+      councilMerkleMap,
       councilSeatIndex,
       govResolutionIndex as number
     );
@@ -340,7 +336,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
     const lastEvent = contractEventsAfter[0];
     assert.strictEqual(lastEvent.type, 'ProposalPassed');
     const eventData = lastEvent.event
-      .data as unknown as CouncilProposalPassedEvent;
+      .data as unknown as GovernanceProposalPassedEvent;
     // check if the eventData matches the expected values
     assert.ok(eventData.proposalHash.equals(proposalHash).toBoolean());
     assert.ok(
@@ -366,18 +362,13 @@ describe('zkUSD Multisig Council Test Suite', () => {
   });
 
   it('should be possible to rollup votes and pass the proposal using the rollup', async () => {
-    const councilMerkleTree =
-      testHelper.council.buildAndVerifyCouncilMerkleTree(
-        council.map((keypair) => keypair.publicKey)
-      );
-
     const councilSeatIndex = 0;
     const voteBitArray = Field(2 ** councilSeatIndex); // The seat index is encoded as 2^index
     const councilMember = council[councilSeatIndex];
 
     const voteProof = await generateVoteProof(
       councilMember,
-      councilMerkleTree,
+      councilMerkleMap,
       councilSeatIndex,
       Number(updateSpec.govResolutionIndex.add(UInt32.from(1)).toBigint())
     );
@@ -390,18 +381,17 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     const anothervoteProof = await generateVoteProof(
       anothercouncilMember,
-      councilMerkleTree,
+      councilMerkleMap,
       anothercouncilSeatIndex,
       Number(updateSpec.govResolutionIndex.toBigint())
     );
 
     // now we haave two proofs lets merge them
-    const mergedVotesProof =
-      await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
-        voteProof.publicInput,
-        voteProof,
-        anothervoteProof
-      );
+    const mergedVotesProof = await GovernanceUpdate.mergeVotes(
+      voteProof.publicInput,
+      voteProof,
+      anothervoteProof
+    );
 
     const { proposalWitness, proposalCurrentVoteBitArray, resolutionWitness } =
       supportProposalHelper(
@@ -503,7 +493,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     proposalEvents.forEach((event) => {
       const eventData = event.event
-        .data as unknown as CouncilProposalSupportChangeEvent;
+        .data as unknown as GovernanceProposalSupportChangeEvent;
 
       const votes = proposalTree.get(eventData.proposalHash);
       // since you cannot retract a vote this is fine
@@ -517,7 +507,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     resolutionEvents.forEach((event) => {
       const eventData = event.event
-        .data as unknown as CouncilProposalPassedEvent;
+        .data as unknown as GovernanceProposalPassedEvent;
       resolutionTree.setLeaf(
         eventData.resolutionIndex.toBigint(),
         eventData.proposalHash
@@ -556,7 +546,7 @@ describe('zkUSD Multisig Council Test Suite', () => {
 
     const voteProof = await generateVoteProof(
       councilMember,
-      councilMerkleTree,
+      councilMerkleMap,
       councilSeatIndex,
       1
     );
@@ -689,7 +679,7 @@ describe('countBits helper', () => {
 });
 
 function supportProposalHelper(
-  voteProof: ZkusdGoverningCouncilVoteProof,
+  voteProof: ZkusdGovernanceUpdateVoteProof,
   proposalTree: MerkleMap,
   resolutionTree: MerkleTree
 ) {

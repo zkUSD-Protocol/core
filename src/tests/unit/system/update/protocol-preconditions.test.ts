@@ -12,15 +12,15 @@ import assert from 'node:assert';
 
 import { Bool, Field, UInt8, UInt64 } from 'o1js';
 
-import { ZkusdUpdateProtocolState } from '../../../../system/update/protocol-state.js';
-import { ZkusdProtocolPreconditions } from '../../../../system/update/protocol-preconditions.js';
+import { ZkusdUpdateProtocolState } from '../../../../system/governance-update/protocol-state.js';
+import { ZkusdProtocolPreconditions } from '../../../../system/governance-update/protocol-preconditions.js';
 
 import {
   BoolPrecondition,
   HashPrecondition,
   UInt8Precondition,
   UInt64Precondition,
-} from '../../../../system/update/simple-preconditions.js';
+} from '../../../../system/governance-update/simple-preconditions.js';
 
 /* -------------------------------------------------------------------------- */
 /*                           Test Setup Utilities                             */

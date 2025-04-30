@@ -2,7 +2,7 @@ import { JsonProof } from 'o1js';
 import { SizedArray } from '../types/utility';
 import { OracleWhitelist } from './oracle';
 import { ZkusdGovUpdateWitness } from './governance';
-import { ZkusdProtocolUpdateSpec } from './update/input';
+import { ZkusdProtocolUpdateSpec } from './governance-update/input';
 
 export enum ZkusdEngineTransactionType {
   // vault
