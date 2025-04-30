@@ -51,10 +51,6 @@ export class ProposalMap extends MerkleMap {
     leftBitArray: Field,
     rightBitArray: Field
   ): Field {
-    return Gadgets.or(
-      leftBitArray,
-      rightBitArray,
-      CouncilTree.MAX_SIZE
-    );
+    return Gadgets.or(leftBitArray, rightBitArray, CouncilTree.MAX_SIZE);
   }
 }

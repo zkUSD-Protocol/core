@@ -1,6 +1,12 @@
-import { UInt32 } from 'o1js';
+import { PublicKey, UInt32 } from 'o1js';
 import { IMerkleDataProvider } from './tree-providers.js';
-import { ContractEvent, FetchOnchainRoot, HasFetchEvents, isContractEvent } from './common.js';
+import {
+  ContractEvent,
+  FetchCurrentBlockHeight,
+  FetchOnchainRoot,
+  HasFetchEvents,
+  isContractEvent,
+} from './common.js';
 import { CouncilTree } from './council-tree.js';
 import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
 
@@ -13,7 +19,7 @@ type NewCouncilEvent = ContractEvent<'NewCouncilInitializedWithFixedKeys'>;
  * Runtime check to validate that an event is a `ProposalSupported` event
  * with the correct structure.
  */
-function isNewCouncilEvent(e: unknown): e is NewCouncilEvent {
+export function isNewCouncilEvent(e: unknown): e is NewCouncilEvent {
   return isContractEvent(e, 'NewCouncilInitializedWithFixedKeys');
 }
 /* -------------------------------------------------------------------------- */
@@ -28,7 +34,7 @@ function isNewCouncilEvent(e: unknown): e is NewCouncilEvent {
 export class CouncilTreeContractProvider
   implements IMerkleDataProvider<CouncilTree>
 {
-  private tree: CouncilTree
+  private tree: CouncilTree;
 
   /**
    * @param source - Any object with a `fetchEvents()` method.
@@ -37,19 +43,19 @@ export class CouncilTreeContractProvider
   constructor(
     private readonly source: HasFetchEvents,
     private readonly fetchOnchainRoot: FetchOnchainRoot,
+    private readonly fetchCurrentBlockHeighr: FetchCurrentBlockHeight,
     private readonly chunkSize = 1000
   ) {}
 
   static fromContract(
     councilContract: ZkusdGoverningCouncilContract,
+    fetchCurrentBlockHeight: FetchCurrentBlockHeight,
     chunkSize = 1000
-  ) : CouncilTreeContractProvider {
+  ): CouncilTreeContractProvider {
     return new CouncilTreeContractProvider(
       councilContract,
-      async () => {
-        const root = await councilContract.councilMembersMerkleRoot.fetch();
-        return root;
-      },
+      () => councilContract.councilMembersMerkleRoot.fetch(),
+      fetchCurrentBlockHeight,
       chunkSize
     );
   }
@@ -61,12 +67,16 @@ export class CouncilTreeContractProvider
     if (!this.tree) {
       await this.build();
     }
-    const onchainRoot = await this.fetchOnchainRoot()
+    const onchainRoot = await this.fetchOnchainRoot();
     if (!onchainRoot) {
       throw new Error('Cannot fetch on-chain root for the council tree.');
     }
     if (onchainRoot.equals(this.tree.getRoot()).not().toBoolean()) {
-      throw new Error('The on-chain root of the council tree does not match the event data.');
+      console.error('On-chain root:', onchainRoot.toString());
+      console.error('Event root:', this.tree.getRoot().toString());
+      throw new Error(
+        'The on-chain root of the council tree does not match the event data.'
+      );
     }
     return this.tree;
   }
@@ -77,7 +87,13 @@ export class CouncilTreeContractProvider
    * and uses its data to construct the tree.
    */
   async build(): Promise<void> {
-    let end: UInt32 | undefined = undefined; // Start from latest
+    let end: UInt32 | undefined = await this.fetchCurrentBlockHeighr();
+    if (end === undefined) {
+      console.warn(
+        'Cannot fetch the current block height. Will download all events.'
+      );
+    }
+
     while (true) {
       // Calculate chunk bounds
       let start: UInt32 | undefined;
@@ -96,17 +112,30 @@ export class CouncilTreeContractProvider
         const latestEvent = events[events.length - 1];
         const data = latestEvent.event.data;
 
-        // Construct the tree from the event data
-        this.tree = new CouncilTree(data.councilMembers.councilMembers);
+        const councilKeys: PublicKey[] =
+          data.councilMembers.councilMembers.filter((k) =>
+            k.isEmpty().not().toBoolean()
+          );
 
-        return; // Done
+        if (councilKeys.length === 0) {
+          throw new Error('Council event found but no valid council members.');
+        }
+
+        // Construct the tree from the council keys
+        // debug log new council members
+
+        this.tree = new CouncilTree(councilKeys);
+        return; // Successful, exit
       }
 
-      const oldest = allEvents[allEvents.length - 1]?.blockHeight.toBigint() ?? 0n;
+      const oldest =
+        allEvents[allEvents.length - 1]?.blockHeight.toBigint() ?? 0n;
       if (oldest === 0n) break;
       end = UInt32.from(oldest - 1n);
     }
 
-    throw new Error('No NewCouncilInitializedWithFixedKeys event found in event history.');
- }
+    throw new Error(
+      'No NewCouncilInitializedWithFixedKeys event found in event history.'
+    );
+  }
 }

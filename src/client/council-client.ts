@@ -92,10 +92,14 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     councilContract: ZkusdGoverningCouncilContract,
     txMgr: TransactionManager<any>,
   ) {
+    const fetchCurrentBlockHeight = async () => {
+      // const ret = txMgr.mina.getNetworkState().blockchainLength; //
+      return undefined;
+    };
     const trees = {
-      councilTree: CouncilTreeContractProvider.fromContract(councilContract),
-      resolutionTree: ResolutionTreeContractProvider.fromContract(councilContract),
-      proposalMap: ProposalMapContractProvider.fromContract(councilContract),
+      councilTree: CouncilTreeContractProvider.fromContract(councilContract, fetchCurrentBlockHeight),
+      resolutionTree: ResolutionTreeContractProvider.fromContract(councilContract, fetchCurrentBlockHeight),
+      proposalMap: ProposalMapContractProvider.fromContract(councilContract, fetchCurrentBlockHeight),
     };
     return new ZkusdGoverningCouncilClient(trees, councilContract, txMgr);
   }

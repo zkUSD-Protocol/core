@@ -184,6 +184,7 @@ export function ZkUsdEngineContract(args: {
      *         that are used to track the state of the system.
      */
     @method async initialize() {
+      super.init()
       //Ensure admin key
       this.ensureAdminSignature();
 

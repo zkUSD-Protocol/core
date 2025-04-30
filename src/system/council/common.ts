@@ -4,7 +4,10 @@ import { Field, UInt32 } from 'o1js';
 export type ZkusdGoverningCouncilEventMap =
   typeof ZkusdGoverningCouncilContract.events;
 
-export type ContractEvent<K extends keyof ZkusdGoverningCouncilEventMap = keyof ZkusdGoverningCouncilEventMap> = {
+export type ContractEvent<
+  K extends
+    keyof ZkusdGoverningCouncilEventMap = keyof ZkusdGoverningCouncilEventMap,
+> = {
   type: K;
   event: { data: InstanceType<ZkusdGoverningCouncilEventMap[K]> };
   blockHeight: UInt32;
@@ -41,5 +44,6 @@ export type HasFetchEvents = {
   >;
 };
 
-export type FetchOnchainRoot = () => Promise<Field | undefined>
+export type FetchOnchainRoot = () => Promise<Field | undefined>;
 
+export type FetchCurrentBlockHeight = () => Promise<UInt32 | undefined>;

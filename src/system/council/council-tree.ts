@@ -1,4 +1,11 @@
-import { Field, MerkleTree, MerkleWitness, Poseidon, PublicKey, UInt8 } from 'o1js';
+import {
+  Field,
+  MerkleTree,
+  MerkleWitness,
+  Poseidon,
+  PublicKey,
+  UInt8,
+} from 'o1js';
 
 /**
  * Height of the Merkle tree for council members.
@@ -69,7 +76,7 @@ export class CouncilTree extends MerkleTree {
     // Check for duplicate public keys
     const seen = new Set<string>();
     for (const key of seatingKeys) {
-      if(key.isEmpty().toBoolean()){
+      if (key.isEmpty().toBoolean()) {
         continue;
       }
       const b58 = key.toBase58();

@@ -17,7 +17,6 @@ import {
   ValidityRangeUInt32,
 } from '../../../system/update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../../../system/update/protocol-preconditions.js';
-import { MultiSigZkusdProtocolUpdateProgram } from '../../../proofs/gov/council-multisig.js';
 import {
   BoolOperation,
   FieldOperation,
@@ -71,8 +70,8 @@ function makeDefaultAcceptedSpec(resIndex: bigint | number) {
 let updateSpec: ZkusdProtocolUpdateSpec;
 
 /* -------------------------------------------------------------------------- */
-/* 3.  Test‑case table – now no randomness                                    */
-/*     Each makeOperation pulls from global `updateSpec`.                     */
+/* Test‑case table
+/* Each makeOperation pulls from global `updateSpec`.                         */
 /* -------------------------------------------------------------------------- */
 const VAULT_CREATION_DISABLED_VAL = Bool(true);
 
@@ -134,7 +133,7 @@ const testsToRun: TestCase[] = [
       };
     },
     async verifyState(v) {
-      (await engine().getProtocolData()).liquidationBonusRatio.assertEquals(v);
+      engine().getProtocolData().liquidationBonusRatio.assertEquals(v);
     },
     event: 'LiquidationBonusRatioUpdated',
   },
@@ -147,7 +146,7 @@ const testsToRun: TestCase[] = [
       };
     },
     async verifyState(v) {
-      (await engine().getProtocolData()).collateralRatio.assertEquals(v);
+      engine().getProtocolData().collateralRatio.assertEquals(v);
     },
     event: 'CollateralRatioUpdated',
   },
@@ -263,8 +262,6 @@ describe('Engine – governance‑controlled setters', () => {
     });
 
     const merged = await cclient().mergeVoteProofs(voteA, voteB);
-    const proposalHash = merged.publicOutput.proposalHash;
-    const voteBits = merged.publicOutput.cummulatedVoteBitArray;
 
     const results = await cclient().submitVote(merged, testHelper.agents.alice.keys, { force: true });
     assert(results.transactionIncluded);

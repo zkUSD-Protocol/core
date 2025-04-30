@@ -70,12 +70,24 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       );
     }
 
+
     const councilMembersProvableArray = ensureMinArrayLength(
       councilMembers,
       InitialCouncilMembers.MaxLength,
       PublicKey.empty()
     );
-    const councilTree = new CouncilTree(councilMembers);
+
+    const nonemptymembers = councilMembersProvableArray.filter(
+      (k) => k.isEmpty().not().toBoolean()
+    );
+    // debug log new council members
+    console.log(
+      `New council members: ${nonemptymembers
+        .map((k) => k.toBase58())
+        .join(', ')}`
+    );
+    const councilTree = new CouncilTree(nonemptymembers);
+
 
     await this.initializeWithCouncilMembersKeys(
       councilTree.getRoot(),
@@ -96,11 +108,11 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     standardProposalPassThreshold: UInt8
   ) {
     const proposalsMerkleMapRoot = new ProposalMap();
-    const resolutionMerkleRoot = new ResolutionTree();
+    const resolutionTree = new ResolutionTree();
     this.councilMembersMerkleRoot.set(councilMerkleRoot);
     this.standardProposalPassThreshold.set(standardProposalPassThreshold);
     this.proposalsMerkleMapRoot.set(proposalsMerkleMapRoot.getRoot());
-    this.resolutionsMerkleRoot.set(resolutionMerkleRoot.getRoot());
+    this.resolutionsMerkleRoot.set(resolutionTree.getRoot());
 
     this.emitEvent(
       'NewCouncilInitializedWithFixedKeys',
@@ -274,6 +286,23 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     // set the root and thus enable voting on the proposal
     this.proposalsMerkleMapRoot.set(newProposalsRoot);
 
+    Provable.asProver(() => {
+      // if emiting event then log it as well
+      if(proposalMerkleRoot.equals(newProposalsRoot).not().toBoolean()) {
+        console.log(
+          `Proposal map root changed from ${proposalMerkleRoot.toString()} to ${newProposalsRoot.toString()}`
+        );
+        console.log(
+          `Proposal hash: ${proposalHash.toString()}`
+        );
+        console.log(
+          `Vote bit array: ${newVoteBitArray.toString()}`
+        );
+        console.log(
+          `Resolution index: ${voteProof.publicInput.govResolutionIndex.toString()}`
+        );
+      }
+    });
     this.emitEventIf(
       // the proposal root was changed
       proposalMerkleRoot.equals(newProposalsRoot).not(),

@@ -37,6 +37,11 @@ export class ZkUsdGovernmentContract extends SmartContract {
   }): Promise<void> {
     super.deploy(args);
   }
+
+  init() {
+    super.init();
+  }
+
 }
 
 export type ZkUsdDeployArgs = {
