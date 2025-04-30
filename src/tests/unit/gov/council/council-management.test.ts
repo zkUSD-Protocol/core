@@ -1,23 +1,402 @@
 import { describe, it, before } from 'node:test';
 
 import { TestHelper } from '../../../test-helper.js';
-import { rebuildCouncilMerkleMap } from './common.js';
+import { prepareCouncilMembers, rebuildCouncilMerkleMap } from './common.js';
 import assert from 'assert';
+import { KeyPair } from '../../../../types/utility.js';
+import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
+import {
+  Field,
+  Poseidon,
+  PrivateKey,
+  Proof,
+  Signature,
+  UInt8,
+  VerificationKey,
+  verify,
+} from 'o1js';
+import { ManageCouncil } from '../../../../proofs/council-management/prove.js';
+import { ZkusdCouncilManagementInput } from '../../../../system/council-management/input.js';
+import { ZkusdCouncilManagementOutput } from '../../../../system/council-management/output.js';
 
 describe('CouncilManagement', () => {
   let testHelper: TestHelper<'local'>;
-
+  let council: KeyPair[];
+  let manageCouncilVk: VerificationKey;
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
-    await testHelper.deployTokenContracts();
+    const compilationData = await ManageCouncil.compile();
+    manageCouncilVk = compilationData.verificationKey;
+    council = await prepareCouncilMembers(testHelper);
   });
 
-  it('should initialize the council', async () => {
-    const events = await testHelper.council.fetchEvents();
-    const councilMerkleMap = rebuildCouncilMerkleMap(events);
+  describe('Local Council Merkle Map Management', () => {
+    let localCouncilMap = new ZkusdCouncilMerkleMap();
 
-    const onChainRoot = await testHelper.council.councilMerkleMapRoot.fetch();
+    before(async () => {
+      for (let i = 0; i < council.length; i++) {
+        const seatIndex = 2n ** BigInt(i);
+        localCouncilMap.set(
+          Field.from(seatIndex),
+          Poseidon.hash(council[i].publicKey.toFields())
+        );
+      }
+    });
 
-    assert.deepStrictEqual(councilMerkleMap.root, onChainRoot);
+    describe('createVote()', () => {
+      it('should let a council member create a vote to add a new council member', async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+
+        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          [newMemberKey.publicKey]
+        );
+
+        const signature = Signature.create(
+          council[0].privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const councilKey = council[0].publicKey;
+        const seatPosition = Field(2n ** BigInt(0));
+
+        const { proof } = await ManageCouncil.createVote(
+          input,
+          signature,
+          councilKey,
+          seatPosition
+        );
+
+        const ok = await verify(proof, manageCouncilVk);
+
+        assert.strictEqual(ok, true, 'Proof should be valid');
+
+        const { updatedCouncilMap, cummulatedVoteBitArray } =
+          proof.publicOutput;
+
+        assert(
+          cummulatedVoteBitArray.equals(seatPosition),
+          'Cummulated vote bit array mismatch'
+        );
+
+        updatedCouncilMap.assertIncluded(
+          localCouncilMap.getNextEmptySeatPosition()
+        );
+      });
+
+      it('should fail if the signature is for different data', async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+        const differentVoteThreshold = UInt8.from(4);
+
+        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          [newMemberKey.publicKey]
+        );
+
+        const differentInput =
+          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+            localCouncilMap,
+            differentVoteThreshold,
+            [newMemberKey.publicKey]
+          );
+
+        const differentSignature = Signature.create(
+          council[0].privateKey,
+          differentInput.councilManagementSpec.toFields()
+        );
+
+        const councilKey = council[0].publicKey;
+        const seatPosition = Field(2n ** BigInt(0));
+
+        await assert.rejects(async () => {
+          await ManageCouncil.createVote(
+            input,
+            differentSignature,
+            councilKey,
+            seatPosition
+          );
+        }, 'Expected createVote to fail with incorrect signature');
+      });
+
+      it('should fail if the public keys is not in the Merkle Map', async () => {
+        const badKeyPair = PrivateKey.randomKeypair();
+
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+
+        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          [newMemberKey.publicKey]
+        );
+
+        const signature = Signature.create(
+          badKeyPair.privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const councilKey = badKeyPair.publicKey;
+        const seatPosition = Field(2n ** BigInt(0));
+
+        await assert.rejects(async () => {
+          await ManageCouncil.createVote(
+            input,
+            signature,
+            councilKey,
+            seatPosition
+          );
+        }, 'Expected createVote to fail with with invalid council member at seat');
+      });
+
+      it('should fail if the public key provides the wrong seat index', async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+
+        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          [newMemberKey.publicKey]
+        );
+
+        const signature = Signature.create(
+          council[0].privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const councilKey = council[0].publicKey;
+        const seatPosition = Field(2n ** BigInt(1));
+
+        await assert.rejects(async () => {
+          await ManageCouncil.createVote(
+            input,
+            signature,
+            councilKey,
+            seatPosition
+          );
+        }, 'Expected createVote to fail with wrong seat index');
+      });
+      it('should fail if seat index is not a single bit (e.g., 2^3 + 2^5)', async () => {
+        const seatIndexMaliciousValue = 40; // 8 + 32 = 40
+
+        // Suppose we have everything else set up: valid privateKey & signature data
+        const newMemberPrivateKey = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+
+        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          [newMemberPrivateKey.publicKey]
+        );
+
+        input.councilManagementSpec.councilManagementActions.actions[0].councilSeatPosition =
+          Field(seatIndexMaliciousValue);
+
+        const signature = Signature.create(
+          newMemberPrivateKey.privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        await assert.rejects(async () => {
+          await ManageCouncil.createVote(
+            input,
+            signature,
+            newMemberPrivateKey.publicKey,
+            Field(seatIndexMaliciousValue)
+          );
+        }, 'Expected createVote to fail if the seat index sets multiple bits.');
+      });
+    });
+    describe('mergeVotes()', () => {
+      let proof1: Proof<
+        ZkusdCouncilManagementInput,
+        ZkusdCouncilManagementOutput
+      >;
+      let proof2: Proof<
+        ZkusdCouncilManagementInput,
+        ZkusdCouncilManagementOutput
+      >;
+      let input: ZkusdCouncilManagementInput;
+
+      before(async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+
+        input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          [newMemberKey.publicKey]
+        );
+
+        const signature1 = Signature.create(
+          council[0].privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const { proof: p1 } = await ManageCouncil.createVote(
+          input,
+          signature1,
+          council[0].publicKey,
+          Field(2n ** BigInt(0))
+        );
+
+        proof1 = p1;
+
+        const signature2 = Signature.create(
+          council[1].privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const { proof: p2 } = await ManageCouncil.createVote(
+          input,
+          signature2,
+          council[1].publicKey,
+          Field(2n ** BigInt(1))
+        );
+
+        proof2 = p2;
+      });
+
+      it('should merge two votes', async () => {
+        const mergedProof = await ManageCouncil.mergeVotes(
+          input,
+          proof1,
+          proof2
+        );
+
+        const ok = await verify(mergedProof.proof, manageCouncilVk);
+
+        assert.strictEqual(ok, true, 'Proof should be valid');
+      });
+
+      it('should fail to merge two vote proofs with different input', async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(5);
+
+        const differentInput =
+          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+            localCouncilMap,
+            newVoteThreshold,
+            [newMemberKey.publicKey]
+          );
+
+        await assert.rejects(async () => {
+          await ManageCouncil.mergeVotes(differentInput, proof1, proof2);
+        }, 'Expected mergeVotes to fail with different input');
+      });
+
+      it('should fail to merge two vote proofs with different proof', async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(5);
+
+        const differentInput =
+          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+            localCouncilMap,
+            newVoteThreshold,
+            [newMemberKey.publicKey]
+          );
+
+        const signature3 = Signature.create(
+          council[2].privateKey,
+          differentInput.councilManagementSpec.toFields()
+        );
+
+        const { proof: p3 } = await ManageCouncil.createVote(
+          differentInput,
+          signature3,
+          council[2].publicKey,
+          Field(2n ** BigInt(2))
+        );
+
+        await assert.rejects(async () => {
+          await ManageCouncil.mergeVotes(input, proof1, p3);
+        }, 'Expected mergeVotes to fail with different proof');
+      });
+    });
+  });
+
+  describe('Council Management on Chain', () => {
+    let currentCouncilMap: ZkusdCouncilMerkleMap;
+    let currentThreshold: UInt8;
+
+    before(async () => {
+      await testHelper.deployTokenContracts();
+    });
+
+    it('should initialize the council', async () => {
+      const events = await testHelper.council.fetchEvents();
+      const councilMerkleMap = rebuildCouncilMerkleMap(events);
+
+      const onChainRoot = await testHelper.council.councilMerkleMapRoot.fetch();
+
+      assert.deepStrictEqual(councilMerkleMap.root, onChainRoot);
+
+      currentCouncilMap = councilMerkleMap;
+      currentThreshold =
+        (await testHelper.council.votePassThreshold.fetch()) as UInt8;
+    });
+
+    it('should be possible to add new council members and change the threshold', async () => {
+      const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+      const newVoteThreshold = UInt8.from(3);
+
+      const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        currentCouncilMap,
+        newVoteThreshold,
+        [newMemberKey.publicKey]
+      );
+
+      const signature1 = Signature.create(
+        council[0].privateKey,
+        input.councilManagementSpec.toFields()
+      );
+
+      const { proof: proof1 } = await ManageCouncil.createVote(
+        input,
+        signature1,
+        council[0].publicKey,
+        Field(2n ** BigInt(0))
+      );
+
+      const signature2 = Signature.create(
+        council[1].privateKey,
+        input.councilManagementSpec.toFields()
+      );
+
+      const { proof: proof2 } = await ManageCouncil.createVote(
+        input,
+        signature2,
+        council[1].publicKey,
+        Field(2n ** BigInt(1))
+      );
+
+      const mergedProof = await ManageCouncil.mergeVotes(input, proof1, proof2);
+
+      //Update the council on chain
+      await testHelper.includeTx(testHelper.deployer, async () => {
+        await testHelper.council.executeZkusdCouncilManagementActions(
+          mergedProof.proof
+        );
+      });
+
+      const updatedCouncilMap =
+        await testHelper.council.councilMerkleMapRoot.fetch();
+      assert.deepStrictEqual(
+        updatedCouncilMap,
+        mergedProof.proof.publicOutput.updatedCouncilMap.root,
+        'Updated council map should match the merged proof'
+      );
+
+      const updatedThreshold =
+        await testHelper.council.votePassThreshold.fetch();
+      assert.deepStrictEqual(
+        updatedThreshold,
+        newVoteThreshold,
+        'Updated threshold should match the new vote threshold'
+      );
+    });
   });
 });

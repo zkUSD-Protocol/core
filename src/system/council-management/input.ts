@@ -15,6 +15,7 @@ import {
   UInt8,
 } from 'o1js';
 import { ZkusdCouncilMerkleMap } from '../../proofs/council-management/common.js';
+import { KeyPair } from '../../types/utility.js';
 
 export class ZkusdCouncilManagementOperation extends Struct({
   councilKey: PublicKey,
@@ -22,6 +23,15 @@ export class ZkusdCouncilManagementOperation extends Struct({
   shouldAdd: Bool, // if true, add the council member, otherwise remove the member
   isDummy: Bool, // if true, the operation is a dummy operation and will not be executed
 }) {
+  static dummy(): ZkusdCouncilManagementOperation {
+    return new ZkusdCouncilManagementOperation({
+      councilKey: PublicKey.empty(),
+      councilSeatPosition: Field.from(0),
+      shouldAdd: Bool(false),
+      isDummy: Bool(true),
+    });
+  }
+
   toFields(): Field[] {
     return [
       ...this.councilKey.toFields(),
@@ -39,8 +49,15 @@ export class ZkusdCouncilManagementActions extends Struct({
     CouncilManagementActionCount
   ),
 }) {
-  static MaxLength = CouncilManagementActionCount;
+  static empty(): ZkusdCouncilManagementActions {
+    return new ZkusdCouncilManagementActions({
+      actions: Array.from({ length: CouncilManagementActionCount }, () =>
+        ZkusdCouncilManagementOperation.dummy()
+      ),
+    });
+  }
 
+  static MaxLength = CouncilManagementActionCount;
   toFields(): Field[] {
     return this.actions.map((action) => action.toFields()).flat();
   }
@@ -50,6 +67,13 @@ export class ZkusdCouncilManagementSpec extends Struct({
   councilManagementActions: ZkusdCouncilManagementActions,
   newVoteThreshold: UInt8,
 }) {
+  static empty(): ZkusdCouncilManagementSpec {
+    return new ZkusdCouncilManagementSpec({
+      councilManagementActions: ZkusdCouncilManagementActions.empty(),
+      newVoteThreshold: UInt8.from(0),
+    });
+  }
+
   hash(): Field {
     return Poseidon.hash(this.toFields());
   }
@@ -65,4 +89,63 @@ export class ZkusdCouncilManagementSpec extends Struct({
 export class ZkusdCouncilManagementInput extends Struct({
   currentCouncilMap: ZkusdCouncilMerkleMap,
   councilManagementSpec: ZkusdCouncilManagementSpec,
-}) {}
+}) {
+  static empty(): ZkusdCouncilManagementInput {
+    return new ZkusdCouncilManagementInput({
+      currentCouncilMap: new ZkusdCouncilMerkleMap(),
+      councilManagementSpec: ZkusdCouncilManagementSpec.empty(),
+    });
+  }
+
+  static addMembersAndUpdateThreshold(
+    currentCouncilMap: ZkusdCouncilMerkleMap,
+    newVoteThreshold: UInt8,
+    newMemberKeys: PublicKey[]
+  ): ZkusdCouncilManagementInput {
+    if (newMemberKeys.length > ZkusdCouncilManagementActions.MaxLength) {
+      throw new Error(
+        `Too many member keys. Maximum allowed is ${ZkusdCouncilManagementActions.MaxLength}`
+      );
+    }
+
+    const nextEmptyIndex = currentCouncilMap.getNextEmptyIndex();
+
+    let councilManagementActions = new ZkusdCouncilManagementActions({
+      actions: [],
+    });
+
+    for (let i = 0; i < ZkusdCouncilManagementActions.MaxLength; i++) {
+      if (i < newMemberKeys.length) {
+        councilManagementActions.actions.push(
+          new ZkusdCouncilManagementOperation({
+            councilKey: newMemberKeys[i],
+            councilSeatPosition: Field.from(2n ** BigInt(nextEmptyIndex + i)),
+            shouldAdd: Bool(true),
+            isDummy: Bool(false),
+          })
+        );
+      } else {
+        councilManagementActions.actions.push(
+          ZkusdCouncilManagementOperation.dummy()
+        );
+      }
+    }
+
+    const councilManagementSpec = new ZkusdCouncilManagementSpec({
+      councilManagementActions,
+      newVoteThreshold,
+    });
+
+    return new ZkusdCouncilManagementInput({
+      currentCouncilMap,
+      councilManagementSpec,
+    });
+  }
+
+  toFields(): Field[] {
+    return [
+      this.currentCouncilMap.root,
+      ...this.councilManagementSpec.toFields(),
+    ];
+  }
+}

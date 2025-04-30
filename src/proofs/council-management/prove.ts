@@ -20,6 +20,7 @@ import { ZkusdCouncilManagementOutput } from '../../system/council-management/ou
 import {
   MAX_ZKUSD_COUNCIL_SIZE,
   MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE,
+  ZkusdCouncilMerkleMap,
   ZkusdCouncilWitness,
 } from './common.js';
 
@@ -48,7 +49,7 @@ const ManageCouncil = ZkProgram({
         voterPublicKey: PublicKey,
         councilMemberSeatPosition: Field // for the seat with an index of 3, this should be 2^3 = 8
       ): Promise<{ publicOutput: ZkusdCouncilManagementOutput }> {
-        const councilMap = publicInput.currentCouncilMap;
+        const councilMap = publicInput.currentCouncilMap.clone();
 
         councilMemberSeatPosition.assertLessThan(
           Field.from(MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE)
@@ -61,11 +62,8 @@ const ManageCouncil = ZkProgram({
         let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
         andValue.assertEquals(Field(0));
 
-        // verify the vote (signature)
-        const managementSpecHash = publicInput.councilManagementSpec.hash();
-
         voterSignature
-          .verify(voterPublicKey, managementSpecHash.toFields())
+          .verify(voterPublicKey, publicInput.councilManagementSpec.toFields())
           .assertTrue();
 
         voterPublicKey.isEmpty().assertFalse('Empty public key not allowed.');

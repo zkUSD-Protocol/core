@@ -1,4 +1,5 @@
-import { MerkleWitness, Experimental } from 'o1js';
+import { MerkleWitness, Experimental, Field } from 'o1js';
+import { ZkusdCouncilManagementActions } from '../../system/council-management/input';
 
 const { IndexedMerkleMap } = Experimental;
 
@@ -11,7 +12,31 @@ class ZkusdCouncilWitness extends MerkleWitness(ZKUSD_COUNCIL_TREE_HEIGHT) {}
 
 class ZkusdCouncilMerkleMap extends IndexedMerkleMap(
   ZKUSD_COUNCIL_TREE_HEIGHT
-) {}
+) {
+  getNextEmptyIndex(): number {
+    const data = this.data.get();
+    const lastSeatLeaf = data.sortedLeaves[data.sortedLeaves.length - 1];
+    const lastSeatIndex = lastSeatLeaf.index;
+
+    if (lastSeatIndex === MAX_ZKUSD_COUNCIL_SIZE) {
+      throw new Error('Council size limit reached');
+    }
+
+    return lastSeatIndex + 1;
+  }
+
+  getNextEmptySeatPosition(): Field {
+    const data = this.data.get();
+    const lastSeatLeaf = data.sortedLeaves[data.sortedLeaves.length - 1];
+    const lastSeatIndex = lastSeatLeaf.index;
+
+    if (lastSeatIndex === MAX_ZKUSD_COUNCIL_SIZE) {
+      throw new Error('Council size limit reached');
+    }
+
+    return Field.from(2n ** BigInt(lastSeatIndex + 1));
+  }
+}
 
 export {
   MAX_ZKUSD_COUNCIL_SIZE,

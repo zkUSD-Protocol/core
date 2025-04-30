@@ -10,6 +10,9 @@ import {
   Signature,
   UInt32,
   Poseidon,
+  Bool,
+  UInt8,
+  PublicKey,
 } from 'o1js';
 import { KeyPair } from '../../../../types/utility.js';
 import {
@@ -21,7 +24,12 @@ import { TestHelper } from '../../../test-helper.js';
 import { ZkusdGoverningCouncilContract } from '../../../../contracts/zkusd-governing-council.js';
 import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../../../../system/governance.js';
 import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
-import { ZkusdCouncilManagementOperation } from '../../../../system/council-management/input.js';
+import {
+  ZkusdCouncilManagementActions,
+  ZkusdCouncilManagementInput,
+  ZkusdCouncilManagementOperation,
+  ZkusdCouncilManagementSpec,
+} from '../../../../system/council-management/input.js';
 
 export async function generateVoteProof(
   councilMember: KeyPair,
@@ -155,6 +163,8 @@ export function rebuildCouncilMerkleMap(
 export function extractCouncilOperationsFromEvents(
   events: Array<{ type: string; event: { data: any } }>
 ): Array<ZkusdCouncilManagementOperation> {
+  //Reverse the events array
+  events.reverse();
   return events
     .filter((event) => event.type === 'CouncilManagementActionEvent')
     .map((event) => event.event.data.action as ZkusdCouncilManagementOperation);
