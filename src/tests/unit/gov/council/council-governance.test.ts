@@ -202,7 +202,7 @@ describe('GovernanceUpdate', () => {
           councilMerkleMap,
           getSeatIndex(seatIndexMaliciousValue)
         );
-      }, 'Expected createVote to fail if the seat index sets multiple bits.');
+      });
     });
   });
 
