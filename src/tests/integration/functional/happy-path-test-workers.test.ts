@@ -12,8 +12,8 @@ import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 import { HttpClientProver } from '../../../provers/httpclientprover.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 import { ProtocolData } from '../../../system/engine.js';
-import { ZkusdProtocolUpdateOperation } from '../../../system/update/operation.js';
-import { BoolOperation } from '../../../system/update/simple-operations.js';
+import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
+import { BoolOperation } from '../../../system/governance-update/simple-operations.js';
 
 const printTx = !!process.env.DEBUG;
 

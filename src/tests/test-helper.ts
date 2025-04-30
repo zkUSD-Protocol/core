@@ -56,27 +56,27 @@ import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
-import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
+import { ZkusdProtocolUpdateSpec } from '../system/governance-update/input.js';
 import {
-  MultiSigZkusdProtocolUpdateProgram,
-  ZkusdGoverningCouncilVoteProof,
-} from '../proofs/gov/council-multisig.js';
+  GovernanceUpdate,
+  ZkusdGovernanceUpdateVoteProof,
+} from '../proofs/governance-update/prove.js';
 import { ZkusdGovUpdateWitness } from '../system/governance.js';
-import { MinaChainPreconditions } from '../system/update/blockchain-preconditions.js';
-import { ZkusdProtocolPreconditions } from '../system/update/protocol-preconditions.js';
+import { MinaChainPreconditions } from '../system/governance-update/blockchain-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../system/governance-update/protocol-preconditions.js';
 import {
-  rebuildCouncilMembersAndTree,
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
   getNextEmptyResolutionIndex,
   generateVoteProof,
+  rebuildCouncilMerkleMap,
 } from './unit/gov/council/common.js';
-import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
+import { ZkusdProtocolUpdateOperation } from '../system/governance-update/operation.js';
 import {
   BoolOperation,
   FieldOperation,
   UInt64Operation,
-} from '../system/update/simple-operations.js';
+} from '../system/governance-update/simple-operations.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -852,7 +852,7 @@ export class TestHelper<E extends string> {
 
     // 1. Fetch events and rebuild on-chain state
     const events = await this.council.fetchEvents();
-    const { councilTree } = rebuildCouncilMembersAndTree(events);
+    const councilMerkleMap = rebuildCouncilMerkleMap(events);
     const proposalMap = rebuildProposalMerkleMap(events);
     const resolutionTree = rebuildResolutionMerkleTree(events);
 
@@ -882,12 +882,14 @@ export class TestHelper<E extends string> {
     );
 
     // Check for cached proofs if caching is enabled
-    let mergedVoteProof: ZkusdGoverningCouncilVoteProof | undefined;
+    let mergedVoteProof: ZkusdGovernanceUpdateVoteProof | undefined;
 
     // Create a deterministic but simpler hash for the cache key
     const updateSpecStr = JSON.stringify(updateSpec);
-    const councilRootStr = councilTree.getRoot().toString();
+    const councilRootStr = councilMerkleMap.root.toString();
     const resolutionIndexStr = govResolutionIndex.toString();
+
+    console.log('Council Merkle Map Root', councilRootStr);
 
     // Use crypto module to create a hash from the combined strings
     const hashInput = updateSpecStr + councilRootStr + resolutionIndexStr;
@@ -918,7 +920,7 @@ export class TestHelper<E extends string> {
           );
           const cachedMergedProofData = JSON.parse(cachedMergedProofJson);
 
-          mergedVoteProof = await ZkusdGoverningCouncilVoteProof.fromJSON(
+          mergedVoteProof = await ZkusdGovernanceUpdateVoteProof.fromJSON(
             cachedMergedProofData.merged as JsonProof
           );
         }
@@ -933,21 +935,21 @@ export class TestHelper<E extends string> {
       const councilKeyPairs = this.networkKeys.council!;
       const vote1 = await generateVoteProof(
         councilKeyPairs[0],
-        councilTree,
+        councilMerkleMap,
         0,
         Number(govResolutionIndex.toBigint()),
         updateSpec
       );
       const vote2 = await generateVoteProof(
         councilKeyPairs[1],
-        councilTree,
+        councilMerkleMap,
         1,
         Number(govResolutionIndex.toBigint()),
         updateSpec
       );
 
       // 4. Merge votes
-      const programOutput = await MultiSigZkusdProtocolUpdateProgram.mergeVotes(
+      const programOutput = await GovernanceUpdate.mergeVotes(
         vote1.publicInput,
         vote1,
         vote2
@@ -961,7 +963,7 @@ export class TestHelper<E extends string> {
             merged: mergedVoteProof.toJSON(),
             metadata: {
               operation,
-              councilRoot: councilTree.getRoot().toString(),
+              councilRoot: councilMerkleMap.root.toString(),
               resolutionIndex: govResolutionIndex.toString(),
               timestamp: new Date().toISOString(),
             },
@@ -976,7 +978,7 @@ export class TestHelper<E extends string> {
         }
       }
     }
-    const finalProof: ZkusdGoverningCouncilVoteProof = mergedVoteProof;
+    const finalProof: ZkusdGovernanceUpdateVoteProof = mergedVoteProof;
 
     const proposalHash = mergedVoteProof.publicOutput.proposalHash;
     const voteBits = mergedVoteProof.publicOutput.cummulatedVoteBitArray;

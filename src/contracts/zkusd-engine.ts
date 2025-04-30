@@ -59,13 +59,13 @@ import {
   ZkUsdGovernmentConstructor,
   ZkusdGovUpdateWitness,
 } from '../system/governance.js';
-import { ZkusdProtocolUpdateOperation } from '../system/update/operation.js';
+import { ZkusdProtocolUpdateOperation } from '../system/governance-update/operation.js';
 import {
   ZkusdUpdateMinaBlockchainState,
   requireBlockchainPreconditions,
-} from '../system/update/blockchain-state.js';
-import { ZkusdUpdateProtocolState } from '../system/update/protocol-state.js';
-import { ZkusdProtocolUpdateSpec } from '../system/update/input.js';
+} from '../system/governance-update/blockchain-state.js';
+import { ZkusdUpdateProtocolState } from '../system/governance-update/protocol-state.js';
+import { ZkusdProtocolUpdateSpec } from '../system/governance-update/input.js';
 
 /**
  * @title   zkUSD Engine contract

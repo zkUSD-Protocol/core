@@ -19,8 +19,8 @@ import {
   statusIsOfKind,
 } from '../../../transaction/status.js';
 import { DEBUG, debugLog } from '../../../utils/debug.js';
-import { ZkusdProtocolUpdateOperation } from '../../../system/update/operation.js';
-import { BoolOperation } from '../../../system/update/simple-operations.js';
+import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
+import { BoolOperation } from '../../../system/governance-update/simple-operations.js';
 
 // --------------------------------------------------------
 // This test follows the following scenaro:
