@@ -1,7 +1,7 @@
 import { Field, Struct } from 'o1js';
-import { ZkusdCouncilMerkleMap } from '../../proofs/council-management/common.js';
+import { CouncilMapProvable } from '../council-map.js';
 
 export class ZkusdCouncilManagementOutput extends Struct({
-  updatedCouncilMap: ZkusdCouncilMerkleMap,
+  updatedCouncilMap: CouncilMapProvable,
   cummulatedVoteBitArray: Field,
 }) {}

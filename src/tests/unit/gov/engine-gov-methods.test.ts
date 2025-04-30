@@ -26,7 +26,7 @@ import {
   rebuildResolutionMerkleTree,
 } from './council/common.js';
 import { GovernanceUpdate } from '../../../proofs/governance-update/prove.js';
-import { ZkusdGovUpdateWitness } from '../../../system/governance.js';
+import { ResolutionTree } from '../../../system/council/resolution-tree.js';
 import {
   BoolOperation,
   FieldOperation,
@@ -36,7 +36,8 @@ import {
 import { OracleWhitelist } from '../../../system/oracle.js';
 import { BoolPrecondition } from '../../../system/governance-update/simple-preconditions.js';
 import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
-import { ZkusdCouncilMerkleMap } from '../../../proofs/council-management/common.js';
+import { CouncilMap } from '../../../system/council/council-map.js';
+import { ProposalMap } from '../../../system/council/proposal-merkle-map.js';
 
 let testHelper: TestHelper<'local'>;
 const engine = () => testHelper.engine.contract;
@@ -239,10 +240,10 @@ type TestCase = {
 /* -------------------------------------------------------------------------- */
 
 describe('Engine – governance‑controlled setters', () => {
-  let updateWitness: ZkusdGovUpdateWitness;
-  let councilMerkleMap: ZkusdCouncilMerkleMap;
-  let proposalMap: MerkleMap;
-  let resolutionTree: MerkleTree;
+  let updateWitness: ResolutionTree.Witness;
+  let councilMerkleMap: CouncilMap;
+  let proposalMap: ProposalMap;
+  let resolutionTree: ResolutionTree;
 
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
@@ -258,18 +259,19 @@ describe('Engine – governance‑controlled setters', () => {
     const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
     updateSpec = makeDefaultAcceptedSpec(govResolutionIndex);
 
+    const getSeatKey = (seatIndex: number) => Field(2 ** seatIndex);
     const councilKeyPairs = testHelper.networkKeys.council!;
     const voteA = await generateVoteProof(
       councilKeyPairs[0],
       councilMerkleMap,
-      0,
+      getSeatKey(0),
       Number(govResolutionIndex.toBigint()),
       updateSpec
     );
     const voteB = await generateVoteProof(
       councilKeyPairs[1],
       councilMerkleMap,
-      1,
+      getSeatKey(1),
       Number(govResolutionIndex.toBigint()),
       updateSpec
     );
@@ -295,14 +297,14 @@ describe('Engine – governance‑controlled setters', () => {
         updateSpec,
         proposalWitness,
         voteBits,
-        new ZkusdGovUpdateWitness(
+        new ResolutionTree.Witness(
           resolutionTree.getWitness(govResolutionIndex.toBigint())
         )
       );
     });
 
     resolutionTree.setLeaf(govResolutionIndex.toBigint(), proposalHash);
-    updateWitness = new ZkusdGovUpdateWitness(
+    updateWitness = new ResolutionTree.Witness(
       resolutionTree.getWitness(govResolutionIndex.toBigint())
     );
   });
@@ -332,7 +334,7 @@ describe('Engine – governance‑controlled setters', () => {
         const { newValue } = tc.makeOperation();
         const badSpecIndex = updateSpec.govResolutionIndex.add(1);
         const spec = makeDefaultAcceptedSpec(badSpecIndex);
-        const witness = new ZkusdGovUpdateWitness(
+        const witness = new ResolutionTree.Witness(
           resolutionTree.getWitness(badSpecIndex.toBigint())
         );
         await assert.rejects(async () => {

@@ -40,14 +40,6 @@ export class InitialCouncilMembers extends Struct({
 export const ZKUSD_GOV_UPDATE_TREE_HEIGHT = 20;
 
 /**
- * Merkle Witness class used to prove membership or updates in the
- * ZKUSD governance Merkle tree.
- */
-export class ZkusdGovUpdateWitness extends MerkleWitness(
-  ZKUSD_GOV_UPDATE_TREE_HEIGHT
-) {}
-
-/**
  * Constructor type for the ZkUsdGovernmentContract.
  *
  * Accepts a `PublicKey` address to initialize a governance contract instance.

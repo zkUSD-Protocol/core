@@ -4,7 +4,6 @@ import { TestHelper } from '../../../test-helper.js';
 import { prepareCouncilMembers, rebuildCouncilMerkleMap } from './common.js';
 import assert from 'assert';
 import { KeyPair } from '../../../../types/utility.js';
-import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
 import {
   Field,
   Poseidon,
@@ -16,8 +15,9 @@ import {
   verify,
 } from 'o1js';
 import { ManageCouncil } from '../../../../proofs/council-management/prove.js';
-import { ZkusdCouncilManagementInput } from '../../../../system/council-management/input.js';
-import { ZkusdCouncilManagementOutput } from '../../../../system/council-management/output.js';
+import { ZkusdCouncilManagementInput } from '../../../../system/council/management/input.js';
+import { ZkusdCouncilManagementOutput } from '../../../../system/council/management/output.js';
+import { CouncilMap } from '../../../../system/council/council-map.js';
 
 describe('CouncilManagement', () => {
   let testHelper: TestHelper<'local'>;
@@ -31,15 +31,12 @@ describe('CouncilManagement', () => {
   });
 
   describe('Local Council Merkle Map Management', () => {
-    let localCouncilMap = new ZkusdCouncilMerkleMap();
+    let localCouncilMap = new CouncilMap();
 
     before(async () => {
       for (let i = 0; i < council.length; i++) {
         const seatIndex = 2n ** BigInt(i);
-        localCouncilMap.set(
-          Field.from(seatIndex),
-          Poseidon.hash(council[i].publicKey.toFields())
-        );
+        localCouncilMap.insertAtKey(council[i].publicKey, Field.from(seatIndex));
       }
     });
 
@@ -82,7 +79,7 @@ describe('CouncilManagement', () => {
         );
 
         updatedCouncilMap.assertIncluded(
-          localCouncilMap.getNextEmptySeatPosition()
+          localCouncilMap.getNextEmptyKey()
         );
       });
 
@@ -319,7 +316,7 @@ describe('CouncilManagement', () => {
   });
 
   describe('Council Management on Chain', () => {
-    let currentCouncilMap: ZkusdCouncilMerkleMap;
+    let currentCouncilMap: CouncilMap;
     let currentThreshold: UInt8;
 
     before(async () => {

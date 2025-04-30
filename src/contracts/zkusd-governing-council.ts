@@ -12,22 +12,11 @@ import {
   Struct,
   MerkleMapWitness,
   Gadgets,
-  PublicKey,
-  MerkleTree,
-  MerkleMap,
-  Experimental,
 } from 'o1js';
 
-import {
-  ZKUSD_GOV_UPDATE_TREE_HEIGHT,
-  ZkusdGovUpdateWitness,
-} from '../system/governance.js';
 import { ZkusdProtocolUpdateSpec } from '../system/governance-update/input.js';
 import { ZkusdGovernanceUpdateVoteProof } from '../proofs/governance-update/prove.js';
-import {
-  MAX_ZKUSD_COUNCIL_SIZE,
-  ZkusdCouncilManagementVoteProof,
-} from '../proofs/council-management/index.js';
+import { ZkusdCouncilManagementVoteProof } from '../proofs/council-management/prove.js';
 
 import {
   CouncilManagementActionEvent,
@@ -38,8 +27,10 @@ import {
 import {
   ZkusdCouncilManagementActions,
   ZkusdCouncilManagementOperation,
-} from '../system/council-management/input.js';
-import { ZkusdCouncilMerkleMap } from '../proofs/council-management/common.js';
+} from '../system/council/management/input.js';
+import { ResolutionTree } from '../system/council/resolution-tree.js';
+import { ProposalMap } from '../system/council/proposal-merkle-map.js';
+import { CouncilMap } from '../system/council/council-map.js';
 
 export class ZkUsdGovernmentContract extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
@@ -54,7 +45,7 @@ export class ZkUsdGovernmentContract extends SmartContract {
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
     resolutionUpdateSpec: ZkusdProtocolUpdateSpec,
-    resolutionWitness: ZkusdGovUpdateWitness
+    resolutionWitness: ResolutionTree.Witness,
   ) {
     return Bool(false);
   }
@@ -90,72 +81,17 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
   @state(Field) resolutionsMerkleRoot = State<Field>();
   @state(UInt8) votePassThreshold = State<UInt8>();
 
-  readonly events = {
+  static events = {
     ProposalSupported: GovernanceProposalSupportChangeEvent,
     ProposalPassed: GovernanceProposalPassedEvent,
     CouncilManagementEvent: CouncilManagementEvent,
     CouncilManagementActionEvent: CouncilManagementActionEvent,
   };
+  readonly events = ZkusdGoverningCouncilContract.events;
+
 
   init() {
     super.init();
-  }
-
-  static getIndexFromFieldValue(indexFieldValue: Field): number {
-    const value = indexFieldValue.toBigInt();
-
-    if ((value & (value - 1n)) !== 0n) {
-      throw new Error('Index is not a power of 2');
-    }
-
-    return value.toString(2).length - 1;
-  }
-
-  // build the council merkle tree in a way compatible with the
-  // council seat leaf hashing function
-  // Not in provable code
-  static buildCouncilMerkleTree(
-    pastCouncilOperations: ZkusdCouncilManagementOperation[]
-  ): ZkusdCouncilMerkleMap {
-    const councilMerkleMap = new ZkusdCouncilMerkleMap();
-
-    for (const operation of pastCouncilOperations) {
-      if (operation.isDummy.toBoolean()) {
-        continue;
-      }
-
-      if (operation.shouldAdd.toBoolean()) {
-        councilMerkleMap.set(
-          operation.councilSeatPosition,
-          Poseidon.hash(operation.councilKey.toFields())
-        );
-      } else {
-        councilMerkleMap.set(operation.councilSeatPosition, Field.from(0));
-      }
-    }
-
-    return councilMerkleMap;
-  }
-
-  // build the council merkle tree in a way compatible with the
-  // council seat leaf hashing function.
-  // this will additionally check that the root of the tree
-  // matches the one stored in the on-chain state
-  buildAndVerifyCouncilMerkleTree(
-    pastCouncilOperations: ZkusdCouncilManagementOperation[]
-  ) {
-    const councilMerkleMap =
-      ZkusdGoverningCouncilContract.buildCouncilMerkleTree(
-        pastCouncilOperations
-      );
-    const councilMerkleMapRoot =
-      this.councilMerkleMapRoot.getAndRequireEquals();
-    const currentcouncilMerkleMapRoot = councilMerkleMap.root;
-    currentcouncilMerkleMapRoot.assertEquals(
-      councilMerkleMapRoot,
-      'Invalid council members tree'
-    );
-    return councilMerkleMap;
   }
 
   // a helper method that, coompute the valid merkle tree root.
@@ -165,7 +101,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     votePassThreshold: UInt8
   ) {
     const councilMerkleMap =
-      ZkusdGoverningCouncilContract.buildCouncilMerkleTree(
+      CouncilMap.buildFromOperations(
         initialCouncilActions.actions
       );
 
@@ -186,8 +122,8 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     initialCouncilActions: ZkusdCouncilManagementActions,
     votePassThreshold: UInt8
   ) {
-    const proposalsMerkleMapRoot = new MerkleMap();
-    const resolutionMerkleRoot = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
+    const proposalsMerkleMapRoot = new ProposalMap()
+    const resolutionMerkleRoot = new ResolutionTree()
     this.councilMerkleMapRoot.set(councilMerkleMapRoot);
     this.votePassThreshold.set(votePassThreshold);
     this.proposalsMerkleMapRoot.set(proposalsMerkleMapRoot.getRoot());
@@ -235,7 +171,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     updateSpec: ZkusdProtocolUpdateSpec,
     proposalWitness: MerkleMapWitness,
     proposalCurrentVoteBitArray: Field,
-    resolutionWitness: ZkusdGovUpdateWitness
+    resolutionWitness: ResolutionTree.Witness
   ) {
     // get the current proposal vote bit array
     // the witness should account for the current state of things
@@ -272,7 +208,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     const threshold = this.votePassThreshold.getAndRequireEquals();
     const bits = proposalCurrentVoteBitArray.toBits();
     let voteCount = Field.from(0);
-    for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
+    for (let i = 0; i < CouncilMap.SEAT_LIMIT; i++) {
       voteCount = Provable.if(bits[i], voteCount.add(1), voteCount);
     }
     // voteCount should be equal to or above the threshold
@@ -291,24 +227,23 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       new GovernanceProposalPassedEvent({
         proposalHash,
         resolutionIndex: updateSpec.govResolutionIndex,
+        resolutionTreeRootBefore: resolutionsMerkleRoot
       })
     );
   }
 
   async supportProposalHelper(
     voteProof: ZkusdGovernanceUpdateVoteProof,
-    proposalTree: MerkleMap,
-    resolutionTree: MerkleTree
+    proposalMap: ProposalMap,
+    resolutionTree: ResolutionTree
   ) {
-    const proposalWitness = proposalTree.getWitness(
+    const proposalWitness = proposalMap.getWitness(
       voteProof.publicOutput.proposalHash
     );
-    const resolutionWitness = new ZkusdGovUpdateWitness(
-      resolutionTree.getWitness(
+    const resolutionWitness = resolutionTree.getWitnessWrapped(
         voteProof.publicInput.govResolutionIndex.toBigint()
-      )
     );
-    const proposalCurrentVoteBitArray = proposalTree.get(
+    const proposalCurrentVoteBitArray = proposalMap.get(
       voteProof.publicOutput.proposalHash
     );
     return await this.supportProposal(
@@ -319,6 +254,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     );
   }
 
+
   // This method allows to create and cast a vote for a proposal
   // it will sum (safely) the given vote with the current support
   @method
@@ -326,7 +262,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     voteProof: ZkusdGovernanceUpdateVoteProof,
     proposalWitness: MerkleMapWitness,
     proposalCurrentVoteBitArray: Field,
-    resolutionWitness: ZkusdGovUpdateWitness
+    resolutionWitness: ResolutionTree.Witness
   ) {
     voteProof.verify();
 
@@ -358,7 +294,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     const newVoteBitArray = Gadgets.or(
       proposalCurrentVoteBitArray,
       cummulatedVoteBitArray,
-      MAX_ZKUSD_COUNCIL_SIZE
+      CouncilMap.SEAT_LIMIT
     );
 
     // recompute the root
@@ -386,7 +322,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       proposalMerkleRoot.equals(newProposalsRoot).not(),
       'ProposalSupported',
       new GovernanceProposalSupportChangeEvent({
-        proposalTreeRootBefore: proposalMerkleRoot,
+        proposalMapRootBefore: proposalMerkleRoot,
         acceptedVoteBitArray: newVoteBitArray,
         proposalHash,
         resolutionIndex: voteProof.publicInput.govResolutionIndex,
@@ -404,7 +340,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
     updateSpec: ZkusdProtocolUpdateSpec,
-    resolutionWitness: ZkusdGovUpdateWitness
+    resolutionWitness: ResolutionTree.Witness
   ) {
     // check if the resolution is present in the currently pinned resolutions tree
     const resolutionsMerkleRoot =
@@ -424,7 +360,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     const threshold = this.votePassThreshold.getAndRequireEquals();
     const bits = voteBitArray.toBits();
     let voteCount = Field.from(0);
-    for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
+    for (let i = 0; i < CouncilMap.SEAT_LIMIT; i++) {
       voteCount = Provable.if(bits[i], voteCount.add(1), voteCount);
     }
 
@@ -491,7 +427,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
 export function countBits(x: Field): UInt8 {
   const bits = x.toBits();
   let voteCount = Field.from(0);
-  for (let i = 0; i < MAX_ZKUSD_COUNCIL_SIZE; i++) {
+  for (let i = 0; i < CouncilMap.SEAT_LIMIT; i++) {
     voteCount = Provable.if(bits[i], voteCount.add(1), voteCount);
   }
   const ret = UInt8.Unsafe.fromField(voteCount);

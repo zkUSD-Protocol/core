@@ -13,20 +13,19 @@ import {
 } from 'o1js';
 
 import { GovernanceUpdate } from '../../../../proofs/governance-update/prove.js';
-import { ZKUSD_COUNCIL_TREE_HEIGHT } from '../../../../proofs/council-management/index.js';
 import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
 import { BoolOperation } from '../../../../system/governance-update/simple-operations.js';
 import { ZkusdProtocolUpdateOutput } from '../../../../system/governance-update/output.js';
-import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
+import { CouncilMap } from '../../../../system/council/council-map.js';
 
-function getSeatIndex(seatIndex: number) {
+function getSeatKey(seatIndex: number) {
   return Field(2 ** seatIndex);
 }
 
 describe('GovernanceUpdate', () => {
   let verificationKey: VerificationKey;
   let councilMerkleMapRoot: Field;
-  let councilMerkleMap: ZkusdCouncilMerkleMap;
+  let councilMerkleMap: CouncilMap
   let seatIndex = 3; // Example seat index
 
   let councilPrivateKey: PrivateKey;
@@ -56,10 +55,10 @@ describe('GovernanceUpdate', () => {
     wrongPublicKey = wrongPrivateKey.toPublicKey();
 
     // Build a Merkle tree for the council
-    councilMerkleMap = new ZkusdCouncilMerkleMap();
-    councilMerkleMap.set(
-      getSeatIndex(seatIndex),
-      Poseidon.hash(councilPublicKey.toFields())
+    councilMerkleMap = new CouncilMap();
+    councilMerkleMap.insertAtKey(
+      councilPublicKey,
+      getSeatKey(seatIndex)
     );
     councilMerkleMapRoot = councilMerkleMap.root;
   });
@@ -78,8 +77,8 @@ describe('GovernanceUpdate', () => {
         updateInput,
         signature,
         councilPublicKey,
-        councilMerkleMap,
-        Field(2 ** seatIndex) // The seat index is encoded as 2^index
+        councilMerkleMap.provable,
+        getSeatKey(seatIndex)
       );
       console.log('Proof created.');
 
@@ -129,8 +128,8 @@ describe('GovernanceUpdate', () => {
           updateInput,
           wrongSignature,
           councilPublicKey,
-          councilMerkleMap,
-          Field(2 ** seatIndex)
+          councilMerkleMap.provable,
+          getSeatKey(seatIndex)
         );
       }, 'Expected createVote to fail with incorrect signature');
       console.log('Proof creation failed as expected.');
@@ -149,8 +148,8 @@ describe('GovernanceUpdate', () => {
           updateInput,
           signature,
           councilPublicKey,
-          councilMerkleMap,
-          getSeatIndex(wrongSeatIndex)
+          councilMerkleMap.provable,
+          getSeatKey(wrongSeatIndex)
         );
       }, 'Expected createVote to fail if membership proof does not match actual seat');
       console.log('Proof creation failed as expected.');
@@ -168,8 +167,8 @@ describe('GovernanceUpdate', () => {
           updateInput,
           signature,
           wrongPublicKey,
-          councilMerkleMap,
-          getSeatIndex(seatIndex)
+          councilMerkleMap.provable,
+          getSeatKey(seatIndex)
         );
       }, 'Expected createVote to fail if the provided public key is not actually in the tree');
       console.log('Proof creation failed as expected.');
@@ -189,9 +188,9 @@ describe('GovernanceUpdate', () => {
       // but in reality, your circuit expects seat=3 or seat=5, not BOTH.
       const signature = Signature.create(privateKey, updateInputFields);
 
-      councilMerkleMap.set(
-        getSeatIndex(seatIndexMaliciousValue),
-        Poseidon.hash(publicKey.toFields())
+      councilMerkleMap.insertAtKey(
+        publicKey,
+        getSeatKey(seatIndexMaliciousValue)
       );
 
       await assert.rejects(async () => {
@@ -199,8 +198,8 @@ describe('GovernanceUpdate', () => {
           updateInput,
           signature,
           publicKey,
-          councilMerkleMap,
-          getSeatIndex(seatIndexMaliciousValue)
+          councilMerkleMap.provable,
+          getSeatKey(seatIndexMaliciousValue)
         );
       });
     });
@@ -214,7 +213,7 @@ describe('GovernanceUpdate', () => {
     let secondCouncilPrivateKey: PrivateKey;
     let secondCouncilPublicKey: PublicKey;
 
-    let secondMerkleMap: ZkusdCouncilMerkleMap;
+    let secondMerkleMap: CouncilMap;
     let secondcouncilMerkleMapRoot: Field;
 
     let proof1: Proof<ZkusdProtocolUpdateSpec, ZkusdProtocolUpdateOutput>;
@@ -225,10 +224,10 @@ describe('GovernanceUpdate', () => {
       secondCouncilPrivateKey = PrivateKey.random();
       secondCouncilPublicKey = secondCouncilPrivateKey.toPublicKey();
 
-      secondMerkleMap = new ZkusdCouncilMerkleMap();
-      secondMerkleMap.set(
-        getSeatIndex(seatIndex2),
-        Poseidon.hash(secondCouncilPublicKey.toFields())
+      secondMerkleMap = new CouncilMap();
+      secondMerkleMap.insertAtKey(
+        secondCouncilPublicKey,
+        getSeatKey(seatIndex2)
       );
       secondcouncilMerkleMapRoot = secondMerkleMap.root;
 
@@ -238,14 +237,14 @@ describe('GovernanceUpdate', () => {
       // seatIndex2 -> secondCouncilPublicKey
 
       // That can be done easily by building one combined tree:
-      const combinedMerkleMap = new ZkusdCouncilMerkleMap();
-      combinedMerkleMap.set(
-        getSeatIndex(seatIndex),
-        Poseidon.hash(councilPublicKey.toFields())
+      const combinedMerkleMap = new CouncilMap();
+      combinedMerkleMap.insertAtKey(
+        councilPublicKey,
+        getSeatKey(seatIndex)
       );
-      combinedMerkleMap.set(
-        getSeatIndex(seatIndex2),
-        Poseidon.hash(secondCouncilPublicKey.toFields())
+      combinedMerkleMap.insertAtKey(
+        secondCouncilPublicKey,
+        getSeatKey(seatIndex2)
       );
       const combinedRoot = combinedMerkleMap.root;
 
@@ -257,8 +256,8 @@ describe('GovernanceUpdate', () => {
         updateInput,
         signature1,
         councilPublicKey,
-        combinedMerkleMap,
-        getSeatIndex(seatIndex)
+        combinedMerkleMap.provable,
+        getSeatKey(seatIndex)
       );
       proof1 = p1;
 
@@ -271,8 +270,8 @@ describe('GovernanceUpdate', () => {
         updateInput,
         signature2,
         secondCouncilPublicKey,
-        combinedMerkleMap,
-        getSeatIndex(seatIndex2)
+        combinedMerkleMap.provable,
+        getSeatKey(seatIndex2)
       );
       proof2 = p2;
     });
@@ -323,8 +322,8 @@ describe('GovernanceUpdate', () => {
         differentInput,
         signatureDifferent,
         councilPublicKey,
-        councilMerkleMap,
-        getSeatIndex(seatIndex)
+        councilMerkleMap.provable,
+        getSeatKey(seatIndex)
       );
 
       // Attempt to merge that with a valid proof for the original input
@@ -351,8 +350,8 @@ describe('GovernanceUpdate', () => {
         updateInput,
         signature2,
         secondCouncilPublicKey,
-        secondMerkleMap,
-        Field(2 ** seatIndex2)
+        secondMerkleMap.provable,
+        getSeatKey(seatIndex2)
       );
 
       console.log('Attempting merge with mismatched council roots...');

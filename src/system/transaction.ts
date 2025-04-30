@@ -1,8 +1,8 @@
 import { JsonProof } from 'o1js';
-import { SizedArray } from '../types/utility';
-import { OracleWhitelist } from './oracle';
-import { ZkusdGovUpdateWitness } from './governance';
-import { ZkusdProtocolUpdateSpec } from './governance-update/input';
+import { SizedArray } from '../types/utility.js';
+import { OracleWhitelist } from './oracle.js';
+import { ZkusdProtocolUpdateSpec } from './governance-update/input.js';
+import { ResolutionTree } from './council/resolution-tree.js';
 
 export enum ZkusdEngineTransactionType {
   // vault
@@ -56,7 +56,7 @@ export interface UpdateAdminArgs extends BaseZkusdEngineTransactionArgs {
 
 export interface GovUpdateArgs extends BaseZkusdEngineTransactionArgs {
   updateSpec: ZkusdProtocolUpdateSpec;
-  resolutionWitness: ZkusdGovUpdateWitness;
+  resolutionWitness: ResolutionTree.Witness;
 }
 
 export interface ToggleEmergencyStopArgs extends GovUpdateArgs {}

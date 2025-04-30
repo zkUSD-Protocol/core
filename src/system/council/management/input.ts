@@ -11,11 +11,9 @@ import {
   Bool,
   Provable,
   Poseidon,
-  UInt32,
   UInt8,
 } from 'o1js';
-import { ZkusdCouncilMerkleMap } from '../../proofs/council-management/common.js';
-import { KeyPair } from '../../types/utility.js';
+import { CouncilMap, CouncilMapProvable } from '../council-map';
 
 export class ZkusdCouncilManagementOperation extends Struct({
   councilKey: PublicKey,
@@ -87,18 +85,18 @@ export class ZkusdCouncilManagementSpec extends Struct({
 }
 
 export class ZkusdCouncilManagementInput extends Struct({
-  currentCouncilMap: ZkusdCouncilMerkleMap,
+  currentCouncilMap: CouncilMapProvable,
   councilManagementSpec: ZkusdCouncilManagementSpec,
 }) {
   static empty(): ZkusdCouncilManagementInput {
     return new ZkusdCouncilManagementInput({
-      currentCouncilMap: new ZkusdCouncilMerkleMap(),
+      currentCouncilMap: new CouncilMapProvable(),
       councilManagementSpec: ZkusdCouncilManagementSpec.empty(),
     });
   }
 
   static addMembersAndUpdateThreshold(
-    currentCouncilMap: ZkusdCouncilMerkleMap,
+    currentCouncilMap: CouncilMap,
     newVoteThreshold: UInt8,
     newMemberKeys: PublicKey[]
   ): ZkusdCouncilManagementInput {
@@ -108,28 +106,16 @@ export class ZkusdCouncilManagementInput extends Struct({
       );
     }
 
-    const nextEmptyIndex = currentCouncilMap.getNextEmptyIndex();
-
     let councilManagementActions = new ZkusdCouncilManagementActions({
       actions: [],
     });
 
-    for (let i = 0; i < ZkusdCouncilManagementActions.MaxLength; i++) {
-      if (i < newMemberKeys.length) {
-        councilManagementActions.actions.push(
-          new ZkusdCouncilManagementOperation({
-            councilKey: newMemberKeys[i],
-            councilSeatPosition: Field.from(2n ** BigInt(nextEmptyIndex + i)),
-            shouldAdd: Bool(true),
-            isDummy: Bool(false),
-          })
-        );
-      } else {
-        councilManagementActions.actions.push(
-          ZkusdCouncilManagementOperation.dummy()
-        );
-      }
-    }
+    const operations = currentCouncilMap.createAddActions(newMemberKeys);
+    councilManagementActions.actions.push(...operations);
+    // pad up to MaxLength with dummy
+    for (let i = newMemberKeys.length; i < ZkusdCouncilManagementActions.MaxLength; i++) {
+      councilManagementActions.actions.push(ZkusdCouncilManagementOperation.dummy());
+    } 
 
     const councilManagementSpec = new ZkusdCouncilManagementSpec({
       councilManagementActions,
@@ -137,7 +123,7 @@ export class ZkusdCouncilManagementInput extends Struct({
     });
 
     return new ZkusdCouncilManagementInput({
-      currentCouncilMap,
+      currentCouncilMap: currentCouncilMap.provable,
       councilManagementSpec,
     });
   }

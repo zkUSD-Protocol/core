@@ -1,18 +1,15 @@
-import { Field, Provable, PublicKey, Struct, UInt32, UInt8 } from 'o1js';
-import { InitialCouncilMembers } from './governance.js';
-import {
-  ZkusdCouncilManagementActions,
-  ZkusdCouncilManagementOperation,
-} from './council-management/input.js';
+import { Field, Struct, UInt32, UInt8 } from 'o1js';
+import { ZkusdCouncilManagementOperation } from './council/management/input.js';
 
 export class GovernanceProposalSupportChangeEvent extends Struct({
-  proposalTreeRootBefore: Field,
+  proposalMapRootBefore: Field,
   acceptedVoteBitArray: Field,
   proposalHash: Field,
   resolutionIndex: UInt32,
 }) {}
 
 export class GovernanceProposalPassedEvent extends Struct({
+  resolutionTreeRootBefore: Field,
   proposalHash: Field,
   resolutionIndex: UInt32,
 }) {}

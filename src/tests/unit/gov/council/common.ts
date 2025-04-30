@@ -4,15 +4,10 @@ import {
   GovernanceProposalSupportChangeEvent,
 } from '../../../../system/council-events.js';
 import {
-  MerkleMap,
-  Field,
-  MerkleTree,
   Signature,
   UInt32,
-  Poseidon,
-  Bool,
-  UInt8,
   PublicKey,
+  Field,
 } from 'o1js';
 import { KeyPair } from '../../../../types/utility.js';
 import {
@@ -21,20 +16,15 @@ import {
 } from '../../../../proofs/governance-update/prove.js';
 import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
 import { TestHelper } from '../../../test-helper.js';
-import { ZkusdGoverningCouncilContract } from '../../../../contracts/zkusd-governing-council.js';
-import { ZKUSD_GOV_UPDATE_TREE_HEIGHT } from '../../../../system/governance.js';
-import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
-import {
-  ZkusdCouncilManagementActions,
-  ZkusdCouncilManagementInput,
-  ZkusdCouncilManagementOperation,
-  ZkusdCouncilManagementSpec,
-} from '../../../../system/council-management/input.js';
+import { ZkusdCouncilManagementOperation } from '../../../../system/council/management/input.js';
+import { ProposalMap } from '../../../../system/council/proposal-merkle-map.js';
+import { ResolutionTree } from '../../../../system/council/resolution-tree.js';
+import { CouncilMap } from '../../../../system/council/council-map.js';
 
 export async function generateVoteProof(
   councilMember: KeyPair,
-  councilMerkleMap: ZkusdCouncilMerkleMap,
-  seatIndex: number,
+  councilMap: CouncilMap,
+  seatKey: Field,
   govResolutionIndex: number = 0,
   updateSpec: ZkusdProtocolUpdateSpec = ZkusdProtocolUpdateSpec.empty()
 ): Promise<ZkusdGovernanceUpdateVoteProof> {
@@ -50,8 +40,8 @@ export async function generateVoteProof(
     updateSpec,
     signature,
     councilMember.publicKey,
-    councilMerkleMap,
-    Field(2 ** seatIndex) // The seat index is encoded as 2^index
+    councilMap.provable,
+    seatKey
   );
   return proof;
 }
@@ -63,8 +53,8 @@ export async function generateVoteProof(
  */
 export function rebuildProposalMerkleMap(
   events: Array<{ type: string; event: { data: any } }>
-): MerkleMap {
-  const proposalTree = new MerkleMap();
+): ProposalMap {
+  const proposalTree = new ProposalMap();
 
   const proposalEvents = events.filter(
     (event) => event.type === 'ProposalSupported'
@@ -94,8 +84,8 @@ export function rebuildProposalMerkleMap(
  */
 export function rebuildResolutionMerkleTree(
   events: Array<{ type: string; event: { data: any } }>
-): MerkleTree {
-  const resolutionTree = new MerkleTree(ZKUSD_GOV_UPDATE_TREE_HEIGHT);
+): ResolutionTree {
+  const resolutionTree = new ResolutionTree();
 
   const resolutionEvents = events.filter(
     (event) => event.type === 'ProposalPassed'
@@ -128,8 +118,8 @@ export async function prepareCouncilMembers(th: TestHelper<'local'>) {
  */
 export function rebuildCouncilMerkleMap(
   events: Array<{ type: string; event: { data: any } }>
-): ZkusdCouncilMerkleMap {
-  const councilTree = new ZkusdCouncilMerkleMap();
+): CouncilMap {
+  const councilTree = new CouncilMap();
 
   console.log('Rebuilding Council Merkle Map');
 
@@ -142,12 +132,15 @@ export function rebuildCouncilMerkleMap(
       const action = eventData.action;
 
       if (action.shouldAdd) {
-        councilTree.set(
-          action.councilSeatPosition,
-          Poseidon.hash(action.councilKey.toFields())
+        councilTree.insertAtKey(
+          action.councilKey,
+          action.councilSeatPosition
         );
       } else {
-        councilTree.set(action.councilSeatPosition, Field.from(0));
+        councilTree.insertAtKey(
+          PublicKey.fromBase58('0'),
+          action.councilSeatPosition
+        );
       }
     }
   }
@@ -178,7 +171,7 @@ export function extractCouncilOperationsFromEvents(
  * @returns The index of the first empty leaf as a UInt32.
  */
 export function getNextEmptyResolutionIndex(
-  resolutionTree: MerkleTree
+  resolutionTree: ResolutionTree
 ): UInt32 {
   for (let i = 0n; i < resolutionTree.leafCount; i++) {
     const hash = resolutionTree.getLeaf(i);

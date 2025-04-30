@@ -3,7 +3,6 @@
 import {
   Field,
   Gadgets,
-  MerkleWitness,
   Poseidon,
   Provable,
   PublicKey,
@@ -11,18 +10,12 @@ import {
   Signature,
   ZkProgram,
 } from 'o1js';
+import { CouncilMap } from '../../system/council/council-map.js';
 import {
   ZkusdCouncilManagementActions,
   ZkusdCouncilManagementInput,
-  ZkusdCouncilManagementSpec,
-} from '../../system/council-management/input.js';
-import { ZkusdCouncilManagementOutput } from '../../system/council-management/output.js';
-import {
-  MAX_ZKUSD_COUNCIL_SIZE,
-  MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE,
-  ZkusdCouncilMerkleMap,
-  ZkusdCouncilWitness,
-} from './common.js';
+} from '../../system/council/management/input.js';
+import { ZkusdCouncilManagementOutput } from '../../system/council/management/output.js';
 
 function pubkeyToCouncilSeatLeaf(councilKey: PublicKey, index: number): Field {
   const indexFieldValue = Field.from(2n ** BigInt(index));
@@ -52,14 +45,14 @@ const ManageCouncil = ZkProgram({
         const councilMap = publicInput.currentCouncilMap.clone();
 
         councilMemberSeatPosition.assertLessThan(
-          Field.from(MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE)
+          Field.from(CouncilMap.SEAT_LIMIT)
         );
         const x = councilMemberSeatPosition;
 
         x.assertGreaterThan(Field(0));
         let xMinus1 = x.sub(Field(1));
 
-        let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
+        let andValue = Gadgets.and(x, xMinus1, CouncilMap.SEAT_LIMIT);
         andValue.assertEquals(Field(0));
 
         voterSignature
@@ -150,7 +143,7 @@ const ManageCouncil = ZkProgram({
         rightOutput.cummulatedVoteBitArray = Gadgets.or(
           rightOutput.cummulatedVoteBitArray,
           leftOutput.cummulatedVoteBitArray,
-          MAX_ZKUSD_COUNCIL_SIZE
+          CouncilMap.SEAT_LIMIT
         );
 
         return { publicOutput: rightOutput };

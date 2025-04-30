@@ -61,7 +61,6 @@ import {
   GovernanceUpdate,
   ZkusdGovernanceUpdateVoteProof,
 } from '../proofs/governance-update/prove.js';
-import { ZkusdGovUpdateWitness } from '../system/governance.js';
 import { MinaChainPreconditions } from '../system/governance-update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../system/governance-update/protocol-preconditions.js';
 import {
@@ -77,6 +76,7 @@ import {
   FieldOperation,
   UInt64Operation,
 } from '../system/governance-update/simple-operations.js';
+import { ResolutionTree } from '../system/council/resolution-tree.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -832,7 +832,7 @@ export class TestHelper<E extends string> {
     operation: any,
     contractCall: (
       updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
-      resolutionWitness: ZkusdGovUpdateWitness
+      resolutionWitness: ResolutionTree.Witness
     ) => Promise<void>,
     options: {
       cache?: boolean;
@@ -928,6 +928,7 @@ export class TestHelper<E extends string> {
         console.warn(`Failed to load cached proof: ${err}`);
       }
     }
+    const getSeatKey = (seatIndex: number) => Field(2 ** seatIndex);
 
     // Generate votes if no cached proof was found
     if (!mergedVoteProof) {
@@ -936,14 +937,14 @@ export class TestHelper<E extends string> {
       const vote1 = await generateVoteProof(
         councilKeyPairs[0],
         councilMerkleMap,
-        0,
+        getSeatKey(0),
         Number(govResolutionIndex.toBigint()),
         updateSpec
       );
       const vote2 = await generateVoteProof(
         councilKeyPairs[1],
         councilMerkleMap,
-        1,
+        getSeatKey(1),
         Number(govResolutionIndex.toBigint()),
         updateSpec
       );
@@ -1004,7 +1005,7 @@ export class TestHelper<E extends string> {
     const proposalWitness = proposalMap.getWitness(proposalHash);
 
     // 6. Pass proposal
-    const resolutionWitness = new ZkusdGovUpdateWitness(
+    const resolutionWitness = new ResolutionTree.Witness(
       resolutionTree.getWitness(govResolutionIndex.toBigint())
     );
     await this.includeTx(

@@ -21,16 +21,9 @@ import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { GovernanceUpdate } from '../proofs/governance-update/prove.js';
-import {
-  ManageCouncil,
-  MAX_ZKUSD_COUNCIL_SIZE,
-  ZKUSD_COUNCIL_TREE_HEIGHT,
-  ZkusdCouncilWitness,
-} from '../proofs/council-management/index.js';
-import {
-  ZkusdCouncilManagementActions,
-  ZkusdCouncilManagementOperation,
-} from '../system/council-management/input.js';
+import { ZkusdCouncilManagementActions, ZkusdCouncilManagementOperation } from '../system/council/management/input.js';
+import { ManageCouncil } from '../proofs/council-management/prove.js';
+import { CouncilMap } from '../system/council/council-map.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -312,9 +305,9 @@ export class DeploymentService {
         CouncilVoteThresholdRatio * councilKeys?.length
       );
 
-      if (threshold > MAX_ZKUSD_COUNCIL_SIZE) {
+      if (threshold > CouncilMap.SEAT_LIMIT) {
         throw new Error(
-          `Council size exceeds the maximum size of ${MAX_ZKUSD_COUNCIL_SIZE}`
+          `Council size exceeds the maximum size of ${CouncilMap.SEAT_LIMIT}`
         );
       }
 
@@ -344,7 +337,7 @@ export class DeploymentService {
 
       console.log('On chain root', onChainRoot?.toString());
 
-      const merkleMap = ZkusdGoverningCouncilContract.buildCouncilMerkleTree(
+      const merkleMap = CouncilMap.buildFromOperations(
         councilManagementActions.actions
       );
 
