@@ -22,7 +22,7 @@ import { getContractKeys } from '../config/keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { calculateHealthFactor, calculateLTV } from '../utils/loan.js';
 
-interface ZKUSDClientConfig {
+interface ZkusdEngineClientConfig {
   chain: blockchain;
   httpProver: string;
 }
@@ -35,7 +35,7 @@ interface TransactionContext {
   newAccounts?: number;
 }
 
-export class ZKUSDClient {
+export class ZkusdEngineClient {
   private txMgr: TransactionManager<'executor'>;
   private engine: InstanceType<ReturnType<typeof ZkUsdEngineContract>>;
   private token: InstanceType<ReturnType<typeof FungibleTokenContract>>;
@@ -50,7 +50,7 @@ export class ZKUSDClient {
     this.token = token;
   }
 
-  static async create(config: ZKUSDClientConfig) {
+  static async create(config: ZkusdEngineClientConfig) {
     const { chain, httpProver } = config;
 
     const {
@@ -80,7 +80,7 @@ export class ZKUSDClient {
     const engine = new ZkUsdEngine(engineAddress);
     const token = new FungibleToken(tokenAddress);
 
-    return new ZKUSDClient(txMgr, engine, token);
+    return new ZkusdEngineClient(txMgr, engine, token);
   }
 
   /**

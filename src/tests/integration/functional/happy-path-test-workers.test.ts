@@ -12,8 +12,8 @@ import { ZkusdEngineTransactionType } from '../../../system/transaction.js';
 import { HttpClientProver } from '../../../provers/httpclientprover.js';
 import { HttpServerProver } from '../../../provers/node/httpserverprover.js';
 import { ProtocolData } from '../../../system/engine.js';
-import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
-import { BoolOperation } from '../../../system/governance-update/simple-operations.js';
+import { EngineUpdateOperation } from '../../../system/engine-update/operation.js';
+import { BoolOperation } from '../../../system/engine-update/simple-operations.js';
 
 const printTx = !!process.env.DEBUG;
 
@@ -65,7 +65,7 @@ describe('zkUSD Integration - Concurrent Functional - Happy Path Vault Path', ()
 
     if (emergencyStopFlag.toBoolean()) {
       resumed = await th.proposeAndExecuteUpdate(
-        ZkusdProtocolUpdateOperation.create({
+        EngineUpdateOperation.create({
           emergencyStop: BoolOperation.set(false),
         }),
         (updateSpec, resolutionWitness) =>

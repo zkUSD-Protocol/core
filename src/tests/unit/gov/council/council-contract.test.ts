@@ -12,15 +12,15 @@
 
 // import { TestHelper } from '../../../test-helper.js';
 // import { KeyPair } from '../../../../types/utility.js';
-// import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
+// import { EngineUpdateSpec } from '../../../../system/governance-update/input.js';
 // import {
 //   GovernanceUpdate,
-//   ZkusdGovernanceUpdateVoteProof,
+//   EngineUpdateVoteProof,
 // } from '../../../../proofs/governance-update/prove.js';
 // import { ResolutionTree } from '../../../../system/council/resolution-tree.js';
 // import {
-//   GovernanceProposalPassedEvent,
-//   GovernanceProposalSupportChangeEvent,
+//   EngineUpdateProposalPassedEvent,
+//   EngineUpdateProposalVoteEvent,
 // } from '../../../../system/council-events.js';
 // import {
 //   extractCouncilOperationsFromEvents,
@@ -37,7 +37,7 @@
 //   let testHelper: TestHelper<'local'>;
 //   let council: KeyPair[];
 //   let resolutionTree = new ResolutionTree();
-//   let updateSpec: ZkusdProtocolUpdateSpec;
+//   let updateSpec: EngineUpdateSpec;
 //   let govResolutionIndex: Number;
 //   let councilMerkleMap: CouncilMap;
 
@@ -138,7 +138,7 @@
 //     assert.strictEqual(lastEvent.type, 'ProposalSupported');
 
 //     const eventData = lastEvent.event
-//       .data as unknown as GovernanceProposalSupportChangeEvent;
+//       .data as unknown as EngineUpdateProposalVoteEvent;
 
 //     // check if the eventData matches the expected values
 //     assert.ok(eventData.proposalTreeRootBefore.equals(rootBefore).toBoolean());
@@ -331,7 +331,7 @@
 //     const lastEvent = contractEventsAfter[0];
 //     assert.strictEqual(lastEvent.type, 'ProposalPassed');
 //     const eventData = lastEvent.event
-//       .data as unknown as GovernanceProposalPassedEvent;
+//       .data as unknown as EngineUpdateProposalPassedEvent;
 //     // check if the eventData matches the expected values
 //     assert.ok(eventData.proposalHash.equals(proposalHash).toBoolean());
 //     assert.ok(
@@ -488,7 +488,7 @@
 
 //     proposalEvents.forEach((event) => {
 //       const eventData = event.event
-//         .data as unknown as GovernanceProposalSupportChangeEvent;
+//         .data as unknown as EngineUpdateProposalVoteEvent;
 
 //       const votes = proposalTree.get(eventData.proposalHash);
 //       // since you cannot retract a vote this is fine
@@ -502,7 +502,7 @@
 
 //     resolutionEvents.forEach((event) => {
 //       const eventData = event.event
-//         .data as unknown as GovernanceProposalPassedEvent;
+//         .data as unknown as EngineUpdateProposalPassedEvent;
 //       resolutionTree.setLeaf(
 //         eventData.resolutionIndex.toBigint(),
 //         eventData.proposalHash
@@ -576,7 +576,7 @@
 //      * and returns its Bool result.
 //      */
 //     async function queryCanExecute(
-//       spec: ZkusdProtocolUpdateSpec,
+//       spec: EngineUpdateSpec,
 //       witness: ZkusdGovUpdateWitness
 //     ): Promise<Bool> {
 //       let ok: Bool = Bool(false);
@@ -619,7 +619,7 @@
 
 //     it('rejects when the proposal hash does **not** match the witness', async () => {
 //       // Same resolution slot, but totally different proposal data → hash mismatch
-//       const badSpec = ZkusdProtocolUpdateSpec.empty();
+//       const badSpec = EngineUpdateSpec.empty();
 //       badSpec.govResolutionIndex = updateSpec.govResolutionIndex;
 
 //       const witness = new ZkusdGovUpdateWitness(
@@ -634,7 +634,7 @@
 //     });
 
 //     it('rejects when the `govResolutionIndex` mismatches the witness', async () => {
-//       const badSpec = ZkusdProtocolUpdateSpec.empty();
+//       const badSpec = EngineUpdateSpec.empty();
 //       badSpec.govResolutionIndex = updateSpec.govResolutionIndex.add(
 //         UInt32.from(1)
 //       );
@@ -674,7 +674,7 @@
 // });
 
 // function supportProposalHelper(
-//   voteProof: ZkusdGovernanceUpdateVoteProof,
+//   voteProof: EngineUpdateVoteProof,
 //   proposalTree: MerkleMap,
 //   resolutionTree: MerkleTree
 // ) {

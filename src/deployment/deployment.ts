@@ -20,10 +20,10 @@ import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
-import { GovernanceUpdate } from '../proofs/governance-update/prove.js';
-import { ZkusdCouncilManagementActions, ZkusdCouncilManagementOperation } from '../system/council/management/input.js';
-import { ManageCouncil } from '../proofs/council-management/prove.js';
-import { CouncilMap } from '../system/council/council-map.js';
+import { GovernanceUpdate } from '../proofs/engine-update/prove.js';
+import { CouncilUpdateActions, CouncilUpdateOperation } from '../system/council/update/input.js';
+import { ManageCouncil } from '../proofs/council-update/prove.js';
+import { CouncilMap } from '../system/council/data/council-map.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -275,14 +275,14 @@ export class DeploymentService {
         throw new Error('Council keys not found in the network keys');
       }
 
-      let councilManagementActions = new ZkusdCouncilManagementActions({
+      let councilManagementActions = new CouncilUpdateActions({
         actions: [],
       });
 
-      for (let i = 0; i < ZkusdCouncilManagementActions.MaxLength; i++) {
+      for (let i = 0; i < CouncilUpdateActions.MaxLength; i++) {
         if (i < councilKeys.length) {
           councilManagementActions.actions.push(
-            new ZkusdCouncilManagementOperation({
+            new CouncilUpdateOperation({
               councilKey: councilKeys[i],
               councilSeatPosition: Field.from(2n ** BigInt(i)),
               shouldAdd: Bool(true),
@@ -291,7 +291,7 @@ export class DeploymentService {
           );
         } else {
           councilManagementActions.actions.push(
-            new ZkusdCouncilManagementOperation({
+            new CouncilUpdateOperation({
               councilKey: PublicKey.empty(),
               councilSeatPosition: Field.from(0),
               shouldAdd: Bool(false),

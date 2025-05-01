@@ -12,11 +12,11 @@ import {
   Proof,
 } from 'o1js';
 
-import { GovernanceUpdate } from '../../../../proofs/governance-update/prove.js';
-import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
-import { BoolOperation } from '../../../../system/governance-update/simple-operations.js';
-import { ZkusdProtocolUpdateOutput } from '../../../../system/governance-update/output.js';
-import { CouncilMap } from '../../../../system/council/council-map.js';
+import { GovernanceUpdate } from '../../../../proofs/engine-update/prove.js';
+import { EngineUpdateSpec } from '../../../../system/engine-update/input.js';
+import { BoolOperation } from '../../../../system/engine-update/simple-operations.js';
+import { ZkusdProtocolUpdateOutput } from '../../../../system/engine-update/output.js';
+import { CouncilMap } from '../../../../system/council/data/council-map.js';
 
 function getSeatKey(seatIndex: number) {
   return Field(2 ** seatIndex);
@@ -34,7 +34,7 @@ describe('GovernanceUpdate', () => {
   let wrongPublicKey: PublicKey;
 
   // A shared sample input for all tests
-  let updateInput: ZkusdProtocolUpdateSpec;
+  let updateInput: EngineUpdateSpec;
   let updateInputFields: Field[];
 
   before(async () => {
@@ -44,7 +44,7 @@ describe('GovernanceUpdate', () => {
     console.log('Compilation complete.');
 
     // Prepare a sample update spec
-    updateInput = ZkusdProtocolUpdateSpec.empty();
+    updateInput = EngineUpdateSpec.empty();
     updateInputFields = updateInput.toFields();
 
     // Create keys
@@ -109,7 +109,7 @@ describe('GovernanceUpdate', () => {
 
     it('should fail if the signature is for different data', async () => {
       // 1. Create a *different* input
-      const differentInput = ZkusdProtocolUpdateSpec.empty();
+      const differentInput = EngineUpdateSpec.empty();
       // Modify it in some minimal way...
       differentInput.protocolUpdateOperation.emergencyStop =
         BoolOperation.flip();
@@ -216,8 +216,8 @@ describe('GovernanceUpdate', () => {
     let secondMerkleMap: CouncilMap;
     let secondcouncilMerkleMapRoot: Field;
 
-    let proof1: Proof<ZkusdProtocolUpdateSpec, ZkusdProtocolUpdateOutput>;
-    let proof2: Proof<ZkusdProtocolUpdateSpec, ZkusdProtocolUpdateOutput>;
+    let proof1: Proof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>;
+    let proof2: Proof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>;
 
     before(async () => {
       // Build a second tree that also has seatIndex2
@@ -307,7 +307,7 @@ describe('GovernanceUpdate', () => {
 
     it('should fail to merge if the two proofs have different publicInputs', async () => {
       // Make a proof for a *different* input
-      const differentInput = ZkusdProtocolUpdateSpec.empty();
+      const differentInput = EngineUpdateSpec.empty();
       differentInput.protocolUpdateOperation.emergencyStop =
         BoolOperation.flip();
       const differentFields = differentInput.toFields();

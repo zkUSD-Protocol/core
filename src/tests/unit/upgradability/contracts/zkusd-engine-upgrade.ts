@@ -40,13 +40,13 @@ import { PriceAggregationProofPublicOutput } from '../../../../proofs/oracle-pri
 import { ZkUsdEngineErrors } from '../../../../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../../../../system/oracle.js';
 import { Vault, VaultParams } from '../../../../system/vault.js';
-import { NO_RESOLUTION_INDEX } from '../../../../system/governance.js';
 
 /**
  * @title   zkUSD Engine contract
  * @notice  This is a fake contract to test the upgradability of the zkUSD engine.
  */
 
+const NO_RESOLUTION_INDEX = UInt32.from(4200000000);
 const COLLATERAL_RATIO = UInt8.from(150);
 const LIQUIDATION_BONUS_RATIO = UInt8.from(110);
 

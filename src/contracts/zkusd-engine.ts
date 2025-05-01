@@ -55,17 +55,15 @@ import {
   ZkUsdEngineMethodCodes,
 } from '../system/engine.js';
 import { MinaPrice, OracleWhitelist } from '../system/oracle.js';
-import {
-  ZkUsdGovernmentConstructor,
-} from '../system/governance.js';
-import { ZkusdProtocolUpdateOperation } from '../system/governance-update/operation.js';
+import { EngineUpdateOperation } from '../system/engine-update/operation.js';
 import {
   ZkusdUpdateMinaBlockchainState,
   requireBlockchainPreconditions,
-} from '../system/governance-update/blockchain-state.js';
-import { ZkusdUpdateProtocolState } from '../system/governance-update/protocol-state.js';
-import { ZkusdProtocolUpdateSpec } from '../system/governance-update/input.js';
-import { ResolutionTree } from '../system/council/resolution-tree.js';
+} from '../system/engine-update/blockchain-state.js';
+import { ZkusdUpdateProtocolState } from '../system/engine-update/protocol-state.js';
+import { EngineUpdateSpec } from '../system/engine-update/input.js';
+import { ResolutionTree } from '../system/council/data/resolution-tree.js';
+import { ZkUsdGovernmentConstructor } from './zkusd-gov-contract-base.js';
 
 /**
  * @title   zkUSD Engine contract
@@ -577,7 +575,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateVaultDebtCeiling(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
@@ -606,7 +604,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govToggleEmergencyStop(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
@@ -636,7 +634,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateValidPriceBlockCount(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
@@ -668,7 +666,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateLiquidationBonusRatio(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
@@ -700,7 +698,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateCollateralRatio(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       // perform common checks
@@ -746,7 +744,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async govUpdateOracleWhitelist(
       whitelist: OracleWhitelist,
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       //Precondition
@@ -787,7 +785,7 @@ export function ZkUsdEngineContract(args: {
      */
     @method async govUpdateEngineVerificationKey(
       newVerificationKey: VerificationKey,
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { operation } = await this.runGovUpdateCommon(
@@ -819,7 +817,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govUpdateConfigMerkleRoot(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { operation } = await this.runGovUpdateCommon(
@@ -852,7 +850,7 @@ export function ZkUsdEngineContract(args: {
      * @param   resolutionWitness The resolution witness ensuring it has passed quorum
      */
     @method async govToggleVaultCreation(
-      updateSpec: ZkusdProtocolUpdateSpec,
+      updateSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ) {
       const { protocolDataBefore, operation } = await this.runGovUpdateCommon(
@@ -1123,11 +1121,11 @@ export function ZkUsdEngineContract(args: {
      */
     async runGovUpdateCommon(
       methodCode: Field,
-      resolutionSpec: ZkusdProtocolUpdateSpec,
+      resolutionSpec: EngineUpdateSpec,
       resolutionWitness: ResolutionTree.Witness
     ): Promise<{
       protocolDataBefore: ProtocolData;
-      operation: ZkusdProtocolUpdateOperation; // or whatever your update operation class is
+      operation: EngineUpdateOperation; // or whatever your update operation class is
     }> {
       // Verify governance acceptance
       const gov = new args.GovernmentClass(args.zkUsdGovernmentAddress);

@@ -7,7 +7,7 @@ import {
   UInt8,
 } from 'o1js';
 import { IndexedMerkleMap } from 'o1js/dist/node/lib/provable/merkle-tree-indexed';
-import { ZkusdCouncilManagementOperation } from './management/input';
+import { CouncilUpdateOperation } from '../update/input.js';
 
 /**
  * Height of the Merkle tree for council members.
@@ -25,7 +25,7 @@ const MAX_COUNCIL_MEMBERS = 240;
  * A typed MerkleWitness specific to council members.
  * Used for generating inclusion proofs in the CouncilMap.
  */
-class ZkusdCouncilMemberWitness extends MerkleWitness(
+class CouncilMemberWitness extends MerkleWitness(
   ZKUSD_COUNCIL_MAP_HEIGHT
 ) {
   /** Height of the Merkle tree used by this witness. */
@@ -34,7 +34,7 @@ class ZkusdCouncilMemberWitness extends MerkleWitness(
 
 // a rewrite of the class below that can store public keys 
 // but also be used as a provable type
-export class CouncilMapProvable extends IndexedMerkleMap(ZkusdCouncilMemberWitness.HEIGHT) {
+export class CouncilMapProvable extends IndexedMerkleMap(CouncilMemberWitness.HEIGHT) {
 
 }
   
@@ -228,9 +228,9 @@ export class CouncilMap {
 
   }
 
-  // --------------- ZkusdCouncilManagementOperation ---------------
+  // --------------- CouncilUpdateOperation ---------------
 
-  public static buildFromOperations(operations: ZkusdCouncilManagementOperation[]): CouncilMap {
+  public static buildFromOperations(operations: CouncilUpdateOperation[]): CouncilMap {
     const councilMap = new CouncilMap([]);
     operations.forEach(operation => {
       if (operation.isDummy.toBoolean()) {
@@ -243,7 +243,7 @@ export class CouncilMap {
     return councilMap;
   }
 
-  public applyOperations(operations: ZkusdCouncilManagementOperation[]): void {
+  public applyOperations(operations: CouncilUpdateOperation[]): void {
     operations.forEach(operation => {
       if (operation.isDummy.toBoolean()) {
         return;
@@ -258,15 +258,15 @@ export class CouncilMap {
   /**
    * Creates a set of management operations for adding new council members.
    * @param councilKeys - Array of public keys of the new council members.
-   * @returns An array of ZkusdCouncilManagementOperation instances.
+   * @returns An array of CouncilUpdateOperation instances.
    */
-  public createAddActions(councilKeys: PublicKey[]): ZkusdCouncilManagementOperation[] {
+  public createAddActions(councilKeys: PublicKey[]): CouncilUpdateOperation[] {
     const cloned = this.clone();
     const nextEmptyKeys: Field[] = [];
     for (const key of councilKeys) {
       nextEmptyKeys.push(cloned.insertAtNextEmptyKey(key));
     }
-    const actions = councilKeys.map((key, i) => new ZkusdCouncilManagementOperation({
+    const actions = councilKeys.map((key, i) => new CouncilUpdateOperation({
       councilKey: key,
       councilSeatPosition: nextEmptyKeys[i],
       shouldAdd: Bool(true),
@@ -281,5 +281,5 @@ export class CouncilMap {
  * Type-safe access to the witness type for external use.
  */
 export namespace CouncilMap {
-  export type Witness = ZkusdCouncilMemberWitness;
+  export type Witness = CouncilMemberWitness;
 }

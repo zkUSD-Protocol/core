@@ -1,8 +1,8 @@
 import {
-  CouncilManagementActionEvent,
-  GovernanceProposalPassedEvent,
-  GovernanceProposalSupportChangeEvent,
-} from '../../../../system/council-events.js';
+  CouncilUpdateActionEvent,
+  EngineUpdateProposalPassedEvent,
+  EngineUpdateProposalVoteEvent,
+} from '../../../../system/council/events.js';
 import {
   Signature,
   UInt32,
@@ -12,22 +12,22 @@ import {
 import { KeyPair } from '../../../../types/utility.js';
 import {
   GovernanceUpdate,
-  ZkusdGovernanceUpdateVoteProof,
-} from '../../../../proofs/governance-update/prove.js';
-import { ZkusdProtocolUpdateSpec } from '../../../../system/governance-update/input.js';
+  EngineUpdateVoteProof,
+} from '../../../../proofs/engine-update/prove.js';
+import { EngineUpdateSpec } from '../../../../system/engine-update/input.js';
 import { TestHelper } from '../../../test-helper.js';
-import { ZkusdCouncilManagementOperation } from '../../../../system/council/management/input.js';
-import { ProposalMap } from '../../../../system/council/proposal-merkle-map.js';
-import { ResolutionTree } from '../../../../system/council/resolution-tree.js';
-import { CouncilMap } from '../../../../system/council/council-map.js';
+import { CouncilUpdateOperation } from '../../../../system/council/update/input.js';
+import { ProposalMap } from '../../../../system/council/data/proposal-merkle-map.js';
+import { ResolutionTree } from '../../../../system/council/data/resolution-tree.js';
+import { CouncilMap } from '../../../../system/council/data/council-map.js';
 
 export async function generateVoteProof(
   councilMember: KeyPair,
   councilMap: CouncilMap,
   seatKey: Field,
   govResolutionIndex: number = 0,
-  updateSpec: ZkusdProtocolUpdateSpec = ZkusdProtocolUpdateSpec.empty()
-): Promise<ZkusdGovernanceUpdateVoteProof> {
+  updateSpec: EngineUpdateSpec = EngineUpdateSpec.empty()
+): Promise<EngineUpdateVoteProof> {
   // an example of a update - an empty one, but its okay for these tests.
   updateSpec.govResolutionIndex = UInt32.from(govResolutionIndex);
   const updateInputFields = updateSpec.toFields();
@@ -61,8 +61,8 @@ export function rebuildProposalMerkleMap(
   );
 
   for (const event of proposalEvents) {
-    const eventData = event.event.data as GovernanceProposalSupportChangeEvent;
-    const proposalHash = eventData.proposalHash as Field;
+    const eventData = event.event.data as EngineUpdateProposalVoteEvent;
+    const proposalHash = eventData.updateHash as Field;
     const acceptedVotes = eventData.acceptedVoteBitArray as Field;
 
     const previousVotes = proposalTree.get(proposalHash);
@@ -92,9 +92,9 @@ export function rebuildResolutionMerkleTree(
   );
 
   for (const event of resolutionEvents) {
-    const eventData = event.event.data as GovernanceProposalPassedEvent;
+    const eventData = event.event.data as EngineUpdateProposalPassedEvent;
     const resolutionIndex = eventData.resolutionIndex.toBigint();
-    const proposalHash = eventData.proposalHash as Field;
+    const proposalHash = eventData.updateHash as Field;
 
     resolutionTree.setLeaf(resolutionIndex, proposalHash);
   }
@@ -127,8 +127,8 @@ export function rebuildCouncilMerkleMap(
   events.reverse();
 
   for (const event of events) {
-    if (event.type === 'CouncilManagementActionEvent') {
-      const eventData = event.event.data as CouncilManagementActionEvent;
+    if (event.type === 'CouncilUpdateActionEvent') {
+      const eventData = event.event.data as CouncilUpdateActionEvent;
       const action = eventData.action;
 
       if (action.shouldAdd) {
@@ -151,16 +151,16 @@ export function rebuildCouncilMerkleMap(
 /**
  * Extracts all council management operations from the given events.
  * @param events The array of contract events
- * @returns An array of ZkusdCouncilManagementOperation objects
+ * @returns An array of CouncilUpdateOperation objects
  */
 export function extractCouncilOperationsFromEvents(
   events: Array<{ type: string; event: { data: any } }>
-): Array<ZkusdCouncilManagementOperation> {
+): Array<CouncilUpdateOperation> {
   //Reverse the events array
   events.reverse();
   return events
-    .filter((event) => event.type === 'CouncilManagementActionEvent')
-    .map((event) => event.event.data.action as ZkusdCouncilManagementOperation);
+    .filter((event) => event.type === 'CouncilUpdateActionEvent')
+    .map((event) => event.event.data.action as CouncilUpdateOperation);
 }
 
 /**

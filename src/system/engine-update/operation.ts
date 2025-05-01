@@ -7,10 +7,10 @@ import {
 } from './simple-operations.js';
 
 /**
- * The fields of ZkusdProtocolUpdateOperation.
+ * The fields of EngineUpdateOperation.
  * This is just a TypeScript type, not a class.
  */
-export type ZkusdProtocolUpdateOperationFields = {
+export type EngineUpdateOperationFields = {
   emergencyStop: BoolOperation;
   vaultCreationDisabled: BoolOperation;
   collateralRatio: UInt8Operation;
@@ -26,7 +26,7 @@ export type ZkusdProtocolUpdateOperationFields = {
  * The main class. We only store the final fields, but we provide static
  * methods to create or merge them in a more flexible, minimal way.
  */
-export class ZkusdProtocolUpdateOperation extends Struct({
+export class EngineUpdateOperation extends Struct({
   emergencyStop: BoolOperation,
   vaultCreationDisabled: BoolOperation,
   collateralRatio: UInt8Operation,
@@ -42,8 +42,8 @@ export class ZkusdProtocolUpdateOperation extends Struct({
    * filling missing fields with no-ops.
    */
   static create(
-    partial: Partial<ZkusdProtocolUpdateOperationFields>
-  ): ZkusdProtocolUpdateOperation {
+    partial: Partial<EngineUpdateOperationFields>
+  ): EngineUpdateOperation {
     // Fill in no-ops for missing fields
     const filled = {
       emergencyStop: partial.emergencyStop ?? BoolOperation.noop(),
@@ -59,11 +59,11 @@ export class ZkusdProtocolUpdateOperation extends Struct({
       newVerificationKey: partial.newVerificationKey ?? FieldOperation.noop(),
       vaultDebtCeiling: partial.vaultDebtCeiling ?? UInt64Operation.noop(),
     };
-    return new ZkusdProtocolUpdateOperation(filled);
+    return new EngineUpdateOperation(filled);
   }
 
-  static noop(): ZkusdProtocolUpdateOperation {
-    return ZkusdProtocolUpdateOperation.create({});
+  static noop(): EngineUpdateOperation {
+    return EngineUpdateOperation.create({});
   }
 
   toFields(): Field[] {

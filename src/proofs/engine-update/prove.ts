@@ -7,26 +7,26 @@ import {
   Signature,
   ZkProgram,
 } from 'o1js';
-import { ZkusdProtocolUpdateSpec } from '../../system/governance-update/input.js';
-import { ZkusdProtocolUpdateOutput } from '../../system/governance-update/output.js';
-import { CouncilMap, CouncilMapProvable } from '../../system/council/council-map.js';
+import { EngineUpdateSpec } from '../../system/engine-update/input.js';
+import { ZkusdProtocolUpdateOutput } from '../../system/engine-update/output.js';
+import { CouncilMap, CouncilMapProvable } from '../../system/council/data/council-map.js';
 
 /** Generic multisig zkusd protocol update program */
 export const GovernanceUpdate = ZkProgram({
   name: 'GovernanceUpdate',
-  publicInput: ZkusdProtocolUpdateSpec,
+  publicInput: EngineUpdateSpec,
   publicOutput: ZkusdProtocolUpdateOutput,
   methods: {
     mergeVotes: {
       privateInputs: [SelfProof, SelfProof],
       async method(
-        publicInput: ZkusdProtocolUpdateSpec,
+        publicInput: EngineUpdateSpec,
         leftProof: SelfProof<
-          ZkusdProtocolUpdateSpec,
+          EngineUpdateSpec,
           ZkusdProtocolUpdateOutput
         >,
         rightProof: SelfProof<
-          ZkusdProtocolUpdateSpec,
+          EngineUpdateSpec,
           ZkusdProtocolUpdateOutput
         >
       ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
@@ -70,7 +70,7 @@ export const GovernanceUpdate = ZkProgram({
     createVote: {
       privateInputs: [Signature, PublicKey, CouncilMapProvable, Field],
       async method(
-        publicInput: ZkusdProtocolUpdateSpec,
+        publicInput: EngineUpdateSpec,
         voterSignature: Signature,
         voterPublicKey: PublicKey,
         councilMerkleMap: CouncilMapProvable,
@@ -126,6 +126,6 @@ function assertOneBitSet(x: Field) {
   andValue.assertEquals(Field(0));
 }
 
-export class ZkusdGovernanceUpdateVoteProof extends ZkProgram.Proof(
+export class EngineUpdateVoteProof extends ZkProgram.Proof(
   GovernanceUpdate
 ) {}

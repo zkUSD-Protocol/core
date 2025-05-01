@@ -6,7 +6,7 @@ import {
   FieldMax,
   FieldOperation,
   UInt8Operation,
-} from '../../../../system/governance-update/simple-operations.js';
+} from '../../../../system/engine-update/simple-operations.js';
 
 describe('Operation Classes Test Suite', () => {
   //

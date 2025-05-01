@@ -19,8 +19,8 @@ import {
   statusIsOfKind,
 } from '../../../transaction/status.js';
 import { DEBUG, debugLog } from '../../../utils/debug.js';
-import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
-import { BoolOperation } from '../../../system/governance-update/simple-operations.js';
+import { EngineUpdateOperation } from '../../../system/engine-update/operation.js';
+import { BoolOperation } from '../../../system/engine-update/simple-operations.js';
 
 // --------------------------------------------------------
 // This test follows the following scenaro:
@@ -317,7 +317,7 @@ describe('zkUSD Integration - Concurrent - Can admin on saturated pool ', () => 
 
     debugLog('------------------------');
     const stopProtocolHandle = await th.proposeAndExecuteUpdate(
-      ZkusdProtocolUpdateOperation.create({
+      EngineUpdateOperation.create({
         emergencyStop: BoolOperation.set(true),
       }),
       (updateSpec, resolutionWitness) =>

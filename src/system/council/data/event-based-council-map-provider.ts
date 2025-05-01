@@ -5,29 +5,28 @@ import {
   FetchOnchainRoot,
   HasFetchEvents,
   isContractEvent,
-} from './common.js';
-import { ProposalMap } from './proposal-merkle-map.js';
-import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
+} from '../common.js';
+import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
 import { CouncilMap } from './council-map.js';
 
 /**
  * A runtime-narrowed `ProposalSupported` event with the expected structure.
  */
-type CouncilRootChangedEvent = ContractEvent<'CouncilManagementEvent'>;
-type CouncilActionEvent = ContractEvent<'CouncilManagementActionEvent'>;
+type CouncilRootChangedEvent = ContractEvent<'CouncilUpdateEvent'>;
+type CouncilActionEvent = ContractEvent<'CouncilUpdateActionEvent'>;
 
 /**
  * Runtime check to validate that an event is a `CouncilRootChangedEvent` event
  */
 export function isCouncilRootChangedEvent(e: unknown): e is CouncilRootChangedEvent {
-  return isContractEvent(e, 'CouncilManagementEvent');
+  return isContractEvent(e, 'CouncilUpdateEvent');
 }
 
 /**
  * Runtime check to validate that an event is a `CouncilActionEvent` event
  */
 export function isCouncilActionEvent(e: unknown): e is CouncilActionEvent {
-  return isContractEvent(e, 'CouncilManagementActionEvent');
+  return isContractEvent(e, 'CouncilUpdateActionEvent');
 }
 
 /* -------------------------------------------------------------------------- */

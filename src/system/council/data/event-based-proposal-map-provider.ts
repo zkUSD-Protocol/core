@@ -1,14 +1,14 @@
 import { Provable, UInt32 } from 'o1js';
-import { IMerkleDataProvider } from './imerkle-data-provider.js';
+import { IMerkleDataProvider } from '../data/imerkle-data-provider.js';
 import {
   ContractEvent,
   FetchCurrentBlockHeight,
   FetchOnchainRoot,
   HasFetchEvents,
   isContractEvent,
-} from './common.js';
-import { ProposalMap } from './proposal-merkle-map.js';
-import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
+} from '../common.js';
+import { ProposalMap } from '../data/proposal-merkle-map.js';
+import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
 
 /**
  * A runtime-narrowed `ProposalSupported` event with the expected structure.
@@ -175,7 +175,7 @@ export class ProposalMapContractEventsProvider
       const d = ev.event.data;
       // debug log event data
       Provable.log('applying ProposalSupported event data:', d);
-      map.set(d.proposalHash, d.acceptedVoteBitArray);
+      map.set(d.updateHash, d.acceptedVoteBitArray);
     }
     this.proposalMap = map;
   }

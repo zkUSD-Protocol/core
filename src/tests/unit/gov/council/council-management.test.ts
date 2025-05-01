@@ -14,12 +14,12 @@ import {
   VerificationKey,
   verify,
 } from 'o1js';
-import { ManageCouncil } from '../../../../proofs/council-management/prove.js';
-import { ZkusdCouncilManagementInput } from '../../../../system/council/management/input.js';
-import { ZkusdCouncilManagementOutput } from '../../../../system/council/management/output.js';
-import { CouncilMap } from '../../../../system/council/council-map.js';
+import { ManageCouncil } from '../../../../proofs/council-update/prove.js';
+import { CouncilUpdateVoteInput } from '../../../../system/council/update/input.js';
+import { CouncilUpdateVoteOutput } from '../../../../system/council/update/output.js';
+import { CouncilMap } from '../../../../system/council/data/council-map.js';
 
-describe('CouncilManagement', () => {
+describe('CouncilUpdate', () => {
   let testHelper: TestHelper<'local'>;
   let council: KeyPair[];
   let manageCouncilVk: VerificationKey;
@@ -45,7 +45,7 @@ describe('CouncilManagement', () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -88,14 +88,14 @@ describe('CouncilManagement', () => {
         const newVoteThreshold = UInt8.from(3);
         const differentVoteThreshold = UInt8.from(4);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
         );
 
         const differentInput =
-          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
             localCouncilMap,
             differentVoteThreshold,
             [newMemberKey.publicKey]
@@ -125,7 +125,7 @@ describe('CouncilManagement', () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -153,7 +153,7 @@ describe('CouncilManagement', () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -183,7 +183,7 @@ describe('CouncilManagement', () => {
         const newMemberPrivateKey = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberPrivateKey.publicKey]
@@ -209,20 +209,20 @@ describe('CouncilManagement', () => {
     });
     describe('mergeVotes()', () => {
       let proof1: Proof<
-        ZkusdCouncilManagementInput,
-        ZkusdCouncilManagementOutput
+        CouncilUpdateVoteInput,
+        CouncilUpdateVoteOutput
       >;
       let proof2: Proof<
-        ZkusdCouncilManagementInput,
-        ZkusdCouncilManagementOutput
+        CouncilUpdateVoteInput,
+        CouncilUpdateVoteOutput
       >;
-      let input: ZkusdCouncilManagementInput;
+      let input: CouncilUpdateVoteInput;
 
       before(async () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -274,7 +274,7 @@ describe('CouncilManagement', () => {
         const newVoteThreshold = UInt8.from(5);
 
         const differentInput =
-          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
             localCouncilMap,
             newVoteThreshold,
             [newMemberKey.publicKey]
@@ -290,7 +290,7 @@ describe('CouncilManagement', () => {
         const newVoteThreshold = UInt8.from(5);
 
         const differentInput =
-          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
             localCouncilMap,
             newVoteThreshold,
             [newMemberKey.publicKey]
@@ -340,7 +340,7 @@ describe('CouncilManagement', () => {
       const newMemberKey: KeyPair = PrivateKey.randomKeypair();
       const newVoteThreshold = UInt8.from(3);
 
-      const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+      const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
         currentCouncilMap,
         newVoteThreshold,
         [newMemberKey.publicKey]
@@ -374,7 +374,7 @@ describe('CouncilManagement', () => {
 
       //Update the council on chain
       await testHelper.includeTx(testHelper.deployer, async () => {
-        await testHelper.council.executeZkusdCouncilManagementActions(
+        await testHelper.council.executeCouncilUpdateActions(
           mergedProof.proof
         );
       });

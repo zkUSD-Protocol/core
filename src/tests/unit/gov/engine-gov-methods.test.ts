@@ -7,17 +7,14 @@ import {
   Poseidon,
   UInt32,
   UInt8,
-  MerkleTree,
-  MerkleMap,
   UInt64,
 } from 'o1js';
 import { TestHelper } from '../../test-helper.js';
-import { ZkusdProtocolUpdateSpec } from '../../../system/governance-update/input.js';
+import { EngineUpdateSpec } from '../../../system/engine-update/input.js';
 import {
   MinaChainPreconditions,
-  ValidityRangeUInt32,
-} from '../../../system/governance-update/blockchain-preconditions.js';
-import { ZkusdProtocolPreconditions } from '../../../system/governance-update/protocol-preconditions.js';
+} from '../../../system/engine-update/blockchain-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../../../system/engine-update/protocol-preconditions.js';
 import {
   generateVoteProof,
   getNextEmptyResolutionIndex,
@@ -25,19 +22,19 @@ import {
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
 } from './council/common.js';
-import { GovernanceUpdate } from '../../../proofs/governance-update/prove.js';
-import { ResolutionTree } from '../../../system/council/resolution-tree.js';
+import { GovernanceUpdate } from '../../../proofs/engine-update/prove.js';
+import { ResolutionTree } from '../../../system/council/data/resolution-tree.js';
 import {
   BoolOperation,
   FieldOperation,
   UInt64Operation,
   UInt8Operation,
-} from '../../../system/governance-update/simple-operations.js';
+} from '../../../system/engine-update/simple-operations.js';
 import { OracleWhitelist } from '../../../system/oracle.js';
-import { BoolPrecondition } from '../../../system/governance-update/simple-preconditions.js';
-import { ZkusdProtocolUpdateOperation } from '../../../system/governance-update/operation.js';
-import { CouncilMap } from '../../../system/council/council-map.js';
-import { ProposalMap } from '../../../system/council/proposal-merkle-map.js';
+import { BoolPrecondition } from '../../../system/engine-update/simple-preconditions.js';
+import { EngineUpdateOperation } from '../../../system/engine-update/operation.js';
+import { CouncilMap } from '../../../system/council/data/council-map.js';
+import { ProposalMap } from '../../../system/council/data/proposal-merkle-map.js';
 
 let testHelper: TestHelper<'local'>;
 const engine = () => testHelper.engine.contract;
@@ -59,9 +56,9 @@ const CONFIG_ROOT_VAL = Field.random();
 const VAULT_DEBT_CEILING_VAL = UInt64.from(5e14);
 
 function makeDefaultAcceptedSpec(resIndex: UInt32) {
-  const spec = ZkusdProtocolUpdateSpec.empty();
+  const spec = EngineUpdateSpec.empty();
   spec.govResolutionIndex = resIndex;
-  spec.protocolUpdateOperation = ZkusdProtocolUpdateOperation.create({
+  spec.protocolUpdateOperation = EngineUpdateOperation.create({
     emergencyStop: BoolOperation.set(EMERGENCY_STOP_VAL),
     validPriceBlockCount: UInt8Operation.set(VALID_PRICE_BLOCK_COUNT_VAL),
     liquidationBonusRatio: UInt8Operation.set(LIQ_BONUS_RATIO_VAL),
@@ -77,7 +74,7 @@ function makeDefaultAcceptedSpec(resIndex: UInt32) {
   return spec;
 }
 
-let updateSpec: ZkusdProtocolUpdateSpec;
+let updateSpec: EngineUpdateSpec;
 
 /* -------------------------------------------------------------------------- */
 /* 3.  Test‑case table – now no randomness                                    */

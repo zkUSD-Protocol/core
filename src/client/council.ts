@@ -1,82 +1,203 @@
-import { MinaChainPreconditions } from '../system/governance-update/blockchain-preconditions.js';
+import { MinaChainPreconditions } from '../system/engine-update/blockchain-preconditions.js';
 import {
-  ZkusdProtocolUpdateOperation,
-  ZkusdProtocolUpdateOperationFields,
-} from '../system/governance-update/operation.js';
+  EngineUpdateOperation,
+  EngineUpdateOperationFields as EngineUpdateOperationFields,
+} from '../system/engine-update/operation.js';
 import {
   ZkusdProtocolPreconditions,
-} from '../system/governance-update/protocol-preconditions.js';
+} from '../system/engine-update/protocol-preconditions.js';
 import { Bool, Poseidon, PublicKey, Signature, UInt8 } from 'o1js';
-import { ZkusdProtocolUpdateSpec } from '../system/governance-update/input.js';
-import { KeyPair } from '../types/utility.js';
+import { EngineUpdateSpec } from '../system/engine-update/input.js';
+import { KeyPair } from '../types/utility.js'
 import {
   ZkusdGoverningCouncilContract,
 } from '../contracts/zkusd-governing-council.js';
 import { TransactionManager } from '../transaction/manager.js';
-import { proveProposalSupport } from '../system/council/prove.js';
-import { CouncilDataProvider } from '../system/council/data-provider.js';
-import { GovernanceUpdate, ZkusdGovernanceUpdateVoteProof } from '../proofs/governance-update/prove.js';
-import { ProposalMap } from '../system/council/proposal-merkle-map.js';
-import { ResolutionTree } from '../system/council/resolution-tree.js';
+import { CouncilDataProvider } from '../system/council/data/data-provider.js';
+import { GovernanceUpdate, EngineUpdateVoteProof } from '../proofs/engine-update/prove.js';
+import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
+import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
+import { Field } from 'o1js/dist/node/lib/provable/field.js';
+import { CouncilUpdateOperation, CouncilUpdateSpec } from '../system/council/update/input.js';
+import { CouncilUpdateVoteProof } from '../proofs/council-update/prove.js';
 
 type ProposalUpdateResults = {
   transactionIncluded: boolean;
   votesMissing?: bigint;
   info?: string | null;
 };
+export interface EngineUpdateClient {
+  createSpec(args: {
+    operation: Partial<EngineUpdateOperationFields> | EngineUpdateOperation;
+    protocolPreconditions: ZkusdProtocolPreconditions;
+    blockchainPreconditions: MinaChainPreconditions;
+  }): Promise<EngineUpdateSpec>;
+
+  createVoteProof(args: {
+    updateSpec: EngineUpdateSpec;
+    signature: Signature;
+    seat: number | bigint | UInt8 | PublicKey;
+  }): Promise<EngineUpdateVoteProof>;
+
+  mergeVoteProofs(
+    leftVoteProof: EngineUpdateVoteProof,
+    rightVoteProof: EngineUpdateVoteProof
+  ): Promise<EngineUpdateVoteProof>;
+
+  submitVote(
+    voteProof: EngineUpdateVoteProof,
+    senderKeys: KeyPair,
+    args?: { force?: boolean }
+  ): Promise<ProposalUpdateResults>;
+
+  tryPassProposal(
+    updateSpec: EngineUpdateSpec,
+    senderKeys: KeyPair,
+    opts?: { force?: boolean }
+  ): Promise<ProposalUpdateResults>;
+
+  applyPassedProposal(
+    updateSpec: EngineUpdateSpec,
+    senderKeys: KeyPair
+  ): Promise<ProposalUpdateResults>;
+
+  submitVoteAndTryPassAndApply(args: {
+    voteProof: EngineUpdateVoteProof;
+    senderKeys: KeyPair;
+    opts?: { force?: boolean };
+  }): Promise<ProposalUpdateResults>;
+}
+
+export interface CouncilUpdateClient {
+  createSpec(args: {
+    operation: CouncilUpdateOperation;
+    protocolPreconditions: ZkusdProtocolPreconditions;
+    blockchainPreconditions: MinaChainPreconditions;
+  }): Promise<CouncilUpdateSpec>;
+
+  createVoteProof(args: {
+    updateSpec: CouncilUpdateSpec;
+    signature: Signature;
+    seat: number | bigint | UInt8 | PublicKey;
+  }): Promise<CouncilUpdateVoteProof>;
+
+  mergeVoteProofs(
+    leftVoteProof: CouncilUpdateVoteProof,
+    rightVoteProof: CouncilUpdateVoteProof
+  ): Promise<CouncilUpdateVoteProof>;
+
+  submitVote(
+    voteProof: CouncilUpdateVoteProof,
+    senderKeys: KeyPair,
+    args?: { force?: boolean }
+  ): Promise<ProposalUpdateResults>;
+
+  tryPassProposal(
+    updateSpec: CouncilUpdateSpec,
+    senderKeys: KeyPair,
+    opts?: { force?: boolean }
+  ): Promise<ProposalUpdateResults>;
+
+  applyPassedProposal(
+    updateSpec: CouncilUpdateSpec,
+    senderKeys: KeyPair
+  ): Promise<ProposalUpdateResults>;
+
+  submitVoteAndTryPassAndApply(args: {
+    voteProof: CouncilUpdateVoteProof;
+    senderKeys: KeyPair;
+    opts?: { force?: boolean };
+  }): Promise<ProposalUpdateResults>;
+}
 
 export interface IZkusdGoverningCouncilClient {
   readonly data: CouncilDataProvider;
 
   readonly councilContract: ZkusdGoverningCouncilContract;
 
-  createUpdateSpec(args: {
-    operation: Partial<ZkusdProtocolUpdateOperationFields> | ZkusdProtocolUpdateOperation;
+  createEngineUpdateSpec(args: {
+    operation: Partial<EngineUpdateOperationFields> | EngineUpdateOperation;
     protocolPreconditions: ZkusdProtocolPreconditions;
     blockchainPreconditions: MinaChainPreconditions;
-  }): Promise<ZkusdProtocolUpdateSpec>;
+  }): Promise<EngineUpdateSpec>;
 
-  createVoteProof(args: {
-    updateSpec: ZkusdProtocolUpdateSpec;
+  createEngineUpdateVoteProof(args: {
+    updateSpec: EngineUpdateSpec;
     signature: Signature;
     seat: number | bigint | UInt8 | PublicKey;
-  }): Promise<ZkusdGovernanceUpdateVoteProof>;
+  }): Promise<EngineUpdateVoteProof>;
 
-  mergeVoteProofs(
-    leftVoteProof: ZkusdGovernanceUpdateVoteProof,
-    rightVoteProof: ZkusdGovernanceUpdateVoteProof
-  ): Promise<ZkusdGovernanceUpdateVoteProof>;
+  mergeEngineUpdateVoteProofs(
+    leftVoteProof: EngineUpdateVoteProof,
+    rightVoteProof: EngineUpdateVoteProof
+  ): Promise<EngineUpdateVoteProof>;
 
-  submitVote(
-    voteProof: ZkusdGovernanceUpdateVoteProof,
+  submitEngineUpdateVote(
+    voteProof: EngineUpdateVoteProof,
     senderKeys: KeyPair,
     args?: {force?: boolean},
   ): Promise<ProposalUpdateResults>;
 
-  tryPassProposal(
-    updateSpec: ZkusdProtocolUpdateSpec,
+  tryPassEngineUpdateProposal(
+    updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair,
     opts?: { force?: boolean }
   ): Promise<ProposalUpdateResults>;
 
-  applyPassedProposalToEngine(
-    updateSpec: ZkusdProtocolUpdateSpec,
+  applyPassedUpdateToEngine(
+    updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair
   ): Promise<ProposalUpdateResults>;
 
-  submitVoteAndTryPassAndApply(args: {
-    voteProof: ZkusdGovernanceUpdateVoteProof;
+  submitEngineUpdateVoteAndTryPassAndApply(args: {
+    voteProof: EngineUpdateVoteProof;
     senderKeys: KeyPair;
     opts?: { force?: boolean };
   }): Promise<ProposalUpdateResults>;
 }
 
+
+export interface IZkusdGoverningCouncilClient {
+  readonly data: CouncilDataProvider;
+  readonly councilContract: ZkusdGoverningCouncilContract;
+
+  engineUpdate: EngineUpdateClient;
+  councilUpdate: CouncilUpdateClient;
+}
+
+// todo remove implementation from the main class and move them into the smaller interfaces
+// implement the council update interface
 export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient {
+  // Implement interface fields
+  public readonly engineUpdate: EngineUpdateClient;
+  public readonly councilUpdate: CouncilUpdateClient;
   readonly data: CouncilDataProvider;
   readonly councilContract: ZkusdGoverningCouncilContract;
 
   txMgr: TransactionManager<any>;
+
+  // --- EngineUpdateClient interface adapter ---
+  private engineUpdateImpl: EngineUpdateClient = {
+    createSpec: this.createEngineUpdateSpec.bind(this),
+    createVoteProof: this.createEngineUpdateVoteProof.bind(this),
+    mergeVoteProofs: this.mergeEngineUpdateVoteProofs.bind(this),
+    submitVote: this.submitEngineUpdateVote.bind(this),
+    tryPassProposal: this.tryPassEngineUpdateProposal.bind(this),
+    applyPassedProposal: this.applyPassedUpdateToEngine.bind(this),
+    submitVoteAndTryPassAndApply: this.submitEngineUpdateVoteAndTryPassAndApply.bind(this),
+  };
+
+  // --- CouncilUpdateClient stub ---
+  private councilUpdateImpl: CouncilUpdateClient = {
+    createSpec: async () => { throw new Error('CouncilUpdateClient.createSpec not implemented'); },
+    createVoteProof: async () => { throw new Error('CouncilUpdateClient.createVoteProof not implemented'); },
+    mergeVoteProofs: async () => { throw new Error('CouncilUpdateClient.mergeVoteProofs not implemented'); },
+    submitVote: async () => { throw new Error('CouncilUpdateClient.submitVote not implemented'); },
+    tryPassProposal: async () => { throw new Error('CouncilUpdateClient.tryPassProposal not implemented'); },
+    applyPassedProposal: async () => { throw new Error('CouncilUpdateClient.applyPassedProposal not implemented'); },
+    submitVoteAndTryPassAndApply: async () => { throw new Error('CouncilUpdateClient.submitVoteAndTryPassAndApply not implemented'); },
+  };
 
 
   static withDataFromContractEvents(
@@ -88,7 +209,7 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
       return undefined;
     };
     return new ZkusdGoverningCouncilClient(
-      CouncilDataProvider.fromContract(councilContract, fetchCurrentBlockHeight),
+      CouncilDataProvider.fromContractEvents(councilContract, fetchCurrentBlockHeight),
       councilContract,
       txMgr
     );
@@ -104,43 +225,52 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     this.txMgr = txMgr;
   }
 
-  public async createUpdateSpec(args: {
+  public async createEngineUpdateSpec(args: {
     operation:
-    | Partial<ZkusdProtocolUpdateOperationFields>
-    | ZkusdProtocolUpdateOperation;
+    | Partial<EngineUpdateOperationFields>
+    | EngineUpdateOperation;
     protocolPreconditions: ZkusdProtocolPreconditions;
     blockchainPreconditions: MinaChainPreconditions;
-  }): Promise<ZkusdProtocolUpdateSpec> {
-    let operation: ZkusdProtocolUpdateOperation;
+  }): Promise<EngineUpdateSpec> {
+    let operation: EngineUpdateOperation;
 
     if ('protocolUpdateOperation' in args.operation) {
-      // Already a ZkusdProtocolUpdateOperation
-      operation = args.operation as ZkusdProtocolUpdateOperation;
+      // Already a EngineUpdateOperation
+      operation = args.operation as EngineUpdateOperation;
     } else {
       // Build from partial fields
-      operation = ZkusdProtocolUpdateOperation.create(args.operation);
+      operation = EngineUpdateOperation.create(args.operation);
     }
     const index =
       (await this.data.resolutionTree.get()).getNextEmptyIndex();
 
-    return ZkusdProtocolUpdateSpec.singleOperation(index, operation, {
+    return EngineUpdateSpec.singleOperation(index, operation, {
       blockchainPreconditions: args.blockchainPreconditions,
     });
   }
 
-  public async createVoteProof(args: {
-    updateSpec: ZkusdProtocolUpdateSpec;
+  public async createEngineUpdateVoteProof(args: {
+    updateSpec: EngineUpdateSpec;
     signature: Signature;
     seat: number | bigint | UInt8 | PublicKey;
-  }): Promise<ZkusdGovernanceUpdateVoteProof> {
+  }): Promise<EngineUpdateVoteProof> {
     const councilMap = await this.data.councilMap.get();
-    return await proveProposalSupport(args.updateSpec, args.signature, councilMap, args.seat)
+    let voter: PublicKey;
+    let seatKey: Field;
+    if (args.seat instanceof PublicKey) {
+      voter = args.seat;
+      seatKey = councilMap.getPubkeySeatKey(voter)!
+    } else {
+      seatKey = args.seat instanceof UInt8 ? args.seat.value : Field.from(args.seat);
+      voter = councilMap.getSeatPublicKey(seatKey)!
+    }
+    return (await GovernanceUpdate.createVote(args.updateSpec, args.signature, voter, councilMap.provable, seatKey)).proof as EngineUpdateVoteProof;
   }
 
-  public async mergeVoteProofs(
-    leftVoteProof: ZkusdGovernanceUpdateVoteProof,
-    rightVoteProof: ZkusdGovernanceUpdateVoteProof
-  ): Promise<ZkusdGovernanceUpdateVoteProof> {
+  public async mergeEngineUpdateVoteProofs(
+    leftVoteProof: EngineUpdateVoteProof,
+    rightVoteProof: EngineUpdateVoteProof
+  ): Promise<EngineUpdateVoteProof> {
     return (await GovernanceUpdate.mergeVotes(
       leftVoteProof.publicInput,
       leftVoteProof,
@@ -148,8 +278,8 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     )).proof;
   }
 
-  public async submitVote(
-    voteProof: ZkusdGovernanceUpdateVoteProof,
+  public async submitEngineUpdateVote(
+    voteProof: EngineUpdateVoteProof,
     senderKeys: KeyPair,
     args?: {force?: boolean},
   ): Promise<ProposalUpdateResults> {
@@ -218,8 +348,8 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     };
   }
 
-  public async tryPassProposal(
-    updateSpec: ZkusdProtocolUpdateSpec,
+  public async tryPassEngineUpdateProposal(
+    updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair,
     opts?: { force?: boolean }
   ): Promise<ProposalUpdateResults> {
@@ -291,8 +421,8 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
    * A field is considered “live” when `fieldOp.isNoop()` is `false`.
    * The mapping `field → setter` is defined in `setterMap` below.
    */
-  public async applyPassedProposalToEngine(
-    updateSpec: ZkusdProtocolUpdateSpec,
+  public async applyPassedUpdateToEngine(
+    updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair,
   ): Promise<ProposalUpdateResults> {
     // -------------------------------------------------------------------------
@@ -305,7 +435,7 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     // -------------------------------------------------------------------------
     // 2. Helper: map operation field → council-contract setter
     // -------------------------------------------------------------------------
-    const setterMap: Partial<Record<keyof ZkusdProtocolUpdateOperation, keyof InstanceType<ReturnType<typeof ZkUsdEngineContract>>>> =
+    const setterMap: Partial<Record<keyof EngineUpdateOperation, keyof InstanceType<ReturnType<typeof ZkUsdEngineContract>>>> =
     {
       emergencyStop: 'govToggleEmergencyStop',
       vaultCreationDisabled: 'govToggleVaultCreation',
@@ -376,15 +506,15 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     };
   }
 
-  public async submitVoteAndTryPassAndApply(args: {
-    voteProof: ZkusdGovernanceUpdateVoteProof;
+  public async submitEngineUpdateVoteAndTryPassAndApply(args: {
+    voteProof: EngineUpdateVoteProof;
     senderKeys: KeyPair;
     opts?: { force?: boolean };
   }): Promise<ProposalUpdateResults> {
     const { voteProof, opts } = args;
 
     // Submit the vote
-    const voteResult = await this.submitVote(
+    const voteResult = await this.submitEngineUpdateVote(
       voteProof,
       args.senderKeys,
       {force: opts?.force},
@@ -399,7 +529,7 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     const updateSpec = voteProof.publicInput;
 
     // Try to pass the proposal
-    const passResult = await this.tryPassProposal(updateSpec,
+    const passResult = await this.tryPassEngineUpdateProposal(updateSpec,
       args.senderKeys,
       {
         force: opts?.force,
@@ -412,7 +542,7 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     }
 
     // Apply the protocol change to the engine
-    const applyResult = await this.applyPassedProposalToEngine(updateSpec, args.senderKeys);
+    const applyResult = await this.applyPassedUpdateToEngine(updateSpec, args.senderKeys);
 
     // Aggregate info
     const info =

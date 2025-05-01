@@ -10,12 +10,12 @@ import {
   Signature,
   ZkProgram,
 } from 'o1js';
-import { CouncilMap } from '../../system/council/council-map.js';
+import { CouncilMap } from '../../system/council/data/council-map.js';
 import {
-  ZkusdCouncilManagementActions,
-  ZkusdCouncilManagementInput,
-} from '../../system/council/management/input.js';
-import { ZkusdCouncilManagementOutput } from '../../system/council/management/output.js';
+  CouncilUpdateActions,
+  CouncilUpdateVoteInput,
+} from '../../system/council/update/input.js';
+import { CouncilUpdateVoteOutput } from '../../system/council/update/output.js';
 
 function pubkeyToCouncilSeatLeaf(councilKey: PublicKey, index: number): Field {
   const indexFieldValue = Field.from(2n ** BigInt(index));
@@ -31,17 +31,17 @@ function pubkeyToCouncilSeatLeafFromFieldValue(
 
 const ManageCouncil = ZkProgram({
   name: 'ManageCouncil',
-  publicInput: ZkusdCouncilManagementInput,
-  publicOutput: ZkusdCouncilManagementOutput,
+  publicInput: CouncilUpdateVoteInput,
+  publicOutput: CouncilUpdateVoteOutput,
   methods: {
     createVote: {
       privateInputs: [Signature, PublicKey, Field],
       async method(
-        publicInput: ZkusdCouncilManagementInput,
+        publicInput: CouncilUpdateVoteInput,
         voterSignature: Signature,
         voterPublicKey: PublicKey,
         councilMemberSeatPosition: Field // for the seat with an index of 3, this should be 2^3 = 8
-      ): Promise<{ publicOutput: ZkusdCouncilManagementOutput }> {
+      ): Promise<{ publicOutput: CouncilUpdateVoteOutput }> {
         const councilMap = publicInput.currentCouncilMap.clone();
 
         councilMemberSeatPosition.assertLessThan(
@@ -70,7 +70,7 @@ const ManageCouncil = ZkProgram({
           'Council member not correct'
         );
 
-        const maxActionLength = ZkusdCouncilManagementActions.MaxLength;
+        const maxActionLength = CouncilUpdateActions.MaxLength;
         const actions =
           publicInput.councilManagementSpec.councilManagementActions.actions;
 
@@ -100,16 +100,16 @@ const ManageCouncil = ZkProgram({
     mergeVotes: {
       privateInputs: [SelfProof, SelfProof],
       async method(
-        publicInput: ZkusdCouncilManagementInput,
+        publicInput: CouncilUpdateVoteInput,
         leftProof: SelfProof<
-          ZkusdCouncilManagementInput,
-          ZkusdCouncilManagementOutput
+          CouncilUpdateVoteInput,
+          CouncilUpdateVoteOutput
         >,
         rightProof: SelfProof<
-          ZkusdCouncilManagementInput,
-          ZkusdCouncilManagementOutput
+          CouncilUpdateVoteInput,
+          CouncilUpdateVoteOutput
         >
-      ): Promise<{ publicOutput: ZkusdCouncilManagementOutput }> {
+      ): Promise<{ publicOutput: CouncilUpdateVoteOutput }> {
         leftProof.verify();
         rightProof.verify();
 
@@ -152,10 +152,10 @@ const ManageCouncil = ZkProgram({
   },
 });
 
-class ZkusdCouncilManagementVoteProof extends ZkProgram.Proof(ManageCouncil) {}
+class CouncilUpdateVoteProof extends ZkProgram.Proof(ManageCouncil) {}
 
 export {
-  ZkusdCouncilManagementVoteProof,
+  CouncilUpdateVoteProof,
   ManageCouncil,
   pubkeyToCouncilSeatLeaf,
   pubkeyToCouncilSeatLeafFromFieldValue,

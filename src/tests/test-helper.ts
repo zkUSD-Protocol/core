@@ -56,13 +56,13 @@ import { Vault, VaultState } from '../system/vault.js';
 import { DeploymentService } from '../deployment/deployment.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
-import { ZkusdProtocolUpdateSpec } from '../system/governance-update/input.js';
+import { EngineUpdateSpec } from '../system/engine-update/input.js';
 import {
   GovernanceUpdate,
-  ZkusdGovernanceUpdateVoteProof,
-} from '../proofs/governance-update/prove.js';
-import { MinaChainPreconditions } from '../system/governance-update/blockchain-preconditions.js';
-import { ZkusdProtocolPreconditions } from '../system/governance-update/protocol-preconditions.js';
+  EngineUpdateVoteProof,
+} from '../proofs/engine-update/prove.js';
+import { MinaChainPreconditions } from '../system/engine-update/blockchain-preconditions.js';
+import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
 import {
   rebuildProposalMerkleMap,
   rebuildResolutionMerkleTree,
@@ -70,13 +70,13 @@ import {
   generateVoteProof,
   rebuildCouncilMerkleMap,
 } from './unit/gov/council/common.js';
-import { ZkusdProtocolUpdateOperation } from '../system/governance-update/operation.js';
+import { EngineUpdateOperation } from '../system/engine-update/operation.js';
 import {
   BoolOperation,
   FieldOperation,
   UInt64Operation,
-} from '../system/governance-update/simple-operations.js';
-import { ResolutionTree } from '../system/council/resolution-tree.js';
+} from '../system/engine-update/simple-operations.js';
+import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -483,7 +483,7 @@ export class TestHelper<E extends string> {
       }
 
       await this.proposeAndExecuteUpdate(
-        ZkusdProtocolUpdateOperation.create({
+        EngineUpdateOperation.create({
           oracleWhitelistHash: FieldOperation.set(
             OracleWhitelist.hash(this.whitelist)
           ),
@@ -508,7 +508,7 @@ export class TestHelper<E extends string> {
     this.whitelist = whitelist;
 
     return this.proposeAndExecuteUpdate(
-      ZkusdProtocolUpdateOperation.create({
+      EngineUpdateOperation.create({
         oracleWhitelistHash: FieldOperation.set(oracleWhitelistHash),
       }),
       (updateSpec, resolutionWitness) =>
@@ -743,7 +743,7 @@ export class TestHelper<E extends string> {
     this.protocolStopCounter++;
 
     return this.proposeAndExecuteUpdate(
-      ZkusdProtocolUpdateOperation.create({
+      EngineUpdateOperation.create({
         emergencyStop: BoolOperation.set(true),
       }),
       (updateSpec, resolutionWitness) =>
@@ -772,7 +772,7 @@ export class TestHelper<E extends string> {
     this.protocolResumeCounter++;
 
     return this.proposeAndExecuteUpdate(
-      ZkusdProtocolUpdateOperation.create({
+      EngineUpdateOperation.create({
         emergencyStop: BoolOperation.set(false),
       }),
       (updateSpec, resolutionWitness) =>
@@ -831,7 +831,7 @@ export class TestHelper<E extends string> {
   async proposeAndExecuteUpdate(
     operation: any,
     contractCall: (
-      updateSpec: ReturnType<typeof ZkusdProtocolUpdateSpec.singleOperation>,
+      updateSpec: ReturnType<typeof EngineUpdateSpec.singleOperation>,
       resolutionWitness: ResolutionTree.Witness
     ) => Promise<void>,
     options: {
@@ -872,7 +872,7 @@ export class TestHelper<E extends string> {
 
     // 2. Compute new resolution index and updateSpec
     const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
-    const updateSpec = ZkusdProtocolUpdateSpec.singleOperation(
+    const updateSpec = EngineUpdateSpec.singleOperation(
       govResolutionIndex,
       operation,
       {
@@ -882,7 +882,7 @@ export class TestHelper<E extends string> {
     );
 
     // Check for cached proofs if caching is enabled
-    let mergedVoteProof: ZkusdGovernanceUpdateVoteProof | undefined;
+    let mergedVoteProof: EngineUpdateVoteProof | undefined;
 
     // Create a deterministic but simpler hash for the cache key
     const updateSpecStr = JSON.stringify(updateSpec);
@@ -920,7 +920,7 @@ export class TestHelper<E extends string> {
           );
           const cachedMergedProofData = JSON.parse(cachedMergedProofJson);
 
-          mergedVoteProof = await ZkusdGovernanceUpdateVoteProof.fromJSON(
+          mergedVoteProof = await EngineUpdateVoteProof.fromJSON(
             cachedMergedProofData.merged as JsonProof
           );
         }
@@ -979,7 +979,7 @@ export class TestHelper<E extends string> {
         }
       }
     }
-    const finalProof: ZkusdGovernanceUpdateVoteProof = mergedVoteProof;
+    const finalProof: EngineUpdateVoteProof = mergedVoteProof;
 
     const proposalHash = mergedVoteProof.publicOutput.proposalHash;
     const voteBits = mergedVoteProof.publicOutput.cummulatedVoteBitArray;

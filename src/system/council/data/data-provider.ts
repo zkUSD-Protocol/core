@@ -2,11 +2,11 @@ import { ResolutionTree } from './resolution-tree.js';
 import { ProposalMap } from './proposal-merkle-map.js';
 import { CouncilMap } from './council-map.js';
 import { IMerkleDataProvider } from './imerkle-data-provider.js';
-import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
+import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
 import { ResolutionTreeContractEventsProvider } from './event-based-resolution-tree-provider.js';
 import { CouncilMapContractEventsProvider } from './event-based-council-map-provider.js';
 import { ProposalMapContractEventsProvider } from './event-based-proposal-map-provider.js';
-import { FetchCurrentBlockHeight } from './common.js';
+import { FetchCurrentBlockHeight } from '../common.js';
 
 
 /**
@@ -24,7 +24,7 @@ export type CouncilDataProvider = {
 };
 
 export namespace CouncilDataProvider {
-  export function fromContract(
+  export function fromContractEvents(
     councilContract: ZkusdGoverningCouncilContract,
     fetchCurrentBlockHeight: FetchCurrentBlockHeight,
     chunkSize = 1000

@@ -60,7 +60,7 @@ import {
 } from './provers/itransactionprover.js';
 import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
-import { ZKUSDClient } from './client/client.js';
+import { ZkusdEngineClient } from './client/engine.js';
 import { KeyPair } from './types/utility.js';
 import {
   TransactionStatusNew,
@@ -152,7 +152,7 @@ export type {
 //export transaction prover
 export { proveTransaction };
 
-export { ZKUSDClient };
+export { ZkusdEngineClient as ZKUSDClient };
 
 //export oracle config
 export {

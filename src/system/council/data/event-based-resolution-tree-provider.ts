@@ -1,14 +1,14 @@
 import { UInt32 } from 'o1js';
-import { ResolutionTree } from './resolution-tree.js';
-import { IMerkleDataProvider } from './imerkle-data-provider.js';
+import { ResolutionTree } from '../data/resolution-tree.js';
+import { IMerkleDataProvider } from '../data/imerkle-data-provider.js';
 import {
   ContractEvent,
   FetchCurrentBlockHeight,
   FetchOnchainRoot,
   HasFetchEvents,
   isContractEvent,
-} from './common.js';
-import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
+} from '../common.js';
+import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
 import { Provable } from 'o1js';
 
 /* -------------------------------------------------------------------------- */
@@ -184,7 +184,7 @@ export class ResolutionTreeContractEventsProvider
       const d = ev.event.data;
       // debug log event data
       Provable.log("Applying resolution tree event data: ", d);
-      tree.setLeaf(d.resolutionIndex.toBigint(), d.proposalHash);
+      tree.setLeaf(d.resolutionIndex.toBigint(), d.updateHash);
     }
     this.tree = tree;
     Provable.log("Refresh set root to:", tree.getRoot());
