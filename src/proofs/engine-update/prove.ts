@@ -10,6 +10,7 @@ import {
 import { EngineUpdateSpec } from '../../system/engine-update/input.js';
 import { ZkusdProtocolUpdateOutput } from '../../system/engine-update/output.js';
 import { CouncilMap, CouncilMapProvable } from '../../system/council/data/council-map.js';
+import { Seat } from '../../system/council/seat.js';
 
 /** Generic multisig zkusd protocol update program */
 export const GovernanceUpdate = ZkProgram({
@@ -68,18 +69,16 @@ export const GovernanceUpdate = ZkProgram({
       },
     },
     createVote: {
-      privateInputs: [Signature, PublicKey, CouncilMapProvable, Field],
+      privateInputs: [Signature, PublicKey, CouncilMapProvable, Seat],
       async method(
         publicInput: EngineUpdateSpec,
         voterSignature: Signature,
         voterPublicKey: PublicKey,
         councilMerkleMap: CouncilMapProvable,
-        councilMemberSeatPosition: Field // for the seat with an index of 3, this should be 2^3 = 8
+        seat: Seat
       ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
-        councilMemberSeatPosition.assertLessThan(
-          Field.from(CouncilMap.SEAT_LIMIT)
-        );
-        const x = councilMemberSeatPosition;
+        seat.assertValid();
+        const x = seat.value;
 
         x.assertGreaterThan(Field(0));
         let xMinus1 = x.sub(Field(1));
@@ -98,7 +97,7 @@ export const GovernanceUpdate = ZkProgram({
         // include the index field value.
         // this assumes that it was provided in the merkle tree and is valid
         // if yes, then we can skip the index value computation as you cannot cheat it.
-        const councilMember = councilMerkleMap.get(councilMemberSeatPosition);
+        const councilMember = councilMerkleMap.get(seat.value);
 
         councilMember.assertEquals(
           Poseidon.hash(voterPublicKey.toFields()),
@@ -109,22 +108,13 @@ export const GovernanceUpdate = ZkProgram({
           publicOutput: {
             proposalHash: Poseidon.hash(proofDataFields),
             councilMerkleMapRoot: councilMerkleMap.root,
-            cummulatedVoteBitArray: councilMemberSeatPosition,
+            cummulatedVoteBitArray: seat.value,
           },
         };
       },
     },
   },
 });
-
-function assertOneBitSet(x: Field) {
-  // we want to check: x != 0, and (x & (x - 1)) == 0
-  x.assertGreaterThan(Field(0));
-  let xMinus1 = x.sub(Field(1));
-
-  let andValue = Gadgets.and(x, xMinus1, CouncilMap.SEAT_LIMIT);
-  andValue.assertEquals(Field(0));
-}
 
 export class EngineUpdateVoteProof extends ZkProgram.Proof(
   GovernanceUpdate

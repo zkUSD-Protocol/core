@@ -16,6 +16,7 @@ import {
   CouncilUpdateVoteInput,
 } from '../../system/council/update/input.js';
 import { CouncilUpdateVoteOutput } from '../../system/council/update/output.js';
+import { Seat } from '../../system/council/seat.js';
 
 function pubkeyToCouncilSeatLeaf(councilKey: PublicKey, index: number): Field {
   const indexFieldValue = Field.from(2n ** BigInt(index));
@@ -35,26 +36,16 @@ const ManageCouncil = ZkProgram({
   publicOutput: CouncilUpdateVoteOutput,
   methods: {
     createVote: {
-      privateInputs: [Signature, PublicKey, Field],
+      privateInputs: [Signature, PublicKey, Seat],
       async method(
         publicInput: CouncilUpdateVoteInput,
         voterSignature: Signature,
         voterPublicKey: PublicKey,
-        councilMemberSeatPosition: Field // for the seat with an index of 3, this should be 2^3 = 8
+        seat: Seat
       ): Promise<{ publicOutput: CouncilUpdateVoteOutput }> {
         const councilMap = publicInput.currentCouncilMap.clone();
 
-        councilMemberSeatPosition.assertLessThan(
-          Field.from(CouncilMap.SEAT_LIMIT)
-        );
-        const x = councilMemberSeatPosition;
-
-        x.assertGreaterThan(Field(0));
-        let xMinus1 = x.sub(Field(1));
-
-        let andValue = Gadgets.and(x, xMinus1, CouncilMap.SEAT_LIMIT);
-        andValue.assertEquals(Field(0));
-
+        seat.assertValid();
         voterSignature
           .verify(voterPublicKey, publicInput.councilManagementSpec.toFields())
           .assertTrue();
@@ -62,7 +53,7 @@ const ManageCouncil = ZkProgram({
         voterPublicKey.isEmpty().assertFalse('Empty public key not allowed.');
 
         const councilMember = publicInput.currentCouncilMap.get(
-          councilMemberSeatPosition
+          seat.value
         );
 
         councilMember.assertEquals(
@@ -76,8 +67,8 @@ const ManageCouncil = ZkProgram({
 
         for (let i = 0; i < maxActionLength; i++) {
           const shouldAdd = actions[i].shouldAdd;
-          const seatPosition = actions[i].councilSeatPosition;
-          const councilKey = actions[i].councilKey;
+          const seat = actions[i].seat;
+          const councilKey = actions[i].member;
           const isDummy = actions[i].isDummy;
 
           const updatedSeatValue = Provable.if(
@@ -86,13 +77,13 @@ const ManageCouncil = ZkProgram({
             Field.from(0)
           );
 
-          councilMap.setIf(isDummy.not(), seatPosition, updatedSeatValue);
+          councilMap.setIf(isDummy.not(), seat.value, updatedSeatValue);
         }
 
         return {
           publicOutput: {
             updatedCouncilMap: councilMap,
-            cummulatedVoteBitArray: councilMemberSeatPosition,
+            cummulatedVoteBitArray: seat.value,
           },
         };
       },

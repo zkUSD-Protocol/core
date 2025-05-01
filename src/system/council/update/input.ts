@@ -14,17 +14,18 @@ import {
   UInt8,
 } from 'o1js';
 import { CouncilMap, CouncilMapProvable } from '../data/council-map.js';
+import { Seat } from '../seat.js';
 
 export class CouncilUpdateOperation extends Struct({
-  councilKey: PublicKey,
-  councilSeatPosition: Field,
+  member: PublicKey,
+  seat: Seat,
   shouldAdd: Bool, // if true, add the council member, otherwise remove the member
   isDummy: Bool, // if true, the operation is a dummy operation and will not be executed
 }) {
   static dummy(): CouncilUpdateOperation {
     return new CouncilUpdateOperation({
-      councilKey: PublicKey.empty(),
-      councilSeatPosition: Field.from(0),
+      member: PublicKey.empty(),
+      seat: Seat.fromIndex(0),
       shouldAdd: Bool(false),
       isDummy: Bool(true),
     });
@@ -32,8 +33,8 @@ export class CouncilUpdateOperation extends Struct({
 
   toFields(): Field[] {
     return [
-      ...this.councilKey.toFields(),
-      ...this.councilSeatPosition.toFields(),
+      ...this.member.toFields(),
+      this.seat.value,
       ...this.shouldAdd.toFields(),
       ...this.isDummy.toFields(),
     ];

@@ -18,6 +18,7 @@ import { ManageCouncil } from '../../../../proofs/council-update/prove.js';
 import { CouncilUpdateVoteInput } from '../../../../system/council/update/input.js';
 import { CouncilUpdateVoteOutput } from '../../../../system/council/update/output.js';
 import { CouncilMap } from '../../../../system/council/data/council-map.js';
+import { Seat } from '../../../../system/council/seat.js';
 
 describe('CouncilUpdate', () => {
   let testHelper: TestHelper<'local'>;
@@ -36,7 +37,7 @@ describe('CouncilUpdate', () => {
     before(async () => {
       for (let i = 0; i < council.length; i++) {
         const seatIndex = 2n ** BigInt(i);
-        localCouncilMap.insertAtKey(council[i].publicKey, Field.from(seatIndex));
+        localCouncilMap.insertAtSeat(council[i].publicKey, Seat.fromIndex(seatIndex));
       }
     });
 
@@ -57,13 +58,13 @@ describe('CouncilUpdate', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Field(2n ** BigInt(0));
+        const seat = Seat.fromIndex(0);
 
         const { proof } = await ManageCouncil.createVote(
           input,
           signature,
           councilKey,
-          seatPosition
+          seat
         );
 
         const ok = await verify(proof, manageCouncilVk);
@@ -74,12 +75,12 @@ describe('CouncilUpdate', () => {
           proof.publicOutput;
 
         assert(
-          cummulatedVoteBitArray.equals(seatPosition),
+          cummulatedVoteBitArray.equals(seat.value),
           'Cummulated vote bit array mismatch'
         );
 
         updatedCouncilMap.assertIncluded(
-          localCouncilMap.getNextEmptyKey()
+          localCouncilMap.getNextEmptySeat().value
         );
       });
 
@@ -107,14 +108,14 @@ describe('CouncilUpdate', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Field(2n ** BigInt(0));
+        const seat = Seat.fromIndex(0);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
             input,
             differentSignature,
             councilKey,
-            seatPosition
+            seat
           );
         }, 'Expected createVote to fail with incorrect signature');
       });
@@ -137,14 +138,14 @@ describe('CouncilUpdate', () => {
         );
 
         const councilKey = badKeyPair.publicKey;
-        const seatPosition = Field(2n ** BigInt(0));
+        const seat = Seat.fromIndex(0);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
             input,
             signature,
             councilKey,
-            seatPosition
+            seat
           );
         }, 'Expected createVote to fail with with invalid council member at seat');
       });
@@ -165,14 +166,14 @@ describe('CouncilUpdate', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Field(2n ** BigInt(1));
+        const seat = Seat.fromIndex(1);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
             input,
             signature,
             councilKey,
-            seatPosition
+            seat
           );
         }, 'Expected createVote to fail with wrong seat index');
       });
@@ -189,8 +190,8 @@ describe('CouncilUpdate', () => {
           [newMemberPrivateKey.publicKey]
         );
 
-        input.councilManagementSpec.councilManagementActions.actions[0].councilSeatPosition =
-          Field(seatIndexMaliciousValue);
+        input.councilManagementSpec.councilManagementActions.actions[0].seat =
+          Seat.fromIndex(seatIndexMaliciousValue);
 
         const signature = Signature.create(
           newMemberPrivateKey.privateKey,
@@ -202,7 +203,7 @@ describe('CouncilUpdate', () => {
             input,
             signature,
             newMemberPrivateKey.publicKey,
-            Field(seatIndexMaliciousValue)
+            Seat.fromIndex(seatIndexMaliciousValue)
           );
         }, 'Expected createVote to fail if the seat index sets multiple bits.');
       });
@@ -237,7 +238,7 @@ describe('CouncilUpdate', () => {
           input,
           signature1,
           council[0].publicKey,
-          Field(2n ** BigInt(0))
+          Seat.fromIndex(0)
         );
 
         proof1 = p1;
@@ -251,7 +252,7 @@ describe('CouncilUpdate', () => {
           input,
           signature2,
           council[1].publicKey,
-          Field(2n ** BigInt(1))
+          Seat.fromIndex(1)
         );
 
         proof2 = p2;
@@ -305,7 +306,7 @@ describe('CouncilUpdate', () => {
           differentInput,
           signature3,
           council[2].publicKey,
-          Field(2n ** BigInt(2))
+          Seat.fromIndex(2)
         );
 
         await assert.rejects(async () => {
@@ -355,7 +356,7 @@ describe('CouncilUpdate', () => {
         input,
         signature1,
         council[0].publicKey,
-        Field(2n ** BigInt(0))
+        Seat.fromIndex(0)
       );
 
       const signature2 = Signature.create(
@@ -367,7 +368,7 @@ describe('CouncilUpdate', () => {
         input,
         signature2,
         council[1].publicKey,
-        Field(2n ** BigInt(1))
+        Seat.fromIndex(1)
       );
 
       const mergedProof = await ManageCouncil.mergeVotes(input, proof1, proof2);
