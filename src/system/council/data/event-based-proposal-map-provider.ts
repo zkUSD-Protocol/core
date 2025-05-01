@@ -104,7 +104,8 @@ export class ProposalMapContractEventsProvider
   // TODO for now naively fetches all the events and rebuilds entire map.
   async refresh(): Promise<void> {
     const events = await this.source.fetchEvents();
-    this.proposalMap = ProposalMapContractEventsProvider.rebuildProposalMap(events);
+    this.proposalMap =
+      ProposalMapContractEventsProvider.rebuildProposalMap(events);
 
     // // get the latest chunk (ordered from newest to latest)
     // // search for sync point, if found them discard all previous events
@@ -187,20 +188,26 @@ export class ProposalMapContractEventsProvider
   }
 
   public static rebuildProposalMap(
-    events: Array<{ type: string; event: { data: any } }>
+    events: Array<{ type: string; event: { data: any }; blockHeight: UInt32 }>
   ): ProposalMap {
     const ret = new ProposalMap();
-    ProposalMapContractEventsProvider.applyEvents(ret,events);
+    ProposalMapContractEventsProvider.applyEvents(ret, events);
     return ret;
   }
 
-public static applyEvents(
-  proposalMap: ProposalMap,
-  events: Array<{ type: string; event: { data: any } }>
-) : void {
-  events
-    .filter(isProposalSupportedEvent)
-    .toReversed()
-    .forEach((e) => proposalMap.set(e.event.data.updateHash, e.event.data.acceptedVoteBitArray))
-}
+  public static applyEvents(
+    proposalMap: ProposalMap,
+    events: Array<{ type: string; event: { data: any }; blockHeight: UInt32 }>
+  ): void {
+    const proposalSupportedEvents = events.filter(isProposalSupportedEvent);
+    const sortedEvents = proposalSupportedEvents.sort((a, b) =>
+      a.blockHeight.toBigint() < b.blockHeight.toBigint() ? -1 : 1
+    );
+    sortedEvents.forEach((e) =>
+      proposalMap.set(
+        e.event.data.updateHash,
+        e.event.data.acceptedVoteBitArray
+      )
+    );
+  }
 }

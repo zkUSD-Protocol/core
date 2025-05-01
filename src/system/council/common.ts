@@ -1,11 +1,6 @@
 import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
 import { Field, UInt32 } from 'o1js';
 
-/**
- * Maximum number of supported council members.
- * Capped at 240 to stay within safe bit constraints for ZK circuits (fits in a single field).
- */
-export const MAX_COUNCIL_MEMBERS = 240;
 
 export type ZkusdGoverningCouncilEventMap =
   typeof ZkusdGoverningCouncilContract.events;

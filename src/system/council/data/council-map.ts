@@ -1,10 +1,4 @@
-import {
-  Field,
-  PublicKey,
-  Experimental,
-  Poseidon,
-  Bool,
-} from 'o1js';
+import { Field, PublicKey, Experimental, Poseidon, Bool } from 'o1js';
 
 import {
   CouncilKeyWithIntent,
@@ -13,20 +7,12 @@ import {
   CouncilUpdateOperation,
 } from '../update/common.js';
 import { Seat } from '../seat.js';
+import {
+  MAX_COUNCIL_MEMBERS,
+  ZKUSD_COUNCIL_MAP_HEIGHT,
+} from './common-constants.js';
 
 const { IndexedMerkleMap } = Experimental;
-
-/**
- * Height of the Merkle tree for council members.
- * Supports up to 256 slots (2^8), though usage is capped below.
- */
-const ZKUSD_COUNCIL_MAP_HEIGHT = 9;
-
-/**
- * Maximum number of supported council members.
- * Capped at 240 to stay within safe bit constraints for ZK circuits (fits in a single field).
- */
-const MAX_COUNCIL_MEMBERS = 240;
 
 // a rewrite of the class below that can store public keys
 // but also be used as a provable type
@@ -223,10 +209,11 @@ export class CouncilMap {
     return ret;
   }
 
-
   // --------------- CouncilUpdateOperation ---------------
 
-  public static buildFromOperations(operations: CouncilUpdateOperation[]): CouncilMap {
+  public static buildFromOperations(
+    operations: CouncilUpdateOperation[]
+  ): CouncilMap {
     const councilMap = new CouncilMap([]);
     councilMap.applyOperations(...operations);
     return councilMap;
@@ -270,7 +257,7 @@ export class CouncilMap {
       if (!s || force) {
         throw new Error('Given seat is empty');
       }
-      actualSeat=s;
+      actualSeat = s;
     } else {
       actualSeat = seat;
     }

@@ -8,7 +8,6 @@ import { CouncilMapContractEventsProvider } from './event-based-council-map-prov
 import { ProposalMapContractEventsProvider } from './event-based-proposal-map-provider.js';
 import { FetchCurrentBlockHeight } from '../common.js';
 
-
 /**
  * A set of Merkle data providers used across the governance system.
  *
@@ -30,9 +29,18 @@ export namespace CouncilDataProvider {
     chunkSize = 1000
   ): CouncilDataProvider {
     return {
-      councilMap: CouncilMapContractEventsProvider.fromContract(councilContract, fetchCurrentBlockHeight),
-      resolutionTree: ResolutionTreeContractEventsProvider.fromContract(councilContract, fetchCurrentBlockHeight),
-      proposalMap: ProposalMapContractEventsProvider.fromContract(councilContract, fetchCurrentBlockHeight),
+      councilMap: CouncilMapContractEventsProvider.fromContract(
+        councilContract,
+        fetchCurrentBlockHeight
+      ),
+      resolutionTree: ResolutionTreeContractEventsProvider.fromContract(
+        councilContract,
+        fetchCurrentBlockHeight
+      ),
+      proposalMap: ProposalMapContractEventsProvider.fromContract(
+        councilContract,
+        fetchCurrentBlockHeight
+      ),
     };
   }
 }
