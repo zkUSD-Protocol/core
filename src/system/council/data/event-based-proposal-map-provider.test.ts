@@ -143,7 +143,10 @@ describe('ProposalMapContractEventsProvider#matchesOnchainRoot()', () => {
       async () => undefined
     );
     (p as any).proposalMap = { getRoot: () => cached };
-    await assert.rejects(p.matchesOnchainRoot(), /cannot fetch proposal map root/i);
+    await assert.rejects(
+      p.matchesOnchainRoot(),
+      /cannot fetch proposal map root/i
+    );
   });
 
   it('returns true when roots match', async () => {
@@ -183,7 +186,9 @@ describe('ProposalMapContractEventsProvider#refresh()', () => {
 
     let called = false;
     const original = ProposalMapContractEventsProvider.rebuildProposalMap;
-    (ProposalMapContractEventsProvider as any).rebuildProposalMap = (e: any) => {
+    (ProposalMapContractEventsProvider as any).rebuildProposalMap = (
+      e: any
+    ) => {
       called = true;
       assert.strictEqual(e, evts);
       return { getRoot: () => createFakeRoot() } as any;
@@ -199,7 +204,11 @@ describe('ProposalMapContractEventsProvider#refresh()', () => {
 
   it('propagates fetchEvents errors', async () => {
     const p = new ProposalMapContractEventsProvider(
-      { fetchEvents: async () => { throw new Error('boom'); } } as any,
+      {
+        fetchEvents: async () => {
+          throw new Error('boom');
+        },
+      } as any,
       async () => createFakeRoot(),
       async () => undefined
     );
@@ -224,7 +233,11 @@ describe('ProposalMapContractEventsProvider.rebuildProposalMap()', () => {
       ProposalMapContractEventsProvider.rebuildProposalMap([
         makePS(1n, Field(1), Field(11), 5), // later block
         makePS(2n, Field(2), Field(22), 3), // earlier block
-        { type: 'Other', event: { data: {} }, blockHeight: UInt32.from(0) } as any,
+        {
+          type: 'Other',
+          event: { data: {} },
+          blockHeight: UInt32.from(0),
+        } as any,
       ]);
 
       assert.deepStrictEqual(calls, [
@@ -247,7 +260,11 @@ describe('ProposalMapContractEventsProvider.applyEvents()', () => {
     const mapStub = { set: () => (called = true) } as any;
 
     ProposalMapContractEventsProvider.applyEvents(mapStub, [
-      { type: 'Irrelevant', event: { data: {} }, blockHeight: UInt32.from(0) } as any,
+      {
+        type: 'Irrelevant',
+        event: { data: {} },
+        blockHeight: UInt32.from(0),
+      } as any,
     ]);
 
     assert.strictEqual(called, false);
@@ -266,7 +283,10 @@ describe('ProposalMapContractEventsProvider.fromContract()', () => {
       proposalsMerkleMapRoot: { fetch: async () => root },
     } as unknown as ZkusdGoverningCouncilContract;
 
-    const p = ProposalMapContractEventsProvider.fromContract(contract, async () => undefined);
+    const p = ProposalMapContractEventsProvider.fromContract(
+      contract,
+      async () => undefined
+    );
 
     (p as any).proposalMap = { getRoot: () => root };
 
