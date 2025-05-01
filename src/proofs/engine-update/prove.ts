@@ -2,6 +2,7 @@ import {
   Field,
   Gadgets,
   Poseidon,
+  Provable,
   PublicKey,
   SelfProof,
   Signature,
@@ -9,8 +10,11 @@ import {
 } from 'o1js';
 import { EngineUpdateSpec } from '../../system/engine-update/input.js';
 import { ZkusdProtocolUpdateOutput } from '../../system/engine-update/output.js';
-import { CouncilMap, CouncilMapProvable } from '../../system/council/data/council-map.js';
 import { Seat } from '../../system/council/seat.js';
+import {
+  CouncilMap,
+  CouncilMapProvable,
+} from '../../system/council/data/council-map.js';
 
 /** Generic multisig zkusd protocol update program */
 export const GovernanceUpdate = ZkProgram({
@@ -22,14 +26,8 @@ export const GovernanceUpdate = ZkProgram({
       privateInputs: [SelfProof, SelfProof],
       async method(
         publicInput: EngineUpdateSpec,
-        leftProof: SelfProof<
-          EngineUpdateSpec,
-          ZkusdProtocolUpdateOutput
-        >,
-        rightProof: SelfProof<
-          EngineUpdateSpec,
-          ZkusdProtocolUpdateOutput
-        >
+        leftProof: SelfProof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>,
+        rightProof: SelfProof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>
       ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
         leftProof.verify();
         rightProof.verify();
@@ -99,6 +97,8 @@ export const GovernanceUpdate = ZkProgram({
         // if yes, then we can skip the index value computation as you cannot cheat it.
         const councilMember = councilMerkleMap.get(seat.value);
 
+        Provable.log('councilMember', councilMember);
+
         councilMember.assertEquals(
           Poseidon.hash(voterPublicKey.toFields()),
           'Council member not correct'
@@ -116,6 +116,4 @@ export const GovernanceUpdate = ZkProgram({
   },
 });
 
-export class EngineUpdateVoteProof extends ZkProgram.Proof(
-  GovernanceUpdate
-) {}
+export class EngineUpdateVoteProof extends ZkProgram.Proof(GovernanceUpdate) {}

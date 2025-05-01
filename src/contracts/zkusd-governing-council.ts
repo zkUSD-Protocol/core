@@ -197,7 +197,6 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     proposalMap: ProposalMap,
     resolutionTree: ResolutionTree
   ) {
-    Provable.log('supportProposalHelper');
     const proposalWitness = proposalMap.getWitness(
       voteProof.publicOutput.proposalHash
     );
@@ -225,15 +224,10 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     proposalCurrentVoteBitArray: Field,
     resolutionWitness: ResolutionTree.Witness
   ) {
-    Provable.log('supportProposal');
-    // voteProof.verify();
+    voteProof.verify();
 
     const { proposalHash, councilMerkleMapRoot, cummulatedVoteBitArray } =
       voteProof.publicOutput;
-
-    Provable.log('Proposal hash', proposalHash);
-    Provable.log('Council merkle map root', councilMerkleMapRoot);
-    Provable.log('Cummulated vote bit array', cummulatedVoteBitArray);
 
     this.councilMerkleMapRoot
       .getAndRequireEquals()
@@ -294,8 +288,6 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
         resolutionIndex: voteProof.publicInput.govResolutionIndex,
       })
     );
-
-    Provable.log('supportProposal done');
   }
 
   /** Admin signature proofs can be executed iff:

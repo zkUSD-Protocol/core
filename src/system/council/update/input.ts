@@ -22,8 +22,6 @@ import {
   CouncilUpdateOperation,
 } from './common.js';
 
-export const CouncilUpdateActionCount = 10; // limited by the event size
-
 export class CouncilUpdateSpec extends Struct({
   /** Collection of council membership update operations */
   councilManagementActions: CouncilUpdateActions,

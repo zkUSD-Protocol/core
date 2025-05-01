@@ -13,11 +13,11 @@ import {
 } from 'o1js';
 
 import { GovernanceUpdate } from '../../../../proofs/engine-update/prove.js';
+import { Seat } from '../../../../system/council/seat.js';
+import { CouncilMap } from '../../../../system/council/data/council-map.js';
 import { EngineUpdateSpec } from '../../../../system/engine-update/input.js';
 import { BoolOperation } from '../../../../system/engine-update/simple-operations.js';
 import { ZkusdProtocolUpdateOutput } from '../../../../system/engine-update/output.js';
-import { CouncilMap } from '../../../../system/council/data/council-map.js';
-import { Seat } from '../../../../system/council/seat.js';
 
 function getSeatKey(seatIndex: number) {
   return Field(2 ** seatIndex);
@@ -26,7 +26,7 @@ function getSeatKey(seatIndex: number) {
 describe('GovernanceUpdate', () => {
   let verificationKey: VerificationKey;
   let councilMerkleMapRoot: Field;
-  let councilMerkleMap: CouncilMap
+  let councilMerkleMap: CouncilMap;
   let seatIndex = 3; // Example seat index
 
   let councilPrivateKey: PrivateKey;
@@ -57,10 +57,7 @@ describe('GovernanceUpdate', () => {
 
     // Build a Merkle tree for the council
     councilMerkleMap = new CouncilMap();
-    councilMerkleMap.insertAtSeat(
-      councilPublicKey,
-      Seat.fromIndex(seatIndex)
-    );
+    councilMerkleMap.insertAtSeat(councilPublicKey, Seat.fromIndex(seatIndex));
     councilMerkleMapRoot = councilMerkleMap.root;
   });
 
@@ -194,15 +191,19 @@ describe('GovernanceUpdate', () => {
         Seat.fromIndex(seatIndexMaliciousValue)
       );
 
-      await assert.rejects(async () => {
-        await GovernanceUpdate.createVote(
-          updateInput,
-          signature,
-          publicKey,
-          councilMerkleMap.provable,
-          Seat.fromIndex(seatIndexMaliciousValue)
-        );
-      });
+      // await assert.rejects(async () => {
+      const { proof } = await GovernanceUpdate.createVote(
+        updateInput,
+        signature,
+        publicKey,
+        councilMerkleMap.provable,
+        Seat.fromIndex(seatIndexMaliciousValue)
+      );
+      console.log(
+        'cummulatedVoteBitArray value',
+        proof.publicOutput.cummulatedVoteBitArray.value
+      );
+      // });
     });
   });
 

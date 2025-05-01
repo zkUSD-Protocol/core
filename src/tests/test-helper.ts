@@ -63,7 +63,10 @@ import {
 } from '../proofs/engine-update/prove.js';
 import { MinaChainPreconditions } from '../system/engine-update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
-import { getNextEmptyResolutionIndex, generateVoteProof } from './unit/gov/council/common.js';
+import {
+  getNextEmptyResolutionIndex,
+  generateVoteProof,
+} from './unit/gov/council/common.js';
 import { EngineUpdateOperation } from '../system/engine-update/operation.js';
 import {
   BoolOperation,
@@ -847,11 +850,11 @@ export class TestHelper<E extends string> {
     const priority = options.priority ?? false;
 
     // 1. Fetch events and rebuild on-chain state
-    const dataProvider = CouncilDataProvider.fromContractEvents(this.council)
+    const dataProvider = CouncilDataProvider.fromContractEvents(this.council);
     const events = await this.council.fetchEvents();
     const councilMerkleMap = await dataProvider.councilMap.get();
     const proposalMap = await dataProvider.proposalMap.get();
-    const resolutionTree = await dataProvider.resolutionTree.get()
+    const resolutionTree = await dataProvider.resolutionTree.get();
 
     // Create directory for cached proofs if needed
     const cachedProofsPath = path.join(
@@ -886,8 +889,6 @@ export class TestHelper<E extends string> {
     const councilRootStr = councilMerkleMap.root.toString();
     const resolutionIndexStr = govResolutionIndex.toString();
 
-    console.log('Council Merkle Map Root', councilRootStr);
-
     // Use crypto module to create a hash from the combined strings
     const hashInput = updateSpecStr + councilRootStr + resolutionIndexStr;
     const proofHash = crypto
@@ -910,7 +911,7 @@ export class TestHelper<E extends string> {
           .catch(() => false);
 
         if (fileExists) {
-          console.log(`Using cached proof from ${proofCachePath}`);
+          console.log(`Using cached proof..`);
           const cachedMergedProofJson = await fs.promises.readFile(
             proofCachePath,
             'utf8'

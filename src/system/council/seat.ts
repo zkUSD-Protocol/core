@@ -4,8 +4,7 @@
 // bit array.
 
 import { Struct, Field, Bool, Gadgets } from 'o1js';
-import { CouncilMap } from './data/council-map.js';
-import { MAX_COUNCIL_MEMBERS } from './common.js';
+import { MAX_COUNCIL_MEMBERS } from './constants.js';
 
 export class Seat extends Struct({
   value: Field,
@@ -39,7 +38,7 @@ export class Seat extends Struct({
     x.assertGreaterThan(Field(0));
     let xMinus1 = x.sub(Field(1));
 
-    let andValue = Gadgets.and(x, xMinus1, CouncilMap.SEAT_LIMIT);
+    let andValue = Gadgets.and(x, xMinus1, MAX_COUNCIL_MEMBERS);
     andValue.assertEquals(Field(0));
   }
 }

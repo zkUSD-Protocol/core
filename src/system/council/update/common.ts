@@ -1,6 +1,6 @@
 import { Bool, Field, Provable, PublicKey, Struct } from 'o1js';
 import { Seat } from '../seat.js';
-
+import { COUNCIL_UPDATE_ACTION_COUNT } from '../constants.js';
 /**
  * Defines the intention for a council member update operation.
  * Used to determine whether to add or remove a council member.
@@ -68,18 +68,12 @@ export class CouncilUpdateOperation extends Struct({
 }
 
 /**
- * Maximum number of council update operations in a single update.
- * Limited by event size (could potentially be increased).
- */
-export const CouncilUpdateActionCount = 10;
-
-/**
  * A fixed-size collection of council update operations.
  * Contains exactly CouncilUpdateActionCount operations, padded with dummy operations as needed.
  */
 export class CouncilUpdateActions extends Struct({
   /** Array of council update operations, exactly CouncilUpdateActionCount in length */
-  actions: Provable.Array(CouncilUpdateOperation, CouncilUpdateActionCount),
+  actions: Provable.Array(CouncilUpdateOperation, COUNCIL_UPDATE_ACTION_COUNT),
 }) {
   /**
    * Creates an empty CouncilUpdateActions with all dummy operations.
@@ -88,14 +82,14 @@ export class CouncilUpdateActions extends Struct({
    */
   static empty(): CouncilUpdateActions {
     return new CouncilUpdateActions({
-      actions: Array.from({ length: CouncilUpdateActionCount }, () =>
+      actions: Array.from({ length: COUNCIL_UPDATE_ACTION_COUNT }, () =>
         CouncilUpdateOperation.dummy()
       ),
     });
   }
 
   /** Reference to the maximum allowed actions for convenience */
-  static MaxLength = CouncilUpdateActionCount;
+  static MaxLength = COUNCIL_UPDATE_ACTION_COUNT;
 
   /**
    * Converts the actions to an array of Fields for hashing and consensus.
