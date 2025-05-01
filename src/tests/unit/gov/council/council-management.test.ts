@@ -18,10 +18,11 @@ import { ManageCouncil } from '../../../../proofs/council-update/prove.js';
 import {
   CouncilKeyWithIntent,
   CouncilUpdateIntent,
-  CouncilUpdateVoteInput,
-} from '../../../../system/council/update/input.js';
+} from '../../../../system/council/update/common.js';
+
 import { CouncilUpdateVoteOutput } from '../../../../system/council/update/output.js';
 import { CouncilMap } from '../../../../system/council/data/council-map.js';
+import { Seat } from '../../../../system/council/seat.js';
 
 describe('CouncilUpdate', () => {
   let testHelper: TestHelper<'local'>;
@@ -40,9 +41,9 @@ describe('CouncilUpdate', () => {
     before(async () => {
       for (let i = 0; i < council.length; i++) {
         const seatIndex = 2n ** BigInt(i);
-        localCouncilMap.insertAtKey(
+        localCouncilMap.insertAtSeat(
           council[i].publicKey,
-          Field.from(seatIndex)
+          Seat.fromIndex(seatIndex)
         );
       }
     });

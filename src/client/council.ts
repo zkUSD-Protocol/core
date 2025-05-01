@@ -21,6 +21,7 @@ import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { Field } from 'o1js/dist/node/lib/provable/field.js';
 import { CouncilUpdateOperation, CouncilUpdateSpec } from '../system/council/update/input.js';
 import { CouncilUpdateVoteProof } from '../proofs/council-update/prove.js';
+import { Seat } from '../system/council/seat.js';
 
 type ProposalUpdateResults = {
   transactionIncluded: boolean;
@@ -37,7 +38,7 @@ export interface EngineUpdateClient {
   createVoteProof(args: {
     updateSpec: EngineUpdateSpec;
     signature: Signature;
-    seat: number | bigint | UInt8 | PublicKey;
+    seat: Seat | PublicKey;
   }): Promise<EngineUpdateVoteProof>;
 
   mergeVoteProofs(
@@ -79,7 +80,7 @@ export interface CouncilUpdateClient {
   createVoteProof(args: {
     updateSpec: CouncilUpdateSpec;
     signature: Signature;
-    seat: number | bigint | UInt8 | PublicKey;
+    seat: Seat | PublicKey;
   }): Promise<CouncilUpdateVoteProof>;
 
   mergeVoteProofs(
@@ -110,53 +111,6 @@ export interface CouncilUpdateClient {
     opts?: { force?: boolean };
   }): Promise<ProposalUpdateResults>;
 }
-
-export interface IZkusdGoverningCouncilClient {
-  readonly data: CouncilDataProvider;
-
-  readonly councilContract: ZkusdGoverningCouncilContract;
-
-  createEngineUpdateSpec(args: {
-    operation: Partial<EngineUpdateOperationFields> | EngineUpdateOperation;
-    protocolPreconditions: ZkusdProtocolPreconditions;
-    blockchainPreconditions: MinaChainPreconditions;
-  }): Promise<EngineUpdateSpec>;
-
-  createEngineUpdateVoteProof(args: {
-    updateSpec: EngineUpdateSpec;
-    signature: Signature;
-    seat: number | bigint | UInt8 | PublicKey;
-  }): Promise<EngineUpdateVoteProof>;
-
-  mergeEngineUpdateVoteProofs(
-    leftVoteProof: EngineUpdateVoteProof,
-    rightVoteProof: EngineUpdateVoteProof
-  ): Promise<EngineUpdateVoteProof>;
-
-  submitEngineUpdateVote(
-    voteProof: EngineUpdateVoteProof,
-    senderKeys: KeyPair,
-    args?: {force?: boolean},
-  ): Promise<ProposalUpdateResults>;
-
-  tryPassEngineUpdateProposal(
-    updateSpec: EngineUpdateSpec,
-    senderKeys: KeyPair,
-    opts?: { force?: boolean }
-  ): Promise<ProposalUpdateResults>;
-
-  applyPassedUpdateToEngine(
-    updateSpec: EngineUpdateSpec,
-    senderKeys: KeyPair
-  ): Promise<ProposalUpdateResults>;
-
-  submitEngineUpdateVoteAndTryPassAndApply(args: {
-    voteProof: EngineUpdateVoteProof;
-    senderKeys: KeyPair;
-    opts?: { force?: boolean };
-  }): Promise<ProposalUpdateResults>;
-}
-
 
 export interface IZkusdGoverningCouncilClient {
   readonly data: CouncilDataProvider;
@@ -252,19 +206,19 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
   public async createEngineUpdateVoteProof(args: {
     updateSpec: EngineUpdateSpec;
     signature: Signature;
-    seat: number | bigint | UInt8 | PublicKey;
+    seat: Seat | PublicKey;
   }): Promise<EngineUpdateVoteProof> {
     const councilMap = await this.data.councilMap.get();
     let voter: PublicKey;
-    let seatKey: Field;
+    let seatFinal: Seat;
     if (args.seat instanceof PublicKey) {
       voter = args.seat;
-      seatKey = councilMap.getPubkeySeatKey(voter)!
+      seatFinal = councilMap.getPubkeySeatKey(voter)!
     } else {
-      seatKey = args.seat instanceof UInt8 ? args.seat.value : Field.from(args.seat);
-      voter = councilMap.getSeatPublicKey(seatKey)!
+      seatFinal = args.seat;
+      voter = councilMap.getSeatPublicKey(seatFinal)!
     }
-    return (await GovernanceUpdate.createVote(args.updateSpec, args.signature, voter, councilMap.provable, seatKey)).proof as EngineUpdateVoteProof;
+    return (await GovernanceUpdate.createVote(args.updateSpec, args.signature, voter, councilMap.provable, seatFinal)).proof as EngineUpdateVoteProof;
   }
 
   public async mergeEngineUpdateVoteProofs(
@@ -294,7 +248,7 @@ export class ZkusdGoverningCouncilClient implements IZkusdGoverningCouncilClient
     const resolutionTree = await this.data.resolutionTree.get();
 
     // check if the proof will actually do anything
-    const onchainVoteBits = proposalMap.get(voteProof.publicOutput.proposalHash);
+    const onchainVoteBits = proposalMap.get(voteProof.publicOutput.cummulatedVoteBitArray);
     const proofVoteBits = voteProof.publicOutput.cummulatedVoteBitArray;
 
     const newVoteBitArray = ProposalMap.sumVotesProvably(

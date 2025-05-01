@@ -26,6 +26,10 @@ import {
  * A complete specification for updating the council membership and voting threshold.
  * Combines both the management actions and the new vote threshold into a single unit.
  */
+import { Seat } from '../seat.js';
+
+export const CouncilUpdateActionCount = 10; // limited by the event size
+
 export class CouncilUpdateSpec extends Struct({
   /** Collection of council membership update operations */
   councilManagementActions: CouncilUpdateActions,

@@ -24,6 +24,7 @@ import { GovernanceUpdate } from '../proofs/engine-update/prove.js';
 import { CouncilUpdateActions, CouncilUpdateOperation } from '../system/council/update/input.js';
 import { ManageCouncil } from '../proofs/council-update/prove.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
+import { Seat } from '../system/council/seat.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -283,8 +284,8 @@ export class DeploymentService {
         if (i < councilKeys.length) {
           councilManagementActions.actions.push(
             new CouncilUpdateOperation({
-              councilKey: councilKeys[i],
-              councilSeatPosition: Field.from(2n ** BigInt(i)),
+              member: councilKeys[i],
+              seat: Seat.fromIndex(i),
               shouldAdd: Bool(true),
               isDummy: Bool(false),
             })
@@ -292,8 +293,8 @@ export class DeploymentService {
         } else {
           councilManagementActions.actions.push(
             new CouncilUpdateOperation({
-              councilKey: PublicKey.empty(),
-              councilSeatPosition: Field.from(0),
+              member: PublicKey.empty(),
+              seat: Seat.fromIndex(0),
               shouldAdd: Bool(false),
               isDummy: Bool(true),
             })

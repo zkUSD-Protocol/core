@@ -1,4 +1,5 @@
 import { Bool, Field, Provable, PublicKey, Struct } from 'o1js';
+import { Seat } from '../seat.js';
 
 /**
  * Defines the intention for a council member update operation.
@@ -28,9 +29,9 @@ export interface CouncilKeyWithIntent {
  */
 export class CouncilUpdateOperation extends Struct({
   /** The public key of the council member being added or removed */
-  councilKey: PublicKey,
+  member: PublicKey,
   /** The seat position in the council map (represented as a Field = 2^index) */
-  councilSeatPosition: Field,
+  seat: Seat,
   /** If true, add the council member; if false, remove the member */
   shouldAdd: Bool,
   /** If true, the operation is a dummy operation and will not be executed */
@@ -44,8 +45,8 @@ export class CouncilUpdateOperation extends Struct({
    */
   static dummy(): CouncilUpdateOperation {
     return new CouncilUpdateOperation({
-      councilKey: PublicKey.empty(),
-      councilSeatPosition: Field.from(0),
+      member: PublicKey.empty(),
+      seat: Seat.fromIndex(0),
       shouldAdd: Bool(false),
       isDummy: Bool(true),
     });
@@ -58,8 +59,8 @@ export class CouncilUpdateOperation extends Struct({
    */
   toFields(): Field[] {
     return [
-      ...this.councilKey.toFields(),
-      ...this.councilSeatPosition.toFields(),
+      ...this.member.toFields(),
+      this.seat.value,
       ...this.shouldAdd.toFields(),
       ...this.isDummy.toFields(),
     ];

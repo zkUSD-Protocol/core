@@ -20,6 +20,7 @@ import { CouncilUpdateOperation } from '../../../../system/council/update/input.
 import { ProposalMap } from '../../../../system/council/data/proposal-merkle-map.js';
 import { ResolutionTree } from '../../../../system/council/data/resolution-tree.js';
 import { CouncilMap } from '../../../../system/council/data/council-map.js';
+import { Seat } from '../../../../system/council/seat.js';
 
 export async function generateVoteProof(
   councilMember: KeyPair,
@@ -41,7 +42,7 @@ export async function generateVoteProof(
     signature,
     councilMember.publicKey,
     councilMap.provable,
-    seatKey
+    Seat.fromField(seatKey)
   );
   return proof;
 }
@@ -132,14 +133,13 @@ export function rebuildCouncilMerkleMap(
       const action = eventData.action;
 
       if (action.shouldAdd) {
-        councilTree.insertAtKey(
-          action.councilKey,
-          action.councilSeatPosition
+        councilTree.insertAtSeat(
+          action.member, action.seat
         );
       } else {
-        councilTree.insertAtKey(
+        councilTree.insertAtSeat(
           PublicKey.fromBase58('0'),
-          action.councilSeatPosition
+          action.seat
         );
       }
     }
