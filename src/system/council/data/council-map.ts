@@ -15,6 +15,7 @@ import {
   CouncilUpdateOperation,
 } from '../update/common.js';
 import { Seat } from '../seat.js';
+import { MAX_COUNCIL_MEMBERS } from '../common.js';
 
 const { IndexedMerkleMap } = Experimental;
 
@@ -23,12 +24,6 @@ const { IndexedMerkleMap } = Experimental;
  * Supports up to 256 slots (2^8), though usage is capped below.
  */
 const ZKUSD_COUNCIL_MAP_HEIGHT = 9;
-
-/**
- * Maximum number of supported council members.
- * Capped at 240 to stay within safe bit constraints for ZK circuits (fits in a single field).
- */
-const MAX_COUNCIL_MEMBERS = 240;
 
 /**
  * A typed MerkleWitness specific to council members.
@@ -67,7 +62,7 @@ export class CouncilMap {
   private readonly _seatingKeys: Map<Seat, PublicKey> = new Map();
 
   /** Map from public key to its seat key (seat field value) */
-  private readonly _pubkeyToSeatKey: Map<string, Seat>;
+  private readonly _pubkeyToSeatKey: Map<PublicKey, Seat>;
 
   /**
    * Initializes a new CouncilTree from an array of public keys.
@@ -108,7 +103,7 @@ export class CouncilMap {
       const seat = Seat.fromIndex(index);
       const leafValue = CouncilMap.hashCouncilSeat(key);
       this.provableMap.insert(seat.value, leafValue);
-      this._pubkeyToSeatKey.set(key.toBase58(), seat);
+      this._pubkeyToSeatKey.set(key, seat);
       this._seatingKeys.set(seat, key);
     });
   }
@@ -138,17 +133,20 @@ export class CouncilMap {
    */
   public insertAtSeat(councilKey: PublicKey, seat: Seat): void {
     // check if the public key is already seated
-    if (
-      !councilKey.isEmpty() &&
-      this._pubkeyToSeatKey.has(councilKey.toBase58())
-    ) {
+    if (!councilKey.isEmpty() && this._pubkeyToSeatKey.has(councilKey)) {
       throw new Error('Council key already seated');
     }
+
+    if (this._seatingKeys.has(seat)) {
+      throw new Error('Seat already occupied');
+    }
+
     const value = CouncilMap.hashCouncilSeat(councilKey);
     // will fail on override
     this.provableMap.getOption(seat.value).assertNone();
     this.provableMap.insert(seat.value, value);
-    this._pubkeyToSeatKey.set(councilKey.toBase58(), seat);
+    this._pubkeyToSeatKey.set(councilKey, seat);
+    this._seatingKeys.set(seat, councilKey);
   }
 
   /**
@@ -188,7 +186,7 @@ export class CouncilMap {
   }
 
   public getPubkeySeatKey(key: PublicKey): Seat | undefined {
-    return this._pubkeyToSeatKey.get(key.toBase58());
+    return this._pubkeyToSeatKey.get(key);
   }
 
   /**
@@ -216,15 +214,15 @@ export class CouncilMap {
   public clone(): CouncilMap {
     const leaves = this.provableMap.data.get().sortedLeaves;
     const pubkeys = this._seatingKeys;
-    // value to pubkey map
-    const valueToPubkey = new Map();
+    const valueToPubkey = new Map<BigInt, PublicKey>();
     pubkeys.forEach((pubkey) => {
-      valueToPubkey.set(CouncilMap.hashCouncilSeat(pubkey), pubkey);
+      valueToPubkey.set(CouncilMap.hashCouncilSeat(pubkey).toBigInt(), pubkey);
     });
     const ret = new CouncilMap([]);
     leaves.forEach((leaf) => {
+      if (leaf.key === 0n) return;
       ret.insertAtSeat(
-        valueToPubkey.get(leaf.value),
+        valueToPubkey.get(leaf.value)!,
         Seat.fromField(Field(leaf.key))
       );
     });
@@ -252,7 +250,7 @@ export class CouncilMap {
     // Remove the seat
     this.provableMap.set(seat.value, Field(0));
     this._seatingKeys.delete(seat);
-    this._pubkeyToSeatKey.delete(publicKey.toBase58());
+    this._pubkeyToSeatKey.delete(publicKey);
   }
 
   // --------------- CouncilUpdateOperation ---------------

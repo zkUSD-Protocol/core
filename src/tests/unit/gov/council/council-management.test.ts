@@ -23,6 +23,7 @@ import {
 import { CouncilUpdateVoteOutput } from '../../../../system/council/update/output.js';
 import { CouncilMap } from '../../../../system/council/data/council-map.js';
 import { Seat } from '../../../../system/council/seat.js';
+import { CouncilUpdateVoteInput } from '../../../../system/council/update/input.js';
 
 describe('CouncilUpdate', () => {
   let testHelper: TestHelper<'local'>;
@@ -40,12 +41,10 @@ describe('CouncilUpdate', () => {
 
     before(async () => {
       for (let i = 0; i < council.length; i++) {
-        const seatIndex = 2n ** BigInt(i);
-        localCouncilMap.insertAtSeat(
-          council[i].publicKey,
-          Seat.fromIndex(seatIndex)
-        );
+        localCouncilMap.insertAtSeat(council[i].publicKey, Seat.fromIndex(i));
       }
+
+      console.log(localCouncilMap.provable.data.get());
     });
 
     describe('createVote()', () => {
@@ -217,13 +216,52 @@ describe('CouncilUpdate', () => {
 
       it('should create the expected new council from intents', async () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newMemberKey2: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
         const intents: CouncilKeyWithIntent[] = [
           { key: newMemberKey.publicKey, intent: CouncilUpdateIntent.Add },
+          { key: newMemberKey2.publicKey, intent: CouncilUpdateIntent.Add },
+          { key: council[1].publicKey, intent: CouncilUpdateIntent.Remove },
         ];
 
         console.log(localCouncilMap.provable.data.get());
+
+        const input = CouncilUpdateVoteInput.createFromIntentsWithThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          intents
+        );
+
+        const signature1 = Signature.create(
+          council[0].privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const { proof: proof1 } = await ManageCouncil.createVote(
+          input,
+          signature1,
+          council[0].publicKey,
+          Seat.fromIndex(0)
+        );
+
+        const updatedCouncilMap = proof1.publicOutput.updatedCouncilMap;
+
+        const emptySeat = updatedCouncilMap.get(Seat.fromIndex(1).value);
+
+        assert.deepStrictEqual(emptySeat, Field(0));
+
+        const newMember = updatedCouncilMap.get(Seat.fromIndex(3).value);
+        const newMember2 = updatedCouncilMap.get(Seat.fromIndex(4).value);
+
+        assert.deepStrictEqual(
+          newMember,
+          CouncilMap.hashCouncilSeat(newMemberKey.publicKey)
+        );
+        assert.deepStrictEqual(
+          newMember2,
+          CouncilMap.hashCouncilSeat(newMemberKey2.publicKey)
+        );
       });
     });
   });

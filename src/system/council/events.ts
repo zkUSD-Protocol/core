@@ -1,5 +1,5 @@
 import { Field, Struct, UInt32, UInt8 } from 'o1js';
-import { CouncilUpdateOperation } from './update/input.js';
+import { CouncilUpdateOperation } from './update/common.js';
 
 export class EngineUpdateProposalVoteEvent extends Struct({
   proposalMapRootBefore: Field,

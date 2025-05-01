@@ -11,10 +11,8 @@ import {
   ZkProgram,
 } from 'o1js';
 import { CouncilMap } from '../../system/council/data/council-map.js';
-import {
-  CouncilUpdateActions,
-  CouncilUpdateVoteInput,
-} from '../../system/council/update/input.js';
+import { CouncilUpdateVoteInput } from '../../system/council/update/input.js';
+import { CouncilUpdateActions } from '../../system/council/update/common.js';
 import { CouncilUpdateVoteOutput } from '../../system/council/update/output.js';
 import { Seat } from '../../system/council/seat.js';
 
@@ -52,9 +50,9 @@ const ManageCouncil = ZkProgram({
 
         voterPublicKey.isEmpty().assertFalse('Empty public key not allowed.');
 
-        const councilMember = publicInput.currentCouncilMap.get(
-          seat.value
-        );
+        Provable.log('seat.value', seat.value);
+
+        const councilMember = publicInput.currentCouncilMap.get(seat.value);
 
         councilMember.assertEquals(
           Poseidon.hash(voterPublicKey.toFields()),
@@ -70,6 +68,8 @@ const ManageCouncil = ZkProgram({
           const seat = actions[i].seat;
           const councilKey = actions[i].member;
           const isDummy = actions[i].isDummy;
+
+          seat.assertValid();
 
           const updatedSeatValue = Provable.if(
             shouldAdd,
@@ -92,14 +92,8 @@ const ManageCouncil = ZkProgram({
       privateInputs: [SelfProof, SelfProof],
       async method(
         publicInput: CouncilUpdateVoteInput,
-        leftProof: SelfProof<
-          CouncilUpdateVoteInput,
-          CouncilUpdateVoteOutput
-        >,
-        rightProof: SelfProof<
-          CouncilUpdateVoteInput,
-          CouncilUpdateVoteOutput
-        >
+        leftProof: SelfProof<CouncilUpdateVoteInput, CouncilUpdateVoteOutput>,
+        rightProof: SelfProof<CouncilUpdateVoteInput, CouncilUpdateVoteOutput>
       ): Promise<{ publicOutput: CouncilUpdateVoteOutput }> {
         leftProof.verify();
         rightProof.verify();

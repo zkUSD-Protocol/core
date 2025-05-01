@@ -3,12 +3,7 @@ import {
   EngineUpdateProposalPassedEvent,
   EngineUpdateProposalVoteEvent,
 } from '../../../../system/council/events.js';
-import {
-  Signature,
-  UInt32,
-  PublicKey,
-  Field,
-} from 'o1js';
+import { Signature, UInt32, PublicKey, Field } from 'o1js';
 import { KeyPair } from '../../../../types/utility.js';
 import {
   GovernanceUpdate,
@@ -16,7 +11,7 @@ import {
 } from '../../../../proofs/engine-update/prove.js';
 import { EngineUpdateSpec } from '../../../../system/engine-update/input.js';
 import { TestHelper } from '../../../test-helper.js';
-import { CouncilUpdateOperation } from '../../../../system/council/update/input.js';
+import { CouncilUpdateOperation } from '../../../../system/council/update/common.js';
 import { ProposalMap } from '../../../../system/council/data/proposal-merkle-map.js';
 import { ResolutionTree } from '../../../../system/council/data/resolution-tree.js';
 import { CouncilMap } from '../../../../system/council/data/council-map.js';
@@ -133,14 +128,9 @@ export function rebuildCouncilMerkleMap(
       const action = eventData.action;
 
       if (action.shouldAdd) {
-        councilTree.insertAtSeat(
-          action.member, action.seat
-        );
+        councilTree.insertAtSeat(action.member, action.seat);
       } else {
-        councilTree.insertAtSeat(
-          PublicKey.fromBase58('0'),
-          action.seat
-        );
+        councilTree.insertAtSeat(PublicKey.fromBase58('0'), action.seat);
       }
     }
   }

@@ -21,7 +21,10 @@ import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { GovernanceUpdate } from '../proofs/engine-update/prove.js';
-import { CouncilUpdateActions, CouncilUpdateOperation } from '../system/council/update/input.js';
+import {
+  CouncilUpdateActions,
+  CouncilUpdateOperation,
+} from '../system/council/update/common.js';
 import { ManageCouncil } from '../proofs/council-update/prove.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
 import { Seat } from '../system/council/seat.js';

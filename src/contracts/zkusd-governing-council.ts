@@ -24,7 +24,7 @@ import {
   EngineUpdateProposalPassedEvent,
   EngineUpdateProposalVoteEvent,
 } from '../system/council/events.js';
-import { CouncilUpdateActions } from '../system/council/update/input.js';
+import { CouncilUpdateActions } from '../system/council/update/common.js';
 import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
