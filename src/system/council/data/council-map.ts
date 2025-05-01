@@ -1,11 +1,9 @@
 import {
-  Bool,
   Field,
-  MerkleWitness,
-  Poseidon,
   PublicKey,
-  UInt8,
   Experimental,
+  Poseidon,
+  Bool,
 } from 'o1js';
 
 import {
@@ -15,7 +13,6 @@ import {
   CouncilUpdateOperation,
 } from '../update/common.js';
 import { Seat } from '../seat.js';
-import { MAX_COUNCIL_MEMBERS } from '../common.js';
 
 const { IndexedMerkleMap } = Experimental;
 
@@ -26,18 +23,15 @@ const { IndexedMerkleMap } = Experimental;
 const ZKUSD_COUNCIL_MAP_HEIGHT = 9;
 
 /**
- * A typed MerkleWitness specific to council members.
- * Used for generating inclusion proofs in the CouncilMap.
+ * Maximum number of supported council members.
+ * Capped at 240 to stay within safe bit constraints for ZK circuits (fits in a single field).
  */
-class CouncilMemberWitness extends MerkleWitness(ZKUSD_COUNCIL_MAP_HEIGHT) {
-  /** Height of the Merkle tree used by this witness. */
-  static readonly HEIGHT = ZKUSD_COUNCIL_MAP_HEIGHT;
-}
+const MAX_COUNCIL_MEMBERS = 240;
 
 // a rewrite of the class below that can store public keys
 // but also be used as a provable type
 export class CouncilMapProvable extends IndexedMerkleMap(
-  CouncilMemberWitness.HEIGHT
+  ZKUSD_COUNCIL_MAP_HEIGHT
 ) {}
 
 /**
@@ -229,60 +223,12 @@ export class CouncilMap {
     return ret;
   }
 
-  /**
-   * Removes a council member from their seat.
-   * @param key - The key of the seat where the council member is seated.
-   * @throws Error if the seat does not exist or is empty.
-   */
-  public remove(seat: Seat): void {
-    // Check if the seat exists
-    const seatValue = this.provableMap.get(seat.value);
-    if (seatValue.equals(Field(0)).toBoolean()) {
-      throw new Error('Cannot remove from an empty seat');
-    }
-
-    // Get the public key associated with this seat
-    const publicKey = this._seatingKeys.get(seat);
-    if (!publicKey) {
-      throw new Error('Seat exists but no public key is associated with it');
-    }
-
-    // Remove the seat
-    this.provableMap.set(seat.value, Field(0));
-    this._seatingKeys.delete(seat);
-    this._pubkeyToSeatKey.delete(publicKey);
-  }
 
   // --------------- CouncilUpdateOperation ---------------
 
-  /**
-   * Builds a CouncilMap by applying a series of update operations.
-   * Handles both addition and removal operations.
-   *
-   * @param operations - Array of CouncilUpdateOperation instances to apply.
-   * @returns A new CouncilMap with all operations applied.
-   */
-  public static buildFromOperations(
-    operations: CouncilUpdateOperation[]
-  ): CouncilMap {
+  public static buildFromOperations(operations: CouncilUpdateOperation[]): CouncilMap {
     const councilMap = new CouncilMap([]);
-    operations.forEach((operation) => {
-      if (operation.isDummy.toBoolean()) {
-        return;
-      }
-
-      if (operation.shouldAdd.toBoolean()) {
-        // Handle additions
-        councilMap.insertAtSeat(operation.member, operation.seat);
-      } else {
-        // Handle removals - the seat position tells us which seat to remove
-        // We need to check if the seat exists first
-        const publicKey = councilMap.getSeatPublicKey(operation.seat);
-        if (publicKey) {
-          councilMap.remove(operation.seat);
-        }
-      }
-    });
+    councilMap.applyOperations(...operations);
     return councilMap;
   }
 
@@ -292,7 +238,7 @@ export class CouncilMap {
    *
    * @param operations - Array of CouncilUpdateOperation instances to apply.
    */
-  public applyOperations(operations: CouncilUpdateOperation[]): void {
+  public applyOperations(...operations: CouncilUpdateOperation[]): void {
     operations.forEach((operation) => {
       if (operation.isDummy.toBoolean()) {
         return;
@@ -305,10 +251,40 @@ export class CouncilMap {
         // Handle removals
         const publicKey = this.getSeatPublicKey(operation.seat);
         if (publicKey) {
-          this.remove(operation.seat);
+          this.removeCouncilMember(operation.seat);
         }
       }
     });
+  }
+
+  /**
+   * Removes a council member from the CouncilMap.
+   * @param seat - The seat of the council member to be removed.
+   * @param force - If true, will throw an error if the seat is empty.
+   */
+  public removeCouncilMember(seat: Seat | PublicKey, force = false): void {
+    // if seat is public key, find the seat
+    let actualSeat: Seat;
+    if (seat instanceof PublicKey) {
+      const s = this.getPubkeySeatKey(seat);
+      if (!s || force) {
+        throw new Error('Given seat is empty');
+      }
+      actualSeat=s;
+    } else {
+      actualSeat = seat;
+    }
+    // remove the seat from the pubkeyToSeatKey map
+    const pubkey = this.seatingKeys.get(actualSeat);
+    if (pubkey) {
+      this._pubkeyToSeatKey.delete(pubkey);
+    } else if (force) {
+      throw new Error('Given seat is empty');
+    }
+    // insert 0 at the seat key in the provable
+    this.provableMap.insert(actualSeat.value, Field.from(0));
+    // remove the seat from the seatingKeys map
+    this._seatingKeys.delete(actualSeat);
   }
 
   /**
@@ -343,18 +319,18 @@ export class CouncilMap {
         );
       } else if (intent === CouncilUpdateIntent.Remove) {
         // For removals, find the current seat of this key
-        const seatKey = cloned.getPubkeySeatKey(key);
-        if (!seatKey) {
+        const memberKey = cloned.getPubkeySeatKey(key);
+        if (!memberKey) {
           throw new Error(`Cannot remove council member: key not found`);
         }
 
         // Remove from the cloned map to keep tracking state
-        cloned.remove(seatKey);
+        cloned.removeCouncilMember(memberKey);
 
         actions.push(
           new CouncilUpdateOperation({
             member: key,
-            seat: seatKey,
+            seat: memberKey,
             shouldAdd: Bool(false),
             isDummy: Bool(false),
           })
@@ -364,11 +340,4 @@ export class CouncilMap {
 
     return actions;
   }
-}
-
-/**
- * Type-safe access to the witness type for external use.
- */
-export namespace CouncilMap {
-  export type Witness = CouncilMemberWitness;
 }

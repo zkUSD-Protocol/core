@@ -26,7 +26,7 @@ export type CouncilDataProvider = {
 export namespace CouncilDataProvider {
   export function fromContractEvents(
     councilContract: ZkusdGoverningCouncilContract,
-    fetchCurrentBlockHeight: FetchCurrentBlockHeight,
+    fetchCurrentBlockHeight: FetchCurrentBlockHeight = async () => undefined,
     chunkSize = 1000
   ): CouncilDataProvider {
     return {

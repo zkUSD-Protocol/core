@@ -20,7 +20,7 @@ import { Seat } from '../../../../system/council/seat.js';
 export async function generateVoteProof(
   councilMember: KeyPair,
   councilMap: CouncilMap,
-  seatKey: Field,
+  seatKey: Seat,
   govResolutionIndex: number = 0,
   updateSpec: EngineUpdateSpec = EngineUpdateSpec.empty()
 ): Promise<EngineUpdateVoteProof> {
@@ -37,39 +37,9 @@ export async function generateVoteProof(
     signature,
     councilMember.publicKey,
     councilMap.provable,
-    Seat.fromField(seatKey)
+    seatKey
   );
   return proof;
-}
-
-/**
- * Rebuilds the Proposal MerkleMap from Council ProposalSupported events.
- * @param events Array of all contract events fetched from the council contract
- * @returns The reconstructed MerkleMap of proposals
- */
-export function rebuildProposalMerkleMap(
-  events: Array<{ type: string; event: { data: any } }>
-): ProposalMap {
-  const proposalTree = new ProposalMap();
-
-  const proposalEvents = events.filter(
-    (event) => event.type === 'ProposalSupported'
-  );
-
-  for (const event of proposalEvents) {
-    const eventData = event.event.data as EngineUpdateProposalVoteEvent;
-    const proposalHash = eventData.updateHash as Field;
-    const acceptedVotes = eventData.acceptedVoteBitArray as Field;
-
-    const previousVotes = proposalTree.get(proposalHash);
-
-    // Update only if the new vote bit array has more support
-    if (acceptedVotes.greaterThan(previousVotes).toBoolean()) {
-      proposalTree.set(proposalHash, acceptedVotes);
-    }
-  }
-
-  return proposalTree;
 }
 
 /**
@@ -107,37 +77,6 @@ export async function prepareCouncilMembers(th: TestHelper<'local'>) {
   }
   return th.networkKeys.council;
 }
-/**
- * Rebuilds the Council MerkleMap from contract events.
- * @param events The array of council contract events (emitted during lifetime)
- * @returns The reconstructed MerkleMap
- */
-export function rebuildCouncilMerkleMap(
-  events: Array<{ type: string; event: { data: any } }>
-): CouncilMap {
-  const councilTree = new CouncilMap();
-
-  console.log('Rebuilding Council Merkle Map');
-
-  //Reverse the events array
-  events.reverse();
-
-  for (const event of events) {
-    if (event.type === 'CouncilUpdateActionEvent') {
-      const eventData = event.event.data as CouncilUpdateActionEvent;
-      const action = eventData.action;
-
-      if (action.shouldAdd) {
-        councilTree.insertAtSeat(action.member, action.seat);
-      } else {
-        councilTree.insertAtSeat(PublicKey.fromBase58('0'), action.seat);
-      }
-    }
-  }
-
-  return councilTree;
-}
-
 /**
  * Extracts all council management operations from the given events.
  * @param events The array of contract events
