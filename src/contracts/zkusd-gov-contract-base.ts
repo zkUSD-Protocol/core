@@ -1,6 +1,6 @@
-import { Bool, Field, PublicKey, SmartContract, State, method } from "o1js";
-import { EngineUpdateSpec } from "../system/engine-update/input";
-import { ResolutionTree } from "../system/council/data/resolution-tree";
+import { Bool, Field, PublicKey, SmartContract, State, method } from 'o1js';
+import { EngineUpdateSpec } from '../system/engine-update/input.js';
+import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 
 export class ZkUsdGovernmentContract extends SmartContract {
   // @state(Field) govResolutionProgramsVkHashesRoot = State<Field>(); // Pins the set of accepted governance programs. (not used yet)
@@ -15,7 +15,7 @@ export class ZkUsdGovernmentContract extends SmartContract {
   public async canExecuteGovResolution(
     zkEngineMethodCode: Field,
     resolutionUpdateSpec: EngineUpdateSpec,
-    resolutionWitness: ResolutionTree.Witness,
+    resolutionWitness: ResolutionTree.Witness
   ) {
     return Bool(false);
   }

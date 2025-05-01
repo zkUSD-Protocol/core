@@ -24,9 +24,7 @@ import {
   EngineUpdateProposalPassedEvent,
   EngineUpdateProposalVoteEvent,
 } from '../system/council/events.js';
-import {
-  CouncilUpdateActions,
-} from '../system/council/update/input.js';
+import { CouncilUpdateActions } from '../system/council/update/input.js';
 import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
@@ -63,7 +61,6 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
   };
   readonly events = ZkusdGoverningCouncilContract.events;
 
-
   init() {
     super.init();
   }
@@ -74,10 +71,9 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     initialCouncilActions: CouncilUpdateActions,
     votePassThreshold: UInt8
   ) {
-    const councilMerkleMap =
-      CouncilMap.buildFromOperations(
-        initialCouncilActions.actions
-      );
+    const councilMerkleMap = CouncilMap.buildFromOperations(
+      initialCouncilActions.actions
+    );
 
     const councilMerkleMapRoot = councilMerkleMap.root;
     await this.initializeCouncilAndGov(
@@ -96,8 +92,8 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     initialCouncilActions: CouncilUpdateActions,
     votePassThreshold: UInt8
   ) {
-    const proposalsMerkleMapRoot = new ProposalMap()
-    const resolutionMerkleRoot = new ResolutionTree()
+    const proposalsMerkleMapRoot = new ProposalMap();
+    const resolutionMerkleRoot = new ResolutionTree();
     this.councilMerkleMapRoot.set(councilMerkleMapRoot);
     this.votePassThreshold.set(votePassThreshold);
     this.proposalsMerkleMapRoot.set(proposalsMerkleMapRoot.getRoot());
@@ -179,17 +175,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       .assertEquals(resolutionsMerkleRoot, 'Invalid resolution witness');
 
     // now check if the vote count is above the threshold
-    const threshold = this.votePassThreshold.getAndRequireEquals();
-    const bits = proposalCurrentVoteBitArray.toBits();
-    let voteCount = Field.from(0);
-    for (let i = 0; i < CouncilMap.SEAT_LIMIT; i++) {
-      voteCount = Provable.if(bits[i], voteCount.add(1), voteCount);
-    }
-    // voteCount should be equal to or above the threshold
-    voteCount.assertGreaterThanOrEqual(
-      threshold.value,
-      'Vote count is below the threshold'
-    );
+    this.checkVoteCountAboveThreshold(proposalHash);
 
     // recompute the root and set it and thus enable executing the resolution
     const newResolutionRoot = resolutionWitness.calculateRoot(proposalHash);
@@ -215,7 +201,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       voteProof.publicOutput.proposalHash
     );
     const resolutionWitness = resolutionTree.getWitnessWrapped(
-        voteProof.publicInput.govResolutionIndex.toBigint()
+      voteProof.publicInput.govResolutionIndex.toBigint()
     );
     const proposalCurrentVoteBitArray = proposalMap.get(
       voteProof.publicOutput.proposalHash
@@ -227,7 +213,6 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       resolutionWitness
     );
   }
-
 
   // This method allows to create and cast a vote for a proposal
   // it will sum (safely) the given vote with the current support
