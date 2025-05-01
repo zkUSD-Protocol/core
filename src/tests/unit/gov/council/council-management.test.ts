@@ -1,7 +1,7 @@
 import { describe, it, before } from 'node:test';
 
 import { TestHelper } from '../../../test-helper.js';
-import { prepareCouncilMembers, rebuildCouncilMerkleMap } from './common.js';
+import { prepareCouncilMembers } from './common.js';
 import assert from 'assert';
 import { KeyPair } from '../../../../types/utility.js';
 import {

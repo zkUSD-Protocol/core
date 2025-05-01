@@ -18,9 +18,6 @@ import { ZkusdProtocolPreconditions } from '../../../system/engine-update/protoc
 import {
   generateVoteProof,
   getNextEmptyResolutionIndex,
-  rebuildCouncilMerkleMap,
-  rebuildProposalMerkleMap,
-  rebuildResolutionMerkleTree,
 } from './council/common.js';
 import { GovernanceUpdate } from '../../../proofs/engine-update/prove.js';
 import { ResolutionTree } from '../../../system/council/data/resolution-tree.js';
@@ -35,6 +32,8 @@ import { BoolPrecondition } from '../../../system/engine-update/simple-precondit
 import { EngineUpdateOperation } from '../../../system/engine-update/operation.js';
 import { CouncilMap } from '../../../system/council/data/council-map.js';
 import { ProposalMap } from '../../../system/council/data/proposal-merkle-map.js';
+import { Seat } from '../../../system/council/seat.js';
+import { CouncilDataProvider } from '../../../system/council/data/data-provider.js';
 
 let testHelper: TestHelper<'local'>;
 const engine = () => testHelper.engine.contract;
@@ -248,15 +247,15 @@ describe('Engine – governance‑controlled setters', () => {
     await testHelper.createLocalAgents('alice');
     await testHelper.createLocalAgents('bob');
 
-    const events = await testHelper.council.fetchEvents();
-    councilMerkleMap = rebuildCouncilMerkleMap(events);
-    proposalMap = rebuildProposalMerkleMap(events);
-    resolutionTree = rebuildResolutionMerkleTree(events);
+    const dataProvider = CouncilDataProvider.fromContractEvents(testHelper.council);
+    councilMerkleMap = await dataProvider.councilMap.get();
+    proposalMap = await dataProvider.proposalMap.get();
+    resolutionTree = await dataProvider.resolutionTree.get();
 
     const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
     updateSpec = makeDefaultAcceptedSpec(govResolutionIndex);
 
-    const getSeatKey = (seatIndex: number) => Field(2 ** seatIndex);
+    const getSeatKey = (seatIndex: number) => Seat.fromIndex(seatIndex);
     const councilKeyPairs = testHelper.networkKeys.council!;
     const voteA = await generateVoteProof(
       councilKeyPairs[0],

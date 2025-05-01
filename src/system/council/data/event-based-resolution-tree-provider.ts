@@ -75,10 +75,11 @@ export class ResolutionTreeContractEventsProvider
    * Returns the cached `ResolutionTree`, loading it on first access.
    */
   async get(): Promise<ResolutionTree> {
-    if (!this.tree || (await this.isStale())) {
+    // if not yet built or does not match the onchain
+    if (!this.tree || !(await this.matchesOnchainRoot())) {
       await this.refresh();
-      const stillStale = await this.isStale();
-      if (stillStale)
+      if (!(await this.matchesOnchainRoot()))
+        // even after refreshing it is not matching - bail out.
         throw new Error(
           'The data does not match the onchain state even after refreshing.'
         );
@@ -86,20 +87,18 @@ export class ResolutionTreeContractEventsProvider
     return this.tree!;
   }
 
-  async isStale(): Promise<boolean> {
-    let currentRoot = this.tree?.getRoot();
+  async matchesOnchainRoot(): Promise<boolean> {
+    const currentRoot = this.tree?.getRoot();
     if (!currentRoot) {
       throw new Error(
-        'Cannot check if proposal map is stale: no root available.'
+        'Cannot check if resolution tree is stale: no root available.'
       );
     }
-    Provable.log("tree root: ", currentRoot);
     const onchainRoot = await this.fetchOnchainRoot();
     if (!onchainRoot) {
-      throw new Error('Cannot fetch proposal map root from the chain.');
+      throw new Error('Cannot fetch resolution tree root from the chain.');
     }
-    Provable.log("onchain root: ", onchainRoot);
-    return onchainRoot.equals(currentRoot).not().toBoolean();
+    return onchainRoot.equals(currentRoot).toBoolean();
   }
 
   /**
@@ -108,85 +107,107 @@ export class ResolutionTreeContractEventsProvider
    *  - a matching previous root is found, or
    *  - genesis is reached.
    */
+  // TODO for now naively fetches all the events and rebuilds entire map.
   async refresh(): Promise<void> {
-    // get the latest chunk (ordered from newest to latest)
-    // search for sync point, if found them discard all previous events
-    // if not found it probably means that these events are to be applied yet
-    // but proceed in searching in the previous chunk
-    // when finally found then apply all the not discarded events from all the chunks
-    // processed
-    // if reached genesis without sync point then throw an error
+    const events = await this.source.fetchEvents();
+    this.tree = ResolutionTreeContractEventsProvider.rebuildResolutionTree(events);
 
-    const toApply: ProposalPassedEvent[] = [];
-    let foundSyncPoint = false
-    const cachedRoot = this.tree?.getRoot();
-    let end: UInt32 | undefined = await this.fetchCurrentBlockHeight();
-    let start: UInt32 | undefined;
-    if (end === undefined) {
-      console.warn(
-        'Cannot fetch the current block height. Will download all events.'
-      );
-    }
+    // // get the latest chunk (ordered from newest to latest)
+    // // search for sync point, if found them discard all previous events
+    // // if not found it probably means that these events are to be applied yet
+    // // but proceed in searching in the previous chunk
+    // // when finally found then apply all the not discarded events from all the chunks
+    // // processed
+    // // if reached genesis without sync point then throw an error
 
-    while (!foundSyncPoint) {
-      if (end) {
-        const span = BigInt(this.chunkSize - 1);
-        start = UInt32.from(end.toBigint() > span ? end.toBigint() - span : 0n);
-      }
-      const events = (await this.source.fetchEvents(start, end)).filter(
-        isProposalPassedEvent
-      );
-      // events from latest to oldest
-      let syncPoint: number | undefined;
-      for (let i = 0; i < events.length; i++) {
-        const data = events[i].event.data;
-        // check if it is a sync point
-        if (cachedRoot && data.resolutionTreeRootBefore.equals(cachedRoot).toBoolean()) {
-          syncPoint = i;
-          foundSyncPoint = true;
-          break;
-        }
-      }
-      // if sync point is found then we can discard older events
-      // i.e. events following the syncPoint
-      // otherwise keep all
-      const collected =
-        syncPoint === undefined ? events : events.slice(0, syncPoint+1);
-      // now attach this chunk in front of the others from oldest to newest
-      toApply.unshift(...collected.reverse());
+    // const toApply: ProposalPassedEvent[] = [];
+    // let foundSyncPoint = false
+    // const cachedRoot = this.tree?.getRoot();
+    // let end: UInt32 | undefined = await this.fetchCurrentBlockHeight();
+    // let start: UInt32 | undefined;
+    // if (end === undefined) {
+    //   console.warn(
+    //     'Cannot fetch the current block height. Will download all events.'
+    //   );
+    // }
 
-      if (end === undefined) {
-        if (events.length === 0) {
-          // no more events to process
-          break;
-        }
-        // let's try again from the oldest event
-        end = events[events.length - 1].blockHeight;
-      } else if (end.toBigint() <= 0n) {
-        // we reached genesis
-        break;
-      } else {
-        end = start;
-      }
-    }
+    // while (!foundSyncPoint) {
+    //   if (end) {
+    //     const span = BigInt(this.chunkSize - 1);
+    //     start = UInt32.from(end.toBigint() > span ? end.toBigint() - span : 0n);
+    //   }
+    //   const events = (await this.source.fetchEvents(start, end)).filter(
+    //     isProposalPassedEvent
+    //   );
+    //   // events from latest to oldest
+    //   let syncPoint: number | undefined;
+    //   for (let i = 0; i < events.length; i++) {
+    //     const data = events[i].event.data;
+    //     // check if it is a sync point
+    //     if (cachedRoot && data.resolutionTreeRootBefore.equals(cachedRoot).toBoolean()) {
+    //       syncPoint = i;
+    //       foundSyncPoint = true;
+    //       break;
+    //     }
+    //   }
+    //   // if sync point is found then we can discard older events
+    //   // i.e. events following the syncPoint
+    //   // otherwise keep all
+    //   const collected =
+    //     syncPoint === undefined ? events : events.slice(0, syncPoint+1);
+    //   // now attach this chunk in front of the others from oldest to newest
+    //   toApply.unshift(...collected.reverse());
 
-    if (!foundSyncPoint && this.tree) {
-      throw new Error(
-        'Could not find a ProposalPassed event whose treeRootBefore ' +
-          'matches the cached root; the resolution tree cannot be built'
-      );
-    }
-    // now we assume that either there was no map whatsoever
-    // so we apply the events or that we reached the sync point
-    const tree = this.tree ? this.tree : new ResolutionTree();
+    //   if (end === undefined) {
+    //     if (events.length === 0) {
+    //       // no more events to process
+    //       break;
+    //     }
+    //     // let's try again from the oldest event
+    //     end = events[events.length - 1].blockHeight;
+    //   } else if (end.toBigint() <= 0n) {
+    //     // we reached genesis
+    //     break;
+    //   } else {
+    //     end = start;
+    //   }
+    // }
 
-    for (const ev of toApply) {
-      const d = ev.event.data;
-      // debug log event data
-      Provable.log("Applying resolution tree event data: ", d);
-      tree.setLeaf(d.resolutionIndex.toBigint(), d.updateHash);
-    }
-    this.tree = tree;
-    Provable.log("Refresh set root to:", tree.getRoot());
+    // if (!foundSyncPoint && this.tree) {
+    //   throw new Error(
+    //     'Could not find a ProposalPassed event whose treeRootBefore ' +
+    //       'matches the cached root; the resolution tree cannot be built'
+    //   );
+    // }
+    // // now we assume that either there was no map whatsoever
+    // // so we apply the events or that we reached the sync point
+    // const tree = this.tree ? this.tree : new ResolutionTree();
+
+    // for (const ev of toApply) {
+    //   const d = ev.event.data;
+    //   // debug log event data
+    //   Provable.log("Applying resolution tree event data: ", d);
+    //   tree.setLeaf(d.resolutionIndex.toBigint(), d.updateHash);
+    // }
+    // this.tree = tree;
+    // Provable.log("Refresh set root to:", tree.getRoot());
   }
+
+  public static rebuildResolutionTree(
+    events: Array<{ type: string; event: { data: any } }>
+  ): ResolutionTree {
+    const ret = new ResolutionTree();
+    ResolutionTreeContractEventsProvider.applyEvents(ret, events);
+    return ret;
+  }
+
+public static applyEvents(
+  resolutionTree: ResolutionTree,
+  events: Array<{ type: string; event: { data: any } }>
+) : void { 
+  events
+    .filter(isProposalPassedEvent)
+    .toReversed()
+    .forEach((e) => resolutionTree.setLeaf(e.event.data.resolutionIndex.toBigint(), e.event.data.updateHash))
+}
 }

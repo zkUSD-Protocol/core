@@ -63,13 +63,7 @@ import {
 } from '../proofs/engine-update/prove.js';
 import { MinaChainPreconditions } from '../system/engine-update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
-import {
-  rebuildProposalMerkleMap,
-  rebuildResolutionMerkleTree,
-  getNextEmptyResolutionIndex,
-  generateVoteProof,
-  rebuildCouncilMerkleMap,
-} from './unit/gov/council/common.js';
+import { getNextEmptyResolutionIndex, generateVoteProof } from './unit/gov/council/common.js';
 import { EngineUpdateOperation } from '../system/engine-update/operation.js';
 import {
   BoolOperation,
@@ -77,6 +71,8 @@ import {
   UInt64Operation,
 } from '../system/engine-update/simple-operations.js';
 import { ResolutionTree } from '../system/council/data/resolution-tree.js';
+import { CouncilDataProvider } from '../system/council/data/data-provider.js';
+import { Seat } from '../system/council/seat.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -851,10 +847,11 @@ export class TestHelper<E extends string> {
     const priority = options.priority ?? false;
 
     // 1. Fetch events and rebuild on-chain state
+    const dataProvider = CouncilDataProvider.fromContractEvents(this.council)
     const events = await this.council.fetchEvents();
-    const councilMerkleMap = rebuildCouncilMerkleMap(events);
-    const proposalMap = rebuildProposalMerkleMap(events);
-    const resolutionTree = rebuildResolutionMerkleTree(events);
+    const councilMerkleMap = await dataProvider.councilMap.get();
+    const proposalMap = await dataProvider.proposalMap.get();
+    const resolutionTree = await dataProvider.resolutionTree.get()
 
     // Create directory for cached proofs if needed
     const cachedProofsPath = path.join(
@@ -937,14 +934,14 @@ export class TestHelper<E extends string> {
       const vote1 = await generateVoteProof(
         councilKeyPairs[0],
         councilMerkleMap,
-        getSeatKey(0),
+        Seat.fromIndex(0),
         Number(govResolutionIndex.toBigint()),
         updateSpec
       );
       const vote2 = await generateVoteProof(
         councilKeyPairs[1],
         councilMerkleMap,
-        getSeatKey(1),
+        Seat.fromIndex(1),
         Number(govResolutionIndex.toBigint()),
         updateSpec
       );

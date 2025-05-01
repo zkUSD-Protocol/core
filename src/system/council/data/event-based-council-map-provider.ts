@@ -8,6 +8,7 @@ import {
 } from '../common.js';
 import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
 import { CouncilMap } from './council-map.js';
+import { CouncilUpdateActionEvent } from '../events.js';
 
 /**
  * A runtime-narrowed `ProposalSupported` event with the expected structure.
@@ -74,18 +75,20 @@ export class CouncilMapContractEventsProvider
    * Returns the cached `ResolutionTree`, loading it on first access.
    */
   async get(): Promise<CouncilMap> {
-    if (!this.councilMap || (await this.isStale())) {
+    // try refresh if not yet built or does not match the onchain
+    if (!this.councilMap || !(await this.matchesOnchainRoot())) {
       await this.refresh();
-      const stillStale = await this.isStale();
-      if (stillStale)
+      if (!(await this.matchesOnchainRoot())) {
+        // even after refreshing it is not matching - bail out.
         throw new Error(
           'The data does not match the onchain state even after refreshing.'
         );
+      }
     }
     return this.councilMap!;
   }
 
-  async isStale(): Promise<boolean> {
+  async matchesOnchainRoot(): Promise<boolean> {
     const currentRoot = this.councilMap?.root;
     if (!currentRoot) {
       throw new Error(
@@ -96,7 +99,7 @@ export class CouncilMapContractEventsProvider
     if (!onchainRoot) {
       throw new Error('Cannot fetch proposal map root from the chain.');
     }
-    return onchainRoot.equals(currentRoot).not().toBoolean();
+    return onchainRoot.equals(currentRoot).toBoolean();
   }
 
   /**
@@ -106,7 +109,12 @@ export class CouncilMapContractEventsProvider
    *  - genesis is reached.
    *  The assumption is that events are fetched from newest to oldest
    */
+  // TODO for now it naively rebuilds tree from ground up fetching all the events
   async refresh(): Promise<void> {
+
+    const events = await this.source.fetchEvents();
+    this.councilMap = CouncilMapContractEventsProvider.rebuildCouncilMerkleMap(events);
+    
     // get the latest chunk (ordered from newest to latest)
     // search for sync point, if found them discard all previous events
     // if not found it probably means that these events are to be applied yet
@@ -186,4 +194,28 @@ export class CouncilMapContractEventsProvider
     // }
     // this.proposalMap = map;
   }
+ /**
+ * Rebuilds the Council MerkleMap from contract events.
+ * @param events The array of council contract events (emitted during lifetime)
+ * @returns The reconstructed MerkleMap
+ */
+public static  rebuildCouncilMerkleMap(
+  events: Array<{ type: string; event: { data: any } }>
+): CouncilMap {
+  const ret = new CouncilMap();
+  CouncilMapContractEventsProvider.applyEvents(ret,events);
+  return ret;
+}
+
+public static applyEvents(
+  councilMap: CouncilMap,
+  events: Array<{ type: string; event: { data: any } }>
+) : void {
+  events
+    .filter(isCouncilActionEvent)
+    .toReversed() // chronological
+    .forEach((e) => councilMap.applyOperations(e.event.data.action))
+}
+
+
 }
