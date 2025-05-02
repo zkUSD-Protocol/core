@@ -75,7 +75,7 @@ export class CouncilMapContractEventsProvider
   }
 
   /**
-   * Returns the cached `ResolutionTree`, loading it on first access.
+   * Returns the cached `Council Map`, loading it on first access.
    */
   async get(): Promise<CouncilMap> {
     // try refresh if not yet built or does not match the onchain
@@ -115,6 +115,8 @@ export class CouncilMapContractEventsProvider
   // TODO for now it naively rebuilds tree from ground up fetching all the events
   async refresh(): Promise<void> {
     const events = await this.source.fetchEvents();
+    // We must reverse the events because if they are in the same block then the sorting wont work and it will rebuild a different tree
+    events.reverse();
     this.councilMap =
       CouncilMapContractEventsProvider.rebuildCouncilMerkleMap(events);
 
@@ -218,8 +220,8 @@ export class CouncilMapContractEventsProvider
     const sortedEvents = councilActionEvents.sort((a, b) =>
       a.blockHeight.toBigint() < b.blockHeight.toBigint() ? -1 : 1
     );
-    sortedEvents.forEach((e) =>
-      councilMap.applyOperations(e.event.data.action)
-    );
+    sortedEvents.forEach((e) => {
+      councilMap.applyOperations(e.event.data.action);
+    });
   }
 }

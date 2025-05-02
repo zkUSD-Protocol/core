@@ -12,18 +12,19 @@ import {
   Proof,
 } from 'o1js';
 
-import { GovernanceUpdate } from '../../../../proofs/engine-update/prove.js';
+import { EngineUpdate } from '../../../../proofs/engine-update/prove.js';
 import { Seat } from '../../../../system/council/seat.js';
 import { CouncilMap } from '../../../../system/council/data/council-map.js';
 import { EngineUpdateSpec } from '../../../../system/engine-update/input.js';
 import { BoolOperation } from '../../../../system/engine-update/simple-operations.js';
-import { ZkusdProtocolUpdateOutput } from '../../../../system/engine-update/output.js';
+import { EngineUpdateOutput } from '../../../../system/engine-update/output.js';
+import { ProposalMap } from '../../../../system/council/data/proposal-merkle-map.js';
 
 function getSeatKey(seatIndex: number) {
   return Field(2 ** seatIndex);
 }
 
-describe('GovernanceUpdate', () => {
+describe('EngineUpdate', () => {
   let verificationKey: VerificationKey;
   let councilMerkleMapRoot: Field;
   let councilMerkleMap: CouncilMap;
@@ -40,7 +41,7 @@ describe('GovernanceUpdate', () => {
 
   before(async () => {
     console.log('Compiling ZkProgram...');
-    const { verificationKey: vk } = await GovernanceUpdate.compile();
+    const { verificationKey: vk } = await EngineUpdate.compile();
     verificationKey = vk;
     console.log('Compilation complete.');
 
@@ -71,7 +72,7 @@ describe('GovernanceUpdate', () => {
 
       // 3. Generate proof
       console.log('Creating vote (correct signature, correct membership)...');
-      const { proof } = await GovernanceUpdate.createVote(
+      const { proof } = await EngineUpdate.createVote(
         updateInput,
         signature,
         councilPublicKey,
@@ -122,7 +123,7 @@ describe('GovernanceUpdate', () => {
 
       console.log('Creating vote with mismatched input-signature...');
       await assert.rejects(async () => {
-        await GovernanceUpdate.createVote(
+        await EngineUpdate.createVote(
           updateInput,
           wrongSignature,
           councilPublicKey,
@@ -142,7 +143,7 @@ describe('GovernanceUpdate', () => {
 
       console.log('Creating vote with a mismatched seat witness...');
       await assert.rejects(async () => {
-        await GovernanceUpdate.createVote(
+        await EngineUpdate.createVote(
           updateInput,
           signature,
           councilPublicKey,
@@ -161,7 +162,7 @@ describe('GovernanceUpdate', () => {
 
       console.log('Creating vote with the wrong public key...');
       await assert.rejects(async () => {
-        await GovernanceUpdate.createVote(
+        await EngineUpdate.createVote(
           updateInput,
           signature,
           wrongPublicKey,
@@ -175,7 +176,7 @@ describe('GovernanceUpdate', () => {
 
   describe('createVote() - malicious multi-bit index test', () => {
     it('should fail if seat index is not a single bit (e.g., 2^3 + 2^5)', async () => {
-      const seatIndexMaliciousValue = 40; // 8 + 32 = 40
+      const seatIndexMaliciousValue = 40n; // 8 + 32 = 40
 
       // Suppose we have everything else set up: valid privateKey & signature data
       const privateKey = PrivateKey.random();
@@ -186,25 +187,20 @@ describe('GovernanceUpdate', () => {
       // but in reality, your circuit expects seat=3 or seat=5, not BOTH.
       const signature = Signature.create(privateKey, updateInputFields);
 
-      councilMerkleMap.insertAtSeat(
-        publicKey,
-        Seat.fromIndex(seatIndexMaliciousValue)
+      councilMerkleMap.provable.set(
+        seatIndexMaliciousValue,
+        CouncilMap.hashCouncilSeat(publicKey)
       );
 
-      // await assert.rejects(async () => {
-      const { proof } = await GovernanceUpdate.createVote(
-        updateInput,
-        signature,
-        publicKey,
-        councilMerkleMap.provable,
-        Seat.fromIndex(seatIndexMaliciousValue)
-      );
-
-      console.log(
-        'cummulatedVoteBitArray value',
-        proof.publicOutput.cummulatedVoteBitArray.value
-      );
-      // });
+      await assert.rejects(async () => {
+        const { proof } = await EngineUpdate.createVote(
+          updateInput,
+          signature,
+          publicKey,
+          councilMerkleMap.provable,
+          new Seat({ value: Field(seatIndexMaliciousValue) })
+        );
+      }, 'Expected createVote to fail if seat index is not a single bit');
     });
   });
 
@@ -219,8 +215,8 @@ describe('GovernanceUpdate', () => {
     let secondMerkleMap: CouncilMap;
     let secondcouncilMerkleMapRoot: Field;
 
-    let proof1: Proof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>;
-    let proof2: Proof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>;
+    let proof1: Proof<EngineUpdateSpec, EngineUpdateOutput>;
+    let proof2: Proof<EngineUpdateSpec, EngineUpdateOutput>;
 
     before(async () => {
       // Build a second tree that also has seatIndex2
@@ -255,7 +251,7 @@ describe('GovernanceUpdate', () => {
 
       // First proof
       const signature1 = Signature.create(councilPrivateKey, updateInputFields);
-      const { proof: p1 } = await GovernanceUpdate.createVote(
+      const { proof: p1 } = await EngineUpdate.createVote(
         updateInput,
         signature1,
         councilPublicKey,
@@ -269,7 +265,7 @@ describe('GovernanceUpdate', () => {
         secondCouncilPrivateKey,
         updateInputFields
       );
-      const { proof: p2 } = await GovernanceUpdate.createVote(
+      const { proof: p2 } = await EngineUpdate.createVote(
         updateInput,
         signature2,
         secondCouncilPublicKey,
@@ -281,7 +277,7 @@ describe('GovernanceUpdate', () => {
 
     it('should correctly merge two valid proofs', async () => {
       console.log('Merging votes from seatIndex and seatIndex2...');
-      const mergedProof = await GovernanceUpdate.mergeVotes(
+      const mergedProof = await EngineUpdate.mergeVotes(
         updateInput,
         proof1,
         proof2
@@ -321,7 +317,7 @@ describe('GovernanceUpdate', () => {
         differentFields
       );
 
-      const proofWithDifferentInput = await GovernanceUpdate.createVote(
+      const proofWithDifferentInput = await EngineUpdate.createVote(
         differentInput,
         signatureDifferent,
         councilPublicKey,
@@ -332,7 +328,7 @@ describe('GovernanceUpdate', () => {
       // Attempt to merge that with a valid proof for the original input
       console.log('Attempting merge with mismatched input proofs...');
       await assert.rejects(async () => {
-        await GovernanceUpdate.mergeVotes(
+        await EngineUpdate.mergeVotes(
           updateInput, // The "current" input is the original
           proof1, // correct input
           proofWithDifferentInput.proof // different input
@@ -349,7 +345,7 @@ describe('GovernanceUpdate', () => {
         secondCouncilPrivateKey,
         updateInputFields
       );
-      const proofMismatchRoot = await GovernanceUpdate.createVote(
+      const proofMismatchRoot = await EngineUpdate.createVote(
         updateInput,
         signature2,
         secondCouncilPublicKey,
@@ -359,7 +355,7 @@ describe('GovernanceUpdate', () => {
 
       console.log('Attempting merge with mismatched council roots...');
       await assert.rejects(async () => {
-        await GovernanceUpdate.mergeVotes(
+        await EngineUpdate.mergeVotes(
           updateInput,
           proof1,
           proofMismatchRoot.proof

@@ -20,7 +20,7 @@ import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
-import { GovernanceUpdate } from '../proofs/engine-update/prove.js';
+import { EngineUpdate } from '../proofs/engine-update/prove.js';
 import {
   CouncilUpdateActions,
   CouncilUpdateOperation,
@@ -40,7 +40,7 @@ interface DeployedContracts {
 }
 export interface ZkusdCompilationData {
   oracleAggregationVk: VerificationKey;
-  governanceUpdateVk: VerificationKey;
+  EngineUpdateVk: VerificationKey;
   zkusdEngineContractVk: VerificationKey;
   governmentContractVk: VerificationKey;
   tokenContractVk: VerificationKey;
@@ -64,7 +64,7 @@ export class DeploymentService {
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
   private _gov: ContractInstance<ZkusdGoverningCouncilContract>;
   private _oracleAggregationVk: VerificationKey;
-  private _governanceUpdateVk: VerificationKey;
+  private _EngineUpdateVk: VerificationKey;
   private _manageCouncilVk: VerificationKey;
   private _compilationData: Partial<ZkusdCompilationData>;
 
@@ -101,7 +101,7 @@ export class DeploymentService {
   private updateVerificationKeys() {
     updateVerificationKeys({
       oracleAggregationVk: this._oracleAggregationVk,
-      governanceUpdateVk: this._governanceUpdateVk,
+      EngineUpdateVk: this._EngineUpdateVk,
       manageCouncilVk: this._manageCouncilVk,
     });
   }
@@ -124,8 +124,8 @@ export class DeploymentService {
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
-    const governanceUpdateCompiled = await GovernanceUpdate.compile();
-    this._governanceUpdateVk = governanceUpdateCompiled.verificationKey;
+    const EngineUpdateCompiled = await EngineUpdate.compile();
+    this._EngineUpdateVk = EngineUpdateCompiled.verificationKey;
 
     const manageCouncilCompiled = await ManageCouncil.compile();
     this._manageCouncilVk = manageCouncilCompiled.verificationKey;
@@ -167,7 +167,7 @@ export class DeploymentService {
     console.timeEnd('Compiling Contracts');
     return {
       oracleAggregationVk: this._oracleAggregationVk,
-      governanceUpdateVk: this._governanceUpdateVk,
+      EngineUpdateVk: this._EngineUpdateVk,
       zkusdEngineContractVk: engineCompilationResults?.verificationKey,
       governmentContractVk: tokenCompilationResults?.verificationKey,
       tokenContractVk: governmenttokenCompilationResults?.verificationKey,
@@ -335,17 +335,6 @@ export class DeploymentService {
         }
       );
       await txHandle.awaitIncluded();
-
-      //Lets verify that the actions create the same root as on chain
-      const onChainRoot = await this._gov.contract.councilMerkleMapRoot.fetch();
-
-      console.log('On chain root', onChainRoot?.toString());
-
-      const merkleMap = CouncilMap.buildFromOperations(
-        councilManagementActions.actions
-      );
-
-      console.log('Merkle map', merkleMap.root.toString());
     } else {
       console.log('Gov contracts already deployed');
     }

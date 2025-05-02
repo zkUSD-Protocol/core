@@ -1,25 +1,12 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import {
-  Bool,
-  Field,
-  PrivateKey,
-  Poseidon,
-  UInt32,
-  UInt8,
-  UInt64,
-} from 'o1js';
+import { Bool, Field, PrivateKey, Poseidon, UInt32, UInt8, UInt64 } from 'o1js';
 import { TestHelper } from '../../test-helper.js';
 import { EngineUpdateSpec } from '../../../system/engine-update/input.js';
-import {
-  MinaChainPreconditions,
-} from '../../../system/engine-update/blockchain-preconditions.js';
+import { MinaChainPreconditions } from '../../../system/engine-update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../../../system/engine-update/protocol-preconditions.js';
-import {
-  generateVoteProof,
-  getNextEmptyResolutionIndex,
-} from './council/common.js';
-import { GovernanceUpdate } from '../../../proofs/engine-update/prove.js';
+import { generateVoteProof } from './council/common.js';
+import { EngineUpdate } from '../../../proofs/engine-update/prove.js';
 import { ResolutionTree } from '../../../system/council/data/resolution-tree.js';
 import {
   BoolOperation,
@@ -247,13 +234,15 @@ describe('Engine – governance‑controlled setters', () => {
     await testHelper.createLocalAgents('alice');
     await testHelper.createLocalAgents('bob');
 
-    const dataProvider = CouncilDataProvider.fromContractEvents(testHelper.council);
+    const dataProvider = CouncilDataProvider.fromContractEvents(
+      testHelper.council
+    );
     councilMerkleMap = await dataProvider.councilMap.get();
     proposalMap = await dataProvider.proposalMap.get();
     resolutionTree = await dataProvider.resolutionTree.get();
 
-    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
-    updateSpec = makeDefaultAcceptedSpec(govResolutionIndex);
+    const govResolutionIndex = resolutionTree.getNextEmptyIndex();
+    updateSpec = makeDefaultAcceptedSpec(UInt32.from(govResolutionIndex));
 
     const getSeatKey = (seatIndex: number) => Seat.fromIndex(seatIndex);
     const councilKeyPairs = testHelper.networkKeys.council!;
@@ -261,18 +250,18 @@ describe('Engine – governance‑controlled setters', () => {
       councilKeyPairs[0],
       councilMerkleMap,
       getSeatKey(0),
-      Number(govResolutionIndex.toBigint()),
+      Number(govResolutionIndex),
       updateSpec
     );
     const voteB = await generateVoteProof(
       councilKeyPairs[1],
       councilMerkleMap,
       getSeatKey(1),
-      Number(govResolutionIndex.toBigint()),
+      Number(govResolutionIndex),
       updateSpec
     );
 
-    const merged = await GovernanceUpdate.mergeVotes(updateSpec, voteA, voteB);
+    const merged = await EngineUpdate.mergeVotes(updateSpec, voteA, voteB);
 
     const proposalHash = merged.proof.publicOutput.proposalHash;
     const voteBits = merged.proof.publicOutput.cummulatedVoteBitArray;
@@ -294,14 +283,14 @@ describe('Engine – governance‑controlled setters', () => {
         proposalWitness,
         voteBits,
         new ResolutionTree.Witness(
-          resolutionTree.getWitness(govResolutionIndex.toBigint())
+          resolutionTree.getWitness(govResolutionIndex)
         )
       );
     });
 
-    resolutionTree.setLeaf(govResolutionIndex.toBigint(), proposalHash);
+    resolutionTree.setLeaf(govResolutionIndex, proposalHash);
     updateWitness = new ResolutionTree.Witness(
-      resolutionTree.getWitness(govResolutionIndex.toBigint())
+      resolutionTree.getWitness(govResolutionIndex)
     );
   });
 

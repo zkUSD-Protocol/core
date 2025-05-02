@@ -6,7 +6,7 @@ import {
 import { Signature, UInt32, PublicKey, Field } from 'o1js';
 import { KeyPair } from '../../../../types/utility.js';
 import {
-  GovernanceUpdate,
+  EngineUpdate,
   EngineUpdateVoteProof,
 } from '../../../../proofs/engine-update/prove.js';
 import { EngineUpdateSpec } from '../../../../system/engine-update/input.js';
@@ -32,7 +32,7 @@ export async function generateVoteProof(
     updateInputFields
   );
 
-  const { proof } = await GovernanceUpdate.createVote(
+  const { proof } = await EngineUpdate.createVote(
     updateSpec,
     signature,
     councilMember.publicKey,
@@ -40,73 +40,4 @@ export async function generateVoteProof(
     seatKey
   );
   return proof;
-}
-
-/**
- * Rebuilds the Resolution MerkleTree from Council ProposalPassed events.
- * @param events Array of all contract events fetched from the council contract
- * @param treeHeight Height of the MerkleTree (default = 32)
- * @returns The reconstructed MerkleTree of resolutions
- */
-export function rebuildResolutionMerkleTree(
-  events: Array<{ type: string; event: { data: any } }>
-): ResolutionTree {
-  const resolutionTree = new ResolutionTree();
-
-  const resolutionEvents = events.filter(
-    (event) => event.type === 'ProposalPassed'
-  );
-
-  for (const event of resolutionEvents) {
-    const eventData = event.event.data as EngineUpdateProposalPassedEvent;
-    const resolutionIndex = eventData.resolutionIndex.toBigint();
-    const proposalHash = eventData.updateHash as Field;
-
-    resolutionTree.setLeaf(resolutionIndex, proposalHash);
-  }
-
-  return resolutionTree;
-}
-
-export async function prepareCouncilMembers(th: TestHelper<'local'>) {
-  if (
-    th.networkKeys.council === undefined ||
-    th.networkKeys.council.length === 0
-  ) {
-    throw new Error('Council keys are not defined');
-  }
-  return th.networkKeys.council;
-}
-/**
- * Extracts all council management operations from the given events.
- * @param events The array of contract events
- * @returns An array of CouncilUpdateOperation objects
- */
-export function extractCouncilOperationsFromEvents(
-  events: Array<{ type: string; event: { data: any } }>
-): Array<CouncilUpdateOperation> {
-  //Reverse the events array
-  events.reverse();
-  return events
-    .filter((event) => event.type === 'CouncilUpdateActionEvent')
-    .map((event) => event.event.data.action as CouncilUpdateOperation);
-}
-
-/**
- * Finds the index of the first empty leaf (hash equals zero) in the resolution Merkle tree.
- * Throws an error if no empty leaf is found.
- *
- * @param resolutionTree - The Merkle tree containing resolution entries.
- * @returns The index of the first empty leaf as a UInt32.
- */
-export function getNextEmptyResolutionIndex(
-  resolutionTree: ResolutionTree
-): UInt32 {
-  for (let i = 0n; i < resolutionTree.leafCount; i++) {
-    const hash = resolutionTree.getLeaf(i);
-    if (hash.toBigInt() === 0n) {
-      return UInt32.from(i);
-    }
-  }
-  throw new Error('Could not find an empty Resolution Index.');
 }

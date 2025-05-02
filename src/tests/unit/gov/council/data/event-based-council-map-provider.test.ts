@@ -2,12 +2,15 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Field, UInt32, Bool, PublicKey } from 'o1js';
 
-import { CouncilMap } from './council-map.js';
-import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
-import { CouncilUpdateActionEvent } from '../events.js';
-import { CouncilUpdateActions, CouncilUpdateOperation } from '../update/common.js';
-import { Seat } from '../seat.js';
-import { CouncilMapContractEventsProvider } from './event-based-council-map-provider.js';
+import { CouncilMap } from '../../../../../system/council/data/council-map.js';
+import { ZkusdGoverningCouncilContract } from '../../../../../contracts/zkusd-governing-council.js';
+import { CouncilUpdateActionEvent } from '../../../../../system/council/events.js';
+import {
+  CouncilUpdateActions,
+  CouncilUpdateOperation,
+} from '../../../../../system/council/update/common.js';
+import { Seat } from '../../../../../system/council/seat.js';
+import { CouncilMapContractEventsProvider } from '../../../../../system/council/data/event-based-council-map-provider.js';
 
 /* -------------------------------------------------------------------------- */
 /*                              Helper Functions                              */
@@ -229,7 +232,9 @@ describe('CouncilMapContractEventsProvider.rebuildCouncilMerkleMap()', () => {
     const calls: CouncilUpdateOperation[] = [];
 
     const original = CouncilMap.prototype.applyOperations;
-    CouncilMap.prototype.applyOperations = function (...operations: CouncilUpdateOperation[]) {
+    CouncilMap.prototype.applyOperations = function (
+      ...operations: CouncilUpdateOperation[]
+    ) {
       calls.push(...operations);
     };
 
@@ -252,7 +257,6 @@ describe('CouncilMapContractEventsProvider.rebuildCouncilMerkleMap()', () => {
       CouncilMap.prototype.applyOperations = original;
     }
   });
-
 });
 
 /* -------------------------------------------------------------------------- */

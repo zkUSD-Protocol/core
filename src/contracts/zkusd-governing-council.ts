@@ -175,7 +175,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       .assertEquals(resolutionsMerkleRoot, 'Invalid resolution witness');
 
     // now check if the vote count is above the threshold
-    this.checkVoteCountAboveThreshold(proposalHash);
+    this.checkVoteCountAboveThreshold(proposalCurrentVoteBitArray);
 
     // recompute the root and set it and thus enable executing the resolution
     const newResolutionRoot = resolutionWitness.calculateRoot(proposalHash);
@@ -382,14 +382,4 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       );
     }
   }
-}
-
-export function countBits(x: Field): UInt8 {
-  const bits = x.toBits();
-  let voteCount = Field.from(0);
-  for (let i = 0; i < CouncilMap.SEAT_LIMIT; i++) {
-    voteCount = Provable.if(bits[i], voteCount.add(1), voteCount);
-  }
-  const ret = UInt8.Unsafe.fromField(voteCount);
-  return ret;
 }

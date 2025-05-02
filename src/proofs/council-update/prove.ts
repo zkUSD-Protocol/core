@@ -50,8 +50,6 @@ const ManageCouncil = ZkProgram({
 
         voterPublicKey.isEmpty().assertFalse('Empty public key not allowed.');
 
-        Provable.log('seat.value', seat.value);
-
         const councilMember = publicInput.currentCouncilMap.get(seat.value);
 
         councilMember.assertEquals(

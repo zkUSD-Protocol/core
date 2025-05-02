@@ -11,7 +11,7 @@ import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-coun
 import { TransactionManager } from '../transaction/manager.js';
 import { CouncilDataProvider } from '../system/council/data/data-provider.js';
 import {
-  GovernanceUpdate,
+  EngineUpdate,
   EngineUpdateVoteProof,
 } from '../proofs/engine-update/prove.js';
 import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
@@ -239,7 +239,7 @@ export class ZkusdGoverningCouncilClient
       voter = councilMap.getSeatPublicKey(seatFinal)!;
     }
     return (
-      await GovernanceUpdate.createVote(
+      await EngineUpdate.createVote(
         args.updateSpec,
         args.signature,
         voter,
@@ -254,7 +254,7 @@ export class ZkusdGoverningCouncilClient
     rightVoteProof: EngineUpdateVoteProof
   ): Promise<EngineUpdateVoteProof> {
     return (
-      await GovernanceUpdate.mergeVotes(
+      await EngineUpdate.mergeVotes(
         leftVoteProof.publicInput,
         leftVoteProof,
         rightVoteProof

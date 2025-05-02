@@ -58,15 +58,12 @@ import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { EngineUpdateSpec } from '../system/engine-update/input.js';
 import {
-  GovernanceUpdate,
+  EngineUpdate,
   EngineUpdateVoteProof,
 } from '../proofs/engine-update/prove.js';
 import { MinaChainPreconditions } from '../system/engine-update/blockchain-preconditions.js';
 import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
-import {
-  getNextEmptyResolutionIndex,
-  generateVoteProof,
-} from './unit/gov/council/common.js';
+import { generateVoteProof } from './unit/gov/council/common.js';
 import { EngineUpdateOperation } from '../system/engine-update/operation.js';
 import {
   BoolOperation,
@@ -229,6 +226,7 @@ export class TestHelper<E extends string> {
       ...options,
       startingFee: options?.startingFee ?? startingFee,
     });
+
     await h.awaitIncluded();
   }
 
@@ -871,7 +869,7 @@ export class TestHelper<E extends string> {
     }
 
     // 2. Compute new resolution index and updateSpec
-    const govResolutionIndex = getNextEmptyResolutionIndex(resolutionTree);
+    const govResolutionIndex = resolutionTree.getNextEmptyIndex();
     const updateSpec = EngineUpdateSpec.singleOperation(
       govResolutionIndex,
       operation,
@@ -936,19 +934,19 @@ export class TestHelper<E extends string> {
         councilKeyPairs[0],
         councilMerkleMap,
         Seat.fromIndex(0),
-        Number(govResolutionIndex.toBigint()),
+        Number(govResolutionIndex),
         updateSpec
       );
       const vote2 = await generateVoteProof(
         councilKeyPairs[1],
         councilMerkleMap,
         Seat.fromIndex(1),
-        Number(govResolutionIndex.toBigint()),
+        Number(govResolutionIndex),
         updateSpec
       );
 
       // 4. Merge votes
-      const programOutput = await GovernanceUpdate.mergeVotes(
+      const programOutput = await EngineUpdate.mergeVotes(
         vote1.publicInput,
         vote1,
         vote2
@@ -1004,7 +1002,7 @@ export class TestHelper<E extends string> {
 
     // 6. Pass proposal
     const resolutionWitness = new ResolutionTree.Witness(
-      resolutionTree.getWitness(govResolutionIndex.toBigint())
+      resolutionTree.getWitness(govResolutionIndex)
     );
     await this.includeTx(
       this.deployer,

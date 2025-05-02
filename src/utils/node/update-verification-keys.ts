@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function updateVerificationKeys(args: {
   oracleAggregationVk: VerificationKey;
-  governanceUpdateVk: VerificationKey;
+  EngineUpdateVk: VerificationKey;
   manageCouncilVk: VerificationKey;
 }) {
   const keys = {
@@ -12,9 +12,9 @@ export async function updateVerificationKeys(args: {
       data: args.oracleAggregationVk.data,
       hash: args.oracleAggregationVk.hash.toString(),
     },
-    governanceUpdate: {
-      data: args.governanceUpdateVk.data,
-      hash: args.governanceUpdateVk.hash.toString(),
+    EngineUpdate: {
+      data: args.EngineUpdateVk.data,
+      hash: args.EngineUpdateVk.hash.toString(),
     },
     manageCouncil: {
       data: args.manageCouncilVk.data,
@@ -28,15 +28,15 @@ import { Field, VerificationKey } from 'o1js';
 
 export const verificationKeys: {
   oracleAggregation: VerificationKey;
-  governanceUpdate: VerificationKey;
+  EngineUpdate: VerificationKey;
 } = {
 oracleAggregation: {
     data: "${keys.oracleAggregation.data}",
     hash: Field("${keys.oracleAggregation.hash}")
   },
-governanceUpdate:{
-    data: "${keys.governanceUpdate.data}",
-    hash: Field("${keys.governanceUpdate.hash}")
+EngineUpdate:{
+    data: "${keys.EngineUpdate.data}",
+    hash: Field("${keys.EngineUpdate.hash}")
   },
 } as const;
 `;

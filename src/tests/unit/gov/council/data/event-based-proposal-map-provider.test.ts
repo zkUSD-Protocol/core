@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ProposalMap } from './proposal-merkle-map.js';
+import { ProposalMap } from '../../../../../system/council/data/proposal-merkle-map.js';
 
 import { Field, UInt32 } from 'o1js';
-import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
-import { EngineUpdateProposalVoteEvent } from '../events.js';
-import { ProposalMapContractEventsProvider } from './event-based-proposal-map-provider.js';
+import { ZkusdGoverningCouncilContract } from '../../../../../contracts/zkusd-governing-council.js';
+import { EngineUpdateProposalVoteEvent } from '../../../../../system/council/events.js';
+import { ProposalMapContractEventsProvider } from '../../../../../system/council/data/event-based-proposal-map-provider.js';
 
 /* -------------------------------------------------------------------------- */
 /*                              Helper Stubs                                  */

@@ -268,8 +268,8 @@ export class CouncilMap {
     } else if (force) {
       throw new Error('Given seat is empty');
     }
-    // insert 0 at the seat key in the provable
-    this.provableMap.insert(actualSeat.value, Field.from(0));
+    // set 0 at the seat key in the provable
+    this.provableMap.set(actualSeat.value, Field(0));
     // remove the seat from the seatingKeys map
     this._seatingKeys.delete(actualSeat);
   }

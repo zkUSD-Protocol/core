@@ -1,7 +1,6 @@
 import { describe, it, before } from 'node:test';
 
 import { TestHelper } from '../../../test-helper.js';
-import { prepareCouncilMembers } from './common.js';
 import assert from 'assert';
 import { KeyPair } from '../../../../types/utility.js';
 import {
@@ -34,7 +33,7 @@ describe('CouncilUpdate', () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
     const compilationData = await ManageCouncil.compile();
     manageCouncilVk = compilationData.verificationKey;
-    council = await prepareCouncilMembers(testHelper);
+    council = testHelper.networkKeys.council!;
   });
 
   describe('Local Council Merkle Map Management', () => {
@@ -44,8 +43,6 @@ describe('CouncilUpdate', () => {
       for (let i = 0; i < council.length; i++) {
         localCouncilMap.insertAtSeat(council[i].publicKey, Seat.fromIndex(i));
       }
-
-      console.log(localCouncilMap.provable.data.get());
     });
 
     describe('createVote()', () => {
@@ -171,7 +168,7 @@ describe('CouncilUpdate', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Seat.fromIndex(0);
+        const seatPosition = Seat.fromIndex(1);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
@@ -223,8 +220,6 @@ describe('CouncilUpdate', () => {
           { key: newMemberKey2.publicKey, intent: CouncilUpdateIntent.Add },
           { key: council[1].publicKey, intent: CouncilUpdateIntent.Remove },
         ];
-
-        console.log(localCouncilMap.provable.data.get());
 
         const input = CouncilUpdateVoteInput.createFromIntentsWithThreshold(
           localCouncilMap,

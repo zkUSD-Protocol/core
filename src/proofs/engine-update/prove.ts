@@ -9,7 +9,7 @@ import {
   ZkProgram,
 } from 'o1js';
 import { EngineUpdateSpec } from '../../system/engine-update/input.js';
-import { ZkusdProtocolUpdateOutput } from '../../system/engine-update/output.js';
+import { EngineUpdateOutput } from '../../system/engine-update/output.js';
 import { Seat } from '../../system/council/seat.js';
 import {
   CouncilMap,
@@ -17,18 +17,18 @@ import {
 } from '../../system/council/data/council-map.js';
 
 /** Generic multisig zkusd protocol update program */
-export const GovernanceUpdate = ZkProgram({
-  name: 'GovernanceUpdate',
+export const EngineUpdate = ZkProgram({
+  name: 'EngineUpdate',
   publicInput: EngineUpdateSpec,
-  publicOutput: ZkusdProtocolUpdateOutput,
+  publicOutput: EngineUpdateOutput,
   methods: {
     mergeVotes: {
       privateInputs: [SelfProof, SelfProof],
       async method(
         publicInput: EngineUpdateSpec,
-        leftProof: SelfProof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>,
-        rightProof: SelfProof<EngineUpdateSpec, ZkusdProtocolUpdateOutput>
-      ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
+        leftProof: SelfProof<EngineUpdateSpec, EngineUpdateOutput>,
+        rightProof: SelfProof<EngineUpdateSpec, EngineUpdateOutput>
+      ): Promise<{ publicOutput: EngineUpdateOutput }> {
         leftProof.verify();
         rightProof.verify();
 
@@ -74,7 +74,7 @@ export const GovernanceUpdate = ZkProgram({
         voterPublicKey: PublicKey,
         councilMerkleMap: CouncilMapProvable,
         seat: Seat
-      ): Promise<{ publicOutput: ZkusdProtocolUpdateOutput }> {
+      ): Promise<{ publicOutput: EngineUpdateOutput }> {
         seat.assertValid();
         const x = seat.value;
 
@@ -116,4 +116,4 @@ export const GovernanceUpdate = ZkProgram({
   },
 });
 
-export class EngineUpdateVoteProof extends ZkProgram.Proof(GovernanceUpdate) {}
+export class EngineUpdateVoteProof extends ZkProgram.Proof(EngineUpdate) {}

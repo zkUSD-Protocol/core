@@ -104,6 +104,8 @@ export class ProposalMapContractEventsProvider
   // TODO for now naively fetches all the events and rebuilds entire map.
   async refresh(): Promise<void> {
     const events = await this.source.fetchEvents();
+    // We must reverse the events because if they are in the same block then the sorting wont work and it will rebuild a different tree
+    events.reverse();
     this.proposalMap =
       ProposalMapContractEventsProvider.rebuildProposalMap(events);
 
