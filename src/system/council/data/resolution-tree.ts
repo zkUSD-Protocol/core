@@ -95,7 +95,7 @@ export class ResolutionTree extends MerkleTree {
    */
   public getWitnessWrapped(
     index: bigint | number | EngineUpdateSpec
-  ): InstanceType<typeof ResolutionTree.Witness> { 
+  ): InstanceType<typeof ResolutionTree.Witness> {
     if (index instanceof EngineUpdateSpec) {
       return this.getWitnessWrapped(index.govResolutionIndex.toBigint());
     }

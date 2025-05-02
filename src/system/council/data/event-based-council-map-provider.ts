@@ -9,6 +9,7 @@ import {
 import { ZkusdGoverningCouncilContract } from '../../../contracts/zkusd-governing-council.js';
 import { CouncilMap } from './council-map.js';
 import { CouncilUpdateActionEvent } from '../events.js';
+import { UInt32 } from 'o1js';
 
 /**
  * A runtime-narrowed `ProposalSupported` event with the expected structure.
@@ -19,7 +20,9 @@ type CouncilActionEvent = ContractEvent<'CouncilUpdateActionEvent'>;
 /**
  * Runtime check to validate that an event is a `CouncilRootChangedEvent` event
  */
-export function isCouncilRootChangedEvent(e: unknown): e is CouncilRootChangedEvent {
+export function isCouncilRootChangedEvent(
+  e: unknown
+): e is CouncilRootChangedEvent {
   return isContractEvent(e, 'CouncilUpdateEvent');
 }
 
@@ -111,10 +114,10 @@ export class CouncilMapContractEventsProvider
    */
   // TODO for now it naively rebuilds tree from ground up fetching all the events
   async refresh(): Promise<void> {
-
     const events = await this.source.fetchEvents();
-    this.councilMap = CouncilMapContractEventsProvider.rebuildCouncilMerkleMap(events);
-    
+    this.councilMap =
+      CouncilMapContractEventsProvider.rebuildCouncilMerkleMap(events);
+
     // get the latest chunk (ordered from newest to latest)
     // search for sync point, if found them discard all previous events
     // if not found it probably means that these events are to be applied yet
@@ -194,28 +197,29 @@ export class CouncilMapContractEventsProvider
     // }
     // this.proposalMap = map;
   }
- /**
- * Rebuilds the Council MerkleMap from contract events.
- * @param events The array of council contract events (emitted during lifetime)
- * @returns The reconstructed MerkleMap
- */
-public static  rebuildCouncilMerkleMap(
-  events: Array<{ type: string; event: { data: any } }>
-): CouncilMap {
-  const ret = new CouncilMap();
-  CouncilMapContractEventsProvider.applyEvents(ret,events);
-  return ret;
-}
+  /**
+   * Rebuilds the Council MerkleMap from contract events.
+   * @param events The array of council contract events (emitted during lifetime)
+   * @returns The reconstructed MerkleMap
+   */
+  public static rebuildCouncilMerkleMap(
+    events: Array<{ type: string; event: { data: any }; blockHeight: UInt32 }>
+  ): CouncilMap {
+    const ret = new CouncilMap();
+    CouncilMapContractEventsProvider.applyEvents(ret, events);
+    return ret;
+  }
 
-public static applyEvents(
-  councilMap: CouncilMap,
-  events: Array<{ type: string; event: { data: any } }>
-) : void {
-  events
-    .filter(isCouncilActionEvent)
-    .toReversed() // chronological
-    .forEach((e) => councilMap.applyOperations(e.event.data.action))
-}
-
-
+  public static applyEvents(
+    councilMap: CouncilMap,
+    events: Array<{ type: string; event: { data: any }; blockHeight: UInt32 }>
+  ): void {
+    const councilActionEvents = events.filter(isCouncilActionEvent);
+    const sortedEvents = councilActionEvents.sort((a, b) =>
+      a.blockHeight.toBigint() < b.blockHeight.toBigint() ? -1 : 1
+    );
+    sortedEvents.forEach((e) =>
+      councilMap.applyOperations(e.event.data.action)
+    );
+  }
 }

@@ -3,8 +3,8 @@
 // It is used in proofs to mark the vote of particular seat in a field based
 // bit array.
 
-import { Struct, Field, Bool, Gadgets } from 'o1js';
-import { MAX_COUNCIL_MEMBERS } from './constants.js';
+import { Struct, Field, Gadgets } from 'o1js';
+import { MAX_COUNCIL_MEMBERS } from './data/common-constants.js';
 
 export class Seat extends Struct({
   value: Field,
@@ -15,11 +15,7 @@ export class Seat extends Struct({
     if (index < 0) {
       throw new Error('Index out of bounds');
     }
-
-    if (index >= MAX_COUNCIL_MEMBERS) {
-      throw new Error('Index out of bounds');
-    }
-    return new Seat({ value: Field.from(2n ** BigInt(index)) });
+    return Seat.fromField(Field.from(2n ** BigInt(index)));
   }
   static fromField(field: Field): Seat {
     field.assertLessThan(Seat.MAX_VALUE);
@@ -36,9 +32,9 @@ export class Seat extends Struct({
     const x = this.value;
 
     x.assertGreaterThan(Field(0));
-    let xMinus1 = x.sub(Field(1));
+    const xMinus1 = x.sub(Field(1));
 
-    let andValue = Gadgets.and(x, xMinus1, MAX_COUNCIL_MEMBERS);
+    const andValue = Gadgets.and(x, xMinus1, MAX_COUNCIL_MEMBERS);
     andValue.assertEquals(Field(0));
   }
 }

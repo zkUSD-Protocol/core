@@ -199,6 +199,7 @@ describe('GovernanceUpdate', () => {
         councilMerkleMap.provable,
         Seat.fromIndex(seatIndexMaliciousValue)
       );
+
       console.log(
         'cummulatedVoteBitArray value',
         proof.publicOutput.cummulatedVoteBitArray.value

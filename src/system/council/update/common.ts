@@ -1,6 +1,6 @@
 import { Bool, Field, Provable, PublicKey, Struct } from 'o1js';
 import { Seat } from '../seat.js';
-import { COUNCIL_UPDATE_ACTION_COUNT } from '../constants.js';
+import { COUNCIL_UPDATE_ACTION_COUNT } from '../data/common-constants.js';
 /**
  * Defines the intention for a council member update operation.
  * Used to determine whether to add or remove a council member.
