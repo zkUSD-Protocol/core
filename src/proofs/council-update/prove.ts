@@ -3,7 +3,6 @@
 import {
   Field,
   Gadgets,
-  MerkleWitness,
   Poseidon,
   Provable,
   PublicKey,
@@ -11,18 +10,11 @@ import {
   Signature,
   ZkProgram,
 } from 'o1js';
-import {
-  ZkusdCouncilManagementActions,
-  ZkusdCouncilManagementInput,
-  ZkusdCouncilManagementSpec,
-} from '../../system/council-management/input.js';
-import { ZkusdCouncilManagementOutput } from '../../system/council-management/output.js';
-import {
-  MAX_ZKUSD_COUNCIL_SIZE,
-  MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE,
-  ZkusdCouncilMerkleMap,
-  ZkusdCouncilWitness,
-} from './common.js';
+import { CouncilMap } from '../../system/council/data/council-map.js';
+import { CouncilUpdateVoteInput } from '../../system/council/update/input.js';
+import { CouncilUpdateActions } from '../../system/council/update/common.js';
+import { CouncilUpdateVoteOutput } from '../../system/council/update/output.js';
+import { Seat } from '../../system/council/seat.js';
 
 function pubkeyToCouncilSeatLeaf(councilKey: PublicKey, index: number): Field {
   const indexFieldValue = Field.from(2n ** BigInt(index));
@@ -38,54 +30,44 @@ function pubkeyToCouncilSeatLeafFromFieldValue(
 
 const ManageCouncil = ZkProgram({
   name: 'ManageCouncil',
-  publicInput: ZkusdCouncilManagementInput,
-  publicOutput: ZkusdCouncilManagementOutput,
+  publicInput: CouncilUpdateVoteInput,
+  publicOutput: CouncilUpdateVoteOutput,
   methods: {
     createVote: {
-      privateInputs: [Signature, PublicKey, Field],
+      privateInputs: [Signature, PublicKey, Seat],
       async method(
-        publicInput: ZkusdCouncilManagementInput,
+        publicInput: CouncilUpdateVoteInput,
         voterSignature: Signature,
         voterPublicKey: PublicKey,
-        councilMemberSeatPosition: Field // for the seat with an index of 3, this should be 2^3 = 8
-      ): Promise<{ publicOutput: ZkusdCouncilManagementOutput }> {
+        seat: Seat
+      ): Promise<{ publicOutput: CouncilUpdateVoteOutput }> {
         const councilMap = publicInput.currentCouncilMap.clone();
 
-        councilMemberSeatPosition.assertLessThan(
-          Field.from(MAX_ZKUSD_COUNCIL_SIZE_FIELD_VALUE)
-        );
-        const x = councilMemberSeatPosition;
-
-        x.assertGreaterThan(Field(0));
-        let xMinus1 = x.sub(Field(1));
-
-        let andValue = Gadgets.and(x, xMinus1, MAX_ZKUSD_COUNCIL_SIZE);
-        andValue.assertEquals(Field(0));
-
+        seat.assertValid();
         voterSignature
           .verify(voterPublicKey, publicInput.councilManagementSpec.toFields())
           .assertTrue();
 
         voterPublicKey.isEmpty().assertFalse('Empty public key not allowed.');
 
-        const councilMember = publicInput.currentCouncilMap.get(
-          councilMemberSeatPosition
-        );
+        const councilMember = publicInput.currentCouncilMap.get(seat.value);
 
         councilMember.assertEquals(
           Poseidon.hash(voterPublicKey.toFields()),
           'Council member not correct'
         );
 
-        const maxActionLength = ZkusdCouncilManagementActions.MaxLength;
+        const maxActionLength = CouncilUpdateActions.MaxLength;
         const actions =
           publicInput.councilManagementSpec.councilManagementActions.actions;
 
         for (let i = 0; i < maxActionLength; i++) {
           const shouldAdd = actions[i].shouldAdd;
-          const seatPosition = actions[i].councilSeatPosition;
-          const councilKey = actions[i].councilKey;
+          const seat = actions[i].seat;
+          const councilKey = actions[i].member;
           const isDummy = actions[i].isDummy;
+
+          seat.assertValid();
 
           const updatedSeatValue = Provable.if(
             shouldAdd,
@@ -93,13 +75,13 @@ const ManageCouncil = ZkProgram({
             Field.from(0)
           );
 
-          councilMap.setIf(isDummy.not(), seatPosition, updatedSeatValue);
+          councilMap.setIf(isDummy.not(), seat.value, updatedSeatValue);
         }
 
         return {
           publicOutput: {
             updatedCouncilMap: councilMap,
-            cummulatedVoteBitArray: councilMemberSeatPosition,
+            cummulatedVoteBitArray: seat.value,
           },
         };
       },
@@ -107,16 +89,10 @@ const ManageCouncil = ZkProgram({
     mergeVotes: {
       privateInputs: [SelfProof, SelfProof],
       async method(
-        publicInput: ZkusdCouncilManagementInput,
-        leftProof: SelfProof<
-          ZkusdCouncilManagementInput,
-          ZkusdCouncilManagementOutput
-        >,
-        rightProof: SelfProof<
-          ZkusdCouncilManagementInput,
-          ZkusdCouncilManagementOutput
-        >
-      ): Promise<{ publicOutput: ZkusdCouncilManagementOutput }> {
+        publicInput: CouncilUpdateVoteInput,
+        leftProof: SelfProof<CouncilUpdateVoteInput, CouncilUpdateVoteOutput>,
+        rightProof: SelfProof<CouncilUpdateVoteInput, CouncilUpdateVoteOutput>
+      ): Promise<{ publicOutput: CouncilUpdateVoteOutput }> {
         leftProof.verify();
         rightProof.verify();
 
@@ -150,7 +126,7 @@ const ManageCouncil = ZkProgram({
         rightOutput.cummulatedVoteBitArray = Gadgets.or(
           rightOutput.cummulatedVoteBitArray,
           leftOutput.cummulatedVoteBitArray,
-          MAX_ZKUSD_COUNCIL_SIZE
+          CouncilMap.SEAT_LIMIT
         );
 
         return { publicOutput: rightOutput };
@@ -159,10 +135,10 @@ const ManageCouncil = ZkProgram({
   },
 });
 
-class ZkusdCouncilManagementVoteProof extends ZkProgram.Proof(ManageCouncil) {}
+class CouncilUpdateVoteProof extends ZkProgram.Proof(ManageCouncil) {}
 
 export {
-  ZkusdCouncilManagementVoteProof,
+  CouncilUpdateVoteProof,
   ManageCouncil,
   pubkeyToCouncilSeatLeaf,
   pubkeyToCouncilSeatLeafFromFieldValue,

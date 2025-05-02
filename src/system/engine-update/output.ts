@@ -10,7 +10,7 @@ import { Field, Struct } from 'o1js';
  * - `councilMerkleMapRoot` — `Field`: Merkle root of the council members after the update.
  * - `cummulatedVoteBitArray` — `Field`: Bit array encoding accumulated votes.
  */
-export class ZkusdProtocolUpdateOutput extends Struct({
+export class EngineUpdateOutput extends Struct({
   /**
    * Computed hash representing the proposed update specification.
    */

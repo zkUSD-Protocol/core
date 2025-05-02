@@ -33,3 +33,5 @@ local
 price-inputs.json
 /.windsurf/
 /.envrc
+.windsurfrules
+bun.lock

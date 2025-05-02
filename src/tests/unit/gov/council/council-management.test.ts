@@ -1,10 +1,8 @@
 import { describe, it, before } from 'node:test';
 
 import { TestHelper } from '../../../test-helper.js';
-import { prepareCouncilMembers, rebuildCouncilMerkleMap } from './common.js';
 import assert from 'assert';
 import { KeyPair } from '../../../../types/utility.js';
-import { ZkusdCouncilMerkleMap } from '../../../../proofs/council-management/common.js';
 import {
   Field,
   Poseidon,
@@ -15,11 +13,19 @@ import {
   VerificationKey,
   verify,
 } from 'o1js';
-import { ManageCouncil } from '../../../../proofs/council-management/prove.js';
-import { ZkusdCouncilManagementInput } from '../../../../system/council-management/input.js';
-import { ZkusdCouncilManagementOutput } from '../../../../system/council-management/output.js';
+import { ManageCouncil } from '../../../../proofs/council-update/prove.js';
+import {
+  CouncilKeyWithIntent,
+  CouncilUpdateIntent,
+} from '../../../../system/council/update/common.js';
 
-describe('CouncilManagement', () => {
+import { CouncilUpdateVoteOutput } from '../../../../system/council/update/output.js';
+import { CouncilMap } from '../../../../system/council/data/council-map.js';
+import { Seat } from '../../../../system/council/seat.js';
+import { CouncilUpdateVoteInput } from '../../../../system/council/update/input.js';
+import { CouncilDataProvider } from '../../../../system/council/data/data-provider.js';
+
+describe('CouncilUpdate', () => {
   let testHelper: TestHelper<'local'>;
   let council: KeyPair[];
   let manageCouncilVk: VerificationKey;
@@ -27,19 +33,15 @@ describe('CouncilManagement', () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
     const compilationData = await ManageCouncil.compile();
     manageCouncilVk = compilationData.verificationKey;
-    council = await prepareCouncilMembers(testHelper);
+    council = testHelper.networkKeys.council!;
   });
 
   describe('Local Council Merkle Map Management', () => {
-    let localCouncilMap = new ZkusdCouncilMerkleMap();
+    let localCouncilMap = new CouncilMap();
 
     before(async () => {
       for (let i = 0; i < council.length; i++) {
-        const seatIndex = 2n ** BigInt(i);
-        localCouncilMap.set(
-          Field.from(seatIndex),
-          Poseidon.hash(council[i].publicKey.toFields())
-        );
+        localCouncilMap.insertAtSeat(council[i].publicKey, Seat.fromIndex(i));
       }
     });
 
@@ -48,7 +50,7 @@ describe('CouncilManagement', () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -60,7 +62,7 @@ describe('CouncilManagement', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Field(2n ** BigInt(0));
+        const seatPosition = Seat.fromIndex(0);
 
         const { proof } = await ManageCouncil.createVote(
           input,
@@ -77,13 +79,11 @@ describe('CouncilManagement', () => {
           proof.publicOutput;
 
         assert(
-          cummulatedVoteBitArray.equals(seatPosition),
+          cummulatedVoteBitArray.equals(seatPosition.value),
           'Cummulated vote bit array mismatch'
         );
 
-        updatedCouncilMap.assertIncluded(
-          localCouncilMap.getNextEmptySeatPosition()
-        );
+        updatedCouncilMap.assertIncluded(Seat.fromIndex(3).value);
       });
 
       it('should fail if the signature is for different data', async () => {
@@ -91,14 +91,14 @@ describe('CouncilManagement', () => {
         const newVoteThreshold = UInt8.from(3);
         const differentVoteThreshold = UInt8.from(4);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
         );
 
         const differentInput =
-          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
             localCouncilMap,
             differentVoteThreshold,
             [newMemberKey.publicKey]
@@ -110,7 +110,7 @@ describe('CouncilManagement', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Field(2n ** BigInt(0));
+        const seatPosition = Seat.fromIndex(0);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
@@ -128,7 +128,7 @@ describe('CouncilManagement', () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -140,7 +140,7 @@ describe('CouncilManagement', () => {
         );
 
         const councilKey = badKeyPair.publicKey;
-        const seatPosition = Field(2n ** BigInt(0));
+        const seatPosition = Seat.fromIndex(0);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
@@ -156,7 +156,7 @@ describe('CouncilManagement', () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -168,7 +168,7 @@ describe('CouncilManagement', () => {
         );
 
         const councilKey = council[0].publicKey;
-        const seatPosition = Field(2n ** BigInt(1));
+        const seatPosition = Seat.fromIndex(1);
 
         await assert.rejects(async () => {
           await ManageCouncil.createVote(
@@ -186,14 +186,14 @@ describe('CouncilManagement', () => {
         const newMemberPrivateKey = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberPrivateKey.publicKey]
         );
 
-        input.councilManagementSpec.councilManagementActions.actions[0].councilSeatPosition =
-          Field(seatIndexMaliciousValue);
+        input.councilManagementSpec.councilManagementActions.actions[0].seat =
+          Seat.fromIndex(seatIndexMaliciousValue);
 
         const signature = Signature.create(
           newMemberPrivateKey.privateKey,
@@ -205,27 +205,70 @@ describe('CouncilManagement', () => {
             input,
             signature,
             newMemberPrivateKey.publicKey,
-            Field(seatIndexMaliciousValue)
+            Seat.fromIndex(seatIndexMaliciousValue)
           );
         }, 'Expected createVote to fail if the seat index sets multiple bits.');
       });
+
+      it('should create the expected new council from intents', async () => {
+        const newMemberKey: KeyPair = PrivateKey.randomKeypair();
+        const newMemberKey2: KeyPair = PrivateKey.randomKeypair();
+        const newVoteThreshold = UInt8.from(3);
+
+        const intents: CouncilKeyWithIntent[] = [
+          { key: newMemberKey.publicKey, intent: CouncilUpdateIntent.Add },
+          { key: newMemberKey2.publicKey, intent: CouncilUpdateIntent.Add },
+          { key: council[1].publicKey, intent: CouncilUpdateIntent.Remove },
+        ];
+
+        const input = CouncilUpdateVoteInput.createFromIntentsWithThreshold(
+          localCouncilMap,
+          newVoteThreshold,
+          intents
+        );
+
+        const signature1 = Signature.create(
+          council[0].privateKey,
+          input.councilManagementSpec.toFields()
+        );
+
+        const { proof: proof1 } = await ManageCouncil.createVote(
+          input,
+          signature1,
+          council[0].publicKey,
+          Seat.fromIndex(0)
+        );
+
+        const updatedCouncilMap = proof1.publicOutput.updatedCouncilMap;
+
+        const emptySeat = updatedCouncilMap.get(Seat.fromIndex(1).value);
+
+        assert.deepStrictEqual(emptySeat, Field(0));
+
+        const newMember = updatedCouncilMap.get(Seat.fromIndex(3).value);
+        const newMember2 = updatedCouncilMap.get(Seat.fromIndex(4).value);
+
+        assert.deepStrictEqual(
+          newMember,
+          CouncilMap.hashCouncilSeat(newMemberKey.publicKey)
+        );
+        assert.deepStrictEqual(
+          newMember2,
+          CouncilMap.hashCouncilSeat(newMemberKey2.publicKey)
+        );
+      });
     });
+
     describe('mergeVotes()', () => {
-      let proof1: Proof<
-        ZkusdCouncilManagementInput,
-        ZkusdCouncilManagementOutput
-      >;
-      let proof2: Proof<
-        ZkusdCouncilManagementInput,
-        ZkusdCouncilManagementOutput
-      >;
-      let input: ZkusdCouncilManagementInput;
+      let proof1: Proof<CouncilUpdateVoteInput, CouncilUpdateVoteOutput>;
+      let proof2: Proof<CouncilUpdateVoteInput, CouncilUpdateVoteOutput>;
+      let input: CouncilUpdateVoteInput;
 
       before(async () => {
         const newMemberKey: KeyPair = PrivateKey.randomKeypair();
         const newVoteThreshold = UInt8.from(3);
 
-        input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+        input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
           localCouncilMap,
           newVoteThreshold,
           [newMemberKey.publicKey]
@@ -240,7 +283,7 @@ describe('CouncilManagement', () => {
           input,
           signature1,
           council[0].publicKey,
-          Field(2n ** BigInt(0))
+          Seat.fromIndex(0)
         );
 
         proof1 = p1;
@@ -254,7 +297,7 @@ describe('CouncilManagement', () => {
           input,
           signature2,
           council[1].publicKey,
-          Field(2n ** BigInt(1))
+          Seat.fromIndex(1)
         );
 
         proof2 = p2;
@@ -277,7 +320,7 @@ describe('CouncilManagement', () => {
         const newVoteThreshold = UInt8.from(5);
 
         const differentInput =
-          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
             localCouncilMap,
             newVoteThreshold,
             [newMemberKey.publicKey]
@@ -293,7 +336,7 @@ describe('CouncilManagement', () => {
         const newVoteThreshold = UInt8.from(5);
 
         const differentInput =
-          ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+          CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
             localCouncilMap,
             newVoteThreshold,
             [newMemberKey.publicKey]
@@ -308,7 +351,7 @@ describe('CouncilManagement', () => {
           differentInput,
           signature3,
           council[2].publicKey,
-          Field(2n ** BigInt(2))
+          Seat.fromIndex(2)
         );
 
         await assert.rejects(async () => {
@@ -319,16 +362,22 @@ describe('CouncilManagement', () => {
   });
 
   describe('Council Management on Chain', () => {
-    let currentCouncilMap: ZkusdCouncilMerkleMap;
+    let currentCouncilMap: CouncilMap;
     let currentThreshold: UInt8;
+    let initialUpdateProof: Proof<
+      CouncilUpdateVoteInput,
+      CouncilUpdateVoteOutput
+    >;
 
     before(async () => {
       await testHelper.deployTokenContracts();
     });
 
     it('should initialize the council', async () => {
-      const events = await testHelper.council.fetchEvents();
-      const councilMerkleMap = rebuildCouncilMerkleMap(events);
+      const dataProvider = CouncilDataProvider.fromContractEvents(
+        testHelper.council
+      );
+      const councilMerkleMap = await dataProvider.councilMap.get();
 
       const onChainRoot = await testHelper.council.councilMerkleMapRoot.fetch();
 
@@ -343,7 +392,7 @@ describe('CouncilManagement', () => {
       const newMemberKey: KeyPair = PrivateKey.randomKeypair();
       const newVoteThreshold = UInt8.from(3);
 
-      const input = ZkusdCouncilManagementInput.addMembersAndUpdateThreshold(
+      const input = CouncilUpdateVoteInput.addMembersAndUpdateThreshold(
         currentCouncilMap,
         newVoteThreshold,
         [newMemberKey.publicKey]
@@ -358,7 +407,7 @@ describe('CouncilManagement', () => {
         input,
         signature1,
         council[0].publicKey,
-        Field(2n ** BigInt(0))
+        Seat.fromIndex(0)
       );
 
       const signature2 = Signature.create(
@@ -370,16 +419,15 @@ describe('CouncilManagement', () => {
         input,
         signature2,
         council[1].publicKey,
-        Field(2n ** BigInt(1))
+        Seat.fromIndex(1)
       );
 
       const mergedProof = await ManageCouncil.mergeVotes(input, proof1, proof2);
+      initialUpdateProof = mergedProof.proof;
 
       //Update the council on chain
       await testHelper.includeTx(testHelper.deployer, async () => {
-        await testHelper.council.executeZkusdCouncilManagementActions(
-          mergedProof.proof
-        );
+        await testHelper.council.executeCouncilUpdateActions(mergedProof.proof);
       });
 
       const updatedCouncilMap =
@@ -397,6 +445,17 @@ describe('CouncilManagement', () => {
         newVoteThreshold,
         'Updated threshold should match the new vote threshold'
       );
+    });
+
+    it('should fail to submit the same update twice', async () => {
+      await assert.rejects(async () => {
+        //Update the council on chain
+        await testHelper.includeTx(testHelper.deployer, async () => {
+          await testHelper.council.executeCouncilUpdateActions(
+            initialUpdateProof
+          );
+        });
+      }, 'Expected supportProposal to fail with the same update');
     });
   });
 });

@@ -6,7 +6,6 @@ import {
   Bool,
   UInt32,
   UInt8,
-  VerificationKey,
 } from 'o1js';
 
 export class VaultOwnerUpdatedEvent extends Struct({

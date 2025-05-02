@@ -6,12 +6,12 @@
  * and the specific update operation.
  */
 
-import { Field, Struct, UInt32 } from 'o1js';
+import { Field, Poseidon, Struct, UInt32 } from 'o1js';
 import { ZkusdProtocolPreconditions } from './protocol-preconditions.js';
 import { MinaChainPreconditions } from './blockchain-preconditions.js';
 import {
-  ZkusdProtocolUpdateOperation,
-  ZkusdProtocolUpdateOperationFields,
+  EngineUpdateOperation,
+  EngineUpdateOperationFields,
 } from './operation.js';
 
 /**
@@ -23,11 +23,11 @@ import {
  * - `blockchainPreconditions` — Preconditions over the Mina blockchain state.
  * - `protocolUpdateOperation` — The set of specific operations (e.g., parameter change, council update).
  */
-export class ZkusdProtocolUpdateSpec extends Struct({
+export class EngineUpdateSpec extends Struct({
   govResolutionIndex: UInt32,
   protocolUpdatePreconditions: ZkusdProtocolPreconditions,
   blockchainPreconditions: MinaChainPreconditions,
-  protocolUpdateOperation: ZkusdProtocolUpdateOperation,
+  protocolUpdateOperation: EngineUpdateOperation,
 }) {
   /**
    * Creates an empty (no-op) protocol update spec.
@@ -35,14 +35,14 @@ export class ZkusdProtocolUpdateSpec extends Struct({
    * Useful for placeholders or default values.
    *
    * @example
-   * const emptySpec = ZkusdProtocolUpdateSpec.empty();
+   * const emptySpec = EngineUpdateSpec.empty();
    */
-  static empty(): ZkusdProtocolUpdateSpec {
-    return new ZkusdProtocolUpdateSpec({
+  static empty(): EngineUpdateSpec {
+    return new EngineUpdateSpec({
       govResolutionIndex: UInt32.zero,
       protocolUpdatePreconditions: ZkusdProtocolPreconditions.create(),
       blockchainPreconditions: MinaChainPreconditions.always(),
-      protocolUpdateOperation: ZkusdProtocolUpdateOperation.noop(),
+      protocolUpdateOperation: EngineUpdateOperation.noop(),
     });
   }
 
@@ -53,11 +53,11 @@ export class ZkusdProtocolUpdateSpec extends Struct({
    * @param protocolUpdateOperation - The update operation to perform.
    * @param args.blockchainPreconditions - (Optional) Blockchain preconditions.
    * @param args.protocolPreconditions - (Optional) Protocol-specific preconditions.
-   *
+   *j
    * @example
-   * const spec = ZkusdProtocolUpdateSpec.singleOperation(
+   * const spec = EngineUpdateSpec.singleOperation(
    *   42,
-   *   ZkusdProtocolUpdateOperation.create({emergencyStop: BoolOperation.set(Bool(true))}),
+   *   EngineUpdateOperation.create({emergencyStop: BoolOperation.set(Bool(true))}),
    *   {
    *     blockchainPreconditions: MinaChainPreconditions.before({ block: UInt32.from(50000) })
    *   }
@@ -66,26 +66,26 @@ export class ZkusdProtocolUpdateSpec extends Struct({
   static singleOperation(
     resolutionIndex: string | number | bigint | UInt32,
     protocolUpdateOperation:
-      | ZkusdProtocolUpdateOperation
-      | Partial<ZkusdProtocolUpdateOperationFields>,
+      | EngineUpdateOperation
+      | Partial<EngineUpdateOperationFields>,
     args?: {
       blockchainPreconditions?: MinaChainPreconditions;
       protocolPreconditions?: ZkusdProtocolPreconditions;
     }
-  ): ZkusdProtocolUpdateSpec {
-    // if protocolUpdateOperation is not an instance of ZkusdProtocolUpdateOperation,
+  ): EngineUpdateSpec {
+    // if protocolUpdateOperation is not an instance of EngineUpdateOperation,
     // create it from the partial fields
-    let operation: ZkusdProtocolUpdateOperation;
-    if (protocolUpdateOperation instanceof ZkusdProtocolUpdateOperation) {
+    let operation: EngineUpdateOperation;
+    if (protocolUpdateOperation instanceof EngineUpdateOperation) {
       operation = protocolUpdateOperation;
     } else {
-      operation = ZkusdProtocolUpdateOperation.create(protocolUpdateOperation);
+      operation = EngineUpdateOperation.create(protocolUpdateOperation);
     }
     return mkProtocolUpdateInput(resolutionIndex, operation, args);
   }
 
   /**
-   * Converts the ZkusdProtocolUpdateSpec into an array of Fields for circuit operations.
+   * Converts the EngineUpdateSpec into an array of Fields for circuit operations.
    */
   toFields(): Field[] {
     return [
@@ -94,6 +94,10 @@ export class ZkusdProtocolUpdateSpec extends Struct({
       ...this.blockchainPreconditions.toFields(),
       ...this.protocolUpdateOperation.toFields(),
     ];
+  }
+
+  hash(): Field {
+    return Poseidon.hash(this.toFields());
   }
 }
 
@@ -104,19 +108,19 @@ export class ZkusdProtocolUpdateSpec extends Struct({
  */
 function mkProtocolUpdateInput(
   resolutionIndex: string | number | bigint | UInt32,
-  protocolUpdateOperation: ZkusdProtocolUpdateOperation,
+  protocolUpdateOperation: EngineUpdateOperation,
   args?: {
     blockchainPreconditions?: MinaChainPreconditions;
     protocolPreconditions?: ZkusdProtocolPreconditions;
   }
-): ZkusdProtocolUpdateSpec {
+): EngineUpdateSpec {
   const blockchainPreconditions =
     args?.blockchainPreconditions ?? MinaChainPreconditions.always();
 
   const protocolUpdatePreconditions =
     args?.protocolPreconditions ?? ZkusdProtocolPreconditions.create();
 
-  return new ZkusdProtocolUpdateSpec({
+  return new EngineUpdateSpec({
     govResolutionIndex: UInt32.from(resolutionIndex),
     protocolUpdateOperation,
     protocolUpdatePreconditions,

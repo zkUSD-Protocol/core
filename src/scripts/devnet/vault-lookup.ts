@@ -6,14 +6,14 @@ import { LocalTransactionExecutor } from '../../transaction/local-executor.js';
 import { OracleWhitelist } from '../../system/oracle.js';
 import { getNetworkKeys } from '../../config/keys.js';
 import { ITransactionExecutor } from '../../index.node.js';
-import { ZKUSDClient } from '../../client/client.js';
+import { ZkusdEngineClient } from '../../client/engine.js';
 import { blockchain } from '../../types/utility.js';
 
 const address = 'B62qmHrr8EFe5GLaGvn1jt2qEpPZnwd2v2yx5guvBGMTMe5QoSyKeRn';
 const httpProver = '';
 
 async function lookup() {
-  const client = await ZKUSDClient.create({
+  const client = await ZkusdEngineClient.create({
     chain: 'devnet' as blockchain,
     httpProver: 'http://localhost:3337/api/prover',
   });

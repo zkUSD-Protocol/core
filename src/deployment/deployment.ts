@@ -20,17 +20,14 @@ import { IMinaNetworkInterface } from '../mina/network-interface.js';
 import { validPriceBlockCounts } from '../mina/networks.js';
 import { updateVerificationKeys } from '../utils/node/update-verification-keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
-import { GovernanceUpdate } from '../proofs/governance-update/prove.js';
+import { EngineUpdate } from '../proofs/engine-update/prove.js';
 import {
-  ManageCouncil,
-  MAX_ZKUSD_COUNCIL_SIZE,
-  ZKUSD_COUNCIL_TREE_HEIGHT,
-  ZkusdCouncilWitness,
-} from '../proofs/council-management/index.js';
-import {
-  ZkusdCouncilManagementActions,
-  ZkusdCouncilManagementOperation,
-} from '../system/council-management/input.js';
+  CouncilUpdateActions,
+  CouncilUpdateOperation,
+} from '../system/council/update/common.js';
+import { ManageCouncil } from '../proofs/council-update/prove.js';
+import { CouncilMap } from '../system/council/data/council-map.js';
+import { Seat } from '../system/council/seat.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -43,7 +40,7 @@ interface DeployedContracts {
 }
 export interface ZkusdCompilationData {
   oracleAggregationVk: VerificationKey;
-  governanceUpdateVk: VerificationKey;
+  EngineUpdateVk: VerificationKey;
   zkusdEngineContractVk: VerificationKey;
   governmentContractVk: VerificationKey;
   tokenContractVk: VerificationKey;
@@ -67,7 +64,7 @@ export class DeploymentService {
   private _engine: ContractInstance<ReturnType<typeof ZkUsdEngineContract>>;
   private _gov: ContractInstance<ZkusdGoverningCouncilContract>;
   private _oracleAggregationVk: VerificationKey;
-  private _governanceUpdateVk: VerificationKey;
+  private _EngineUpdateVk: VerificationKey;
   private _manageCouncilVk: VerificationKey;
   private _compilationData: Partial<ZkusdCompilationData>;
 
@@ -104,7 +101,7 @@ export class DeploymentService {
   private updateVerificationKeys() {
     updateVerificationKeys({
       oracleAggregationVk: this._oracleAggregationVk,
-      governanceUpdateVk: this._governanceUpdateVk,
+      EngineUpdateVk: this._EngineUpdateVk,
       manageCouncilVk: this._manageCouncilVk,
     });
   }
@@ -127,8 +124,8 @@ export class DeploymentService {
     const oracleAggCompiled = await AggregateOraclePrices.compile();
     this._oracleAggregationVk = oracleAggCompiled.verificationKey;
 
-    const governanceUpdateCompiled = await GovernanceUpdate.compile();
-    this._governanceUpdateVk = governanceUpdateCompiled.verificationKey;
+    const EngineUpdateCompiled = await EngineUpdate.compile();
+    this._EngineUpdateVk = EngineUpdateCompiled.verificationKey;
 
     const manageCouncilCompiled = await ManageCouncil.compile();
     this._manageCouncilVk = manageCouncilCompiled.verificationKey;
@@ -170,7 +167,7 @@ export class DeploymentService {
     console.timeEnd('Compiling Contracts');
     return {
       oracleAggregationVk: this._oracleAggregationVk,
-      governanceUpdateVk: this._governanceUpdateVk,
+      EngineUpdateVk: this._EngineUpdateVk,
       zkusdEngineContractVk: engineCompilationResults?.verificationKey,
       governmentContractVk: tokenCompilationResults?.verificationKey,
       tokenContractVk: governmenttokenCompilationResults?.verificationKey,
@@ -282,25 +279,25 @@ export class DeploymentService {
         throw new Error('Council keys not found in the network keys');
       }
 
-      let councilManagementActions = new ZkusdCouncilManagementActions({
+      let councilManagementActions = new CouncilUpdateActions({
         actions: [],
       });
 
-      for (let i = 0; i < ZkusdCouncilManagementActions.MaxLength; i++) {
+      for (let i = 0; i < CouncilUpdateActions.MaxLength; i++) {
         if (i < councilKeys.length) {
           councilManagementActions.actions.push(
-            new ZkusdCouncilManagementOperation({
-              councilKey: councilKeys[i],
-              councilSeatPosition: Field.from(2n ** BigInt(i)),
+            new CouncilUpdateOperation({
+              member: councilKeys[i],
+              seat: Seat.fromIndex(i),
               shouldAdd: Bool(true),
               isDummy: Bool(false),
             })
           );
         } else {
           councilManagementActions.actions.push(
-            new ZkusdCouncilManagementOperation({
-              councilKey: PublicKey.empty(),
-              councilSeatPosition: Field.from(0),
+            new CouncilUpdateOperation({
+              member: PublicKey.empty(),
+              seat: Seat.fromIndex(0),
               shouldAdd: Bool(false),
               isDummy: Bool(true),
             })
@@ -312,9 +309,9 @@ export class DeploymentService {
         CouncilVoteThresholdRatio * councilKeys?.length
       );
 
-      if (threshold > MAX_ZKUSD_COUNCIL_SIZE) {
+      if (threshold > CouncilMap.SEAT_LIMIT) {
         throw new Error(
-          `Council size exceeds the maximum size of ${MAX_ZKUSD_COUNCIL_SIZE}`
+          `Council size exceeds the maximum size of ${CouncilMap.SEAT_LIMIT}`
         );
       }
 
@@ -338,17 +335,6 @@ export class DeploymentService {
         }
       );
       await txHandle.awaitIncluded();
-
-      //Lets verify that the actions create the same root as on chain
-      const onChainRoot = await this._gov.contract.councilMerkleMapRoot.fetch();
-
-      console.log('On chain root', onChainRoot?.toString());
-
-      const merkleMap = ZkusdGoverningCouncilContract.buildCouncilMerkleTree(
-        councilManagementActions.actions
-      );
-
-      console.log('Merkle map', merkleMap.root.toString());
     } else {
       console.log('Gov contracts already deployed');
     }

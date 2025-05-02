@@ -32,7 +32,7 @@ import {
   TransactionArgs,
   ZkusdEngineTransactionType,
 } from '../../system/transaction.js';
-import { ZKUSDClient } from '../../client/client.js';
+import { ZkusdEngineClient } from '../../client/engine.js';
 import { getOracles, Oracle } from '../../config/oracles.js';
 import { ZkusdGoverningCouncilContract } from '../../contracts/zkusd-governing-council.js';
 

@@ -5,8 +5,8 @@ import { UInt32 } from 'o1js';
 import {
   MinaChainPreconditions,
   ValidityRangeUInt32,
-} from '../../../../system/governance-update/blockchain-preconditions.js';
-import { requireBlockchainPreconditions } from '../../../../system/governance-update/blockchain-state.js';
+} from '../../../../system/engine-update/blockchain-preconditions.js';
+import { requireBlockchainPreconditions } from '../../../../system/engine-update/blockchain-state.js';
 
 function fakeSlot(value: UInt32) {
   return {
