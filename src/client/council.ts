@@ -18,12 +18,22 @@ import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
 import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { Field } from 'o1js/dist/node/lib/provable/field.js';
-import { CouncilUpdateSpec } from '../system/council/update/input.js';
-import { CouncilUpdateOperation } from '../system/council/update/common.js';
-import { CouncilUpdateVoteProof } from '../proofs/council-update/prove.js';
+import {
+  CouncilUpdateSpec,
+  CouncilUpdateVoteInput,
+} from '../system/council/update/input.js';
+import {
+  CouncilKeyWithIntent,
+  CouncilUpdateOperation,
+} from '../system/council/update/common.js';
+import {
+  CouncilUpdateVoteProof,
+  ManageCouncil,
+} from '../proofs/council-update/prove.js';
 import { Seat } from '../system/council/seat.js';
+import { CouncilMap } from '../system/council/data/council-map.js';
 
-type ProposalUpdateResults = {
+type UpdateResults = {
   transactionIncluded: boolean;
   votesMissing?: bigint;
   info?: string | null;
@@ -50,35 +60,34 @@ export interface EngineUpdateClient {
     voteProof: EngineUpdateVoteProof,
     senderKeys: KeyPair,
     args?: { force?: boolean }
-  ): Promise<ProposalUpdateResults>;
+  ): Promise<UpdateResults>;
 
   tryPassProposal(
     updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair,
     opts?: { force?: boolean }
-  ): Promise<ProposalUpdateResults>;
+  ): Promise<UpdateResults>;
 
   applyPassedProposal(
     updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair
-  ): Promise<ProposalUpdateResults>;
+  ): Promise<UpdateResults>;
 
   submitVoteAndTryPassAndApply(args: {
     voteProof: EngineUpdateVoteProof;
     senderKeys: KeyPair;
     opts?: { force?: boolean };
-  }): Promise<ProposalUpdateResults>;
+  }): Promise<UpdateResults>;
 }
 
 export interface CouncilUpdateClient {
-  createSpec(args: {
-    operation: CouncilUpdateOperation;
-    protocolPreconditions: ZkusdProtocolPreconditions;
-    blockchainPreconditions: MinaChainPreconditions;
-  }): Promise<CouncilUpdateSpec>;
+  createInput(args: {
+    intents: CouncilKeyWithIntent[];
+    newVoteThreshold: UInt8;
+  }): Promise<CouncilUpdateVoteInput>;
 
   createVoteProof(args: {
-    updateSpec: CouncilUpdateSpec;
+    input: CouncilUpdateVoteInput;
     signature: Signature;
     seat: Seat | PublicKey;
   }): Promise<CouncilUpdateVoteProof>;
@@ -88,28 +97,11 @@ export interface CouncilUpdateClient {
     rightVoteProof: CouncilUpdateVoteProof
   ): Promise<CouncilUpdateVoteProof>;
 
-  submitVote(
+  executeCouncilUpdate(
     voteProof: CouncilUpdateVoteProof,
     senderKeys: KeyPair,
     args?: { force?: boolean }
-  ): Promise<ProposalUpdateResults>;
-
-  tryPassProposal(
-    updateSpec: CouncilUpdateSpec,
-    senderKeys: KeyPair,
-    opts?: { force?: boolean }
-  ): Promise<ProposalUpdateResults>;
-
-  applyPassedProposal(
-    updateSpec: CouncilUpdateSpec,
-    senderKeys: KeyPair
-  ): Promise<ProposalUpdateResults>;
-
-  submitVoteAndTryPassAndApply(args: {
-    voteProof: CouncilUpdateVoteProof;
-    senderKeys: KeyPair;
-    opts?: { force?: boolean };
-  }): Promise<ProposalUpdateResults>;
+  ): Promise<UpdateResults>;
 }
 
 export interface IZkusdGoverningCouncilClient {
@@ -147,31 +139,10 @@ export class ZkusdGoverningCouncilClient
 
   // --- CouncilUpdateClient stub ---
   private councilUpdateImpl: CouncilUpdateClient = {
-    createSpec: async () => {
-      throw new Error('CouncilUpdateClient.createSpec not implemented');
-    },
-    createVoteProof: async () => {
-      throw new Error('CouncilUpdateClient.createVoteProof not implemented');
-    },
-    mergeVoteProofs: async () => {
-      throw new Error('CouncilUpdateClient.mergeVoteProofs not implemented');
-    },
-    submitVote: async () => {
-      throw new Error('CouncilUpdateClient.submitVote not implemented');
-    },
-    tryPassProposal: async () => {
-      throw new Error('CouncilUpdateClient.tryPassProposal not implemented');
-    },
-    applyPassedProposal: async () => {
-      throw new Error(
-        'CouncilUpdateClient.applyPassedProposal not implemented'
-      );
-    },
-    submitVoteAndTryPassAndApply: async () => {
-      throw new Error(
-        'CouncilUpdateClient.submitVoteAndTryPassAndApply not implemented'
-      );
-    },
+    createInput: this.createCouncilUpdateInput.bind(this),
+    createVoteProof: this.createCouncilUpdateVoteProof.bind(this),
+    mergeVoteProofs: this.mergeCouncilUpdateVoteProofs.bind(this),
+    executeCouncilUpdate: this.executeCouncilUpdate.bind(this),
   };
 
   static withDataFromContractEvents(
@@ -202,6 +173,112 @@ export class ZkusdGoverningCouncilClient
     this.txMgr = txMgr;
   }
 
+  private async getVoterAndSeat(
+    seat: Seat | PublicKey,
+    councilMap: CouncilMap
+  ): Promise<{
+    voter: PublicKey;
+    seatFinal: Seat;
+  }> {
+    let voter: PublicKey;
+    let seatFinal: Seat;
+    if (seat instanceof PublicKey) {
+      voter = seat;
+      seatFinal = councilMap.getPubkeySeatKey(voter)!;
+    } else {
+      seatFinal = seat;
+      voter = councilMap.getSeatPublicKey(seatFinal)!;
+    }
+    return { voter, seatFinal };
+  }
+
+  private async getThreshold() {
+    const threshold = await this.councilContract.votePassThreshold.fetch();
+    if (!threshold) {
+      throw new Error('Could not fetch vote threshold from the contract');
+    }
+    return threshold;
+  }
+
+  public async createCouncilUpdateInput(args: {
+    intents: CouncilKeyWithIntent[];
+    newVoteThreshold: UInt8;
+  }): Promise<CouncilUpdateVoteInput> {
+    return CouncilUpdateVoteInput.createFromIntentsWithThreshold(
+      await this.data.councilMap.get(),
+      args.newVoteThreshold,
+      args.intents
+    );
+  }
+
+  public async createCouncilUpdateVoteProof(args: {
+    input: CouncilUpdateVoteInput;
+    signature: Signature;
+    seat: Seat | PublicKey;
+  }): Promise<CouncilUpdateVoteProof> {
+    const { voter, seatFinal } = await this.getVoterAndSeat(
+      args.seat,
+      await this.data.councilMap.get()
+    );
+
+    const voteProof = await ManageCouncil.createVote(
+      args.input,
+      args.signature,
+      voter,
+      seatFinal
+    );
+
+    return voteProof.proof as CouncilUpdateVoteProof;
+  }
+
+  public async mergeCouncilUpdateVoteProofs(
+    leftVoteProof: CouncilUpdateVoteProof,
+    rightVoteProof: CouncilUpdateVoteProof
+  ): Promise<CouncilUpdateVoteProof> {
+    return (
+      await ManageCouncil.mergeVotes(
+        leftVoteProof.publicInput,
+        leftVoteProof,
+        rightVoteProof
+      )
+    ).proof as CouncilUpdateVoteProof;
+  }
+
+  public async executeCouncilUpdate(
+    voteProof: CouncilUpdateVoteProof,
+    senderKeys: KeyPair,
+    args?: { force?: boolean }
+  ): Promise<UpdateResults> {
+    const threshold = await this.getThreshold();
+
+    const proofVoteCount = ProposalMap.countBits(
+      voteProof.publicOutput.cummulatedVoteBitArray
+    );
+
+    if (proofVoteCount.lessThanOrEqual(threshold).toBoolean() && !args?.force) {
+      return {
+        transactionIncluded: false,
+        votesMissing: clampZero(
+          threshold.toBigInt() - proofVoteCount.toBigInt()
+        ),
+        info: `Tx not sent. You only have ${proofVoteCount.toString()} votes. Threshold is ${threshold.toString()}.`,
+      };
+    }
+
+    try {
+      const txh = await this.txMgr.tx(senderKeys, async () => {
+        await this.councilContract.executeCouncilUpdateActions(voteProof);
+      });
+      await txh.awaitIncluded();
+      return { transactionIncluded: true, info: null };
+    } catch (e) {
+      return {
+        transactionIncluded: false,
+        info: `Error: ${JSON.stringify(e)}`,
+      };
+    }
+  }
+
   public async createEngineUpdateSpec(args: {
     operation: Partial<EngineUpdateOperationFields> | EngineUpdateOperation;
     protocolPreconditions: ZkusdProtocolPreconditions;
@@ -229,15 +306,10 @@ export class ZkusdGoverningCouncilClient
     seat: Seat | PublicKey;
   }): Promise<EngineUpdateVoteProof> {
     const councilMap = await this.data.councilMap.get();
-    let voter: PublicKey;
-    let seatFinal: Seat;
-    if (args.seat instanceof PublicKey) {
-      voter = args.seat;
-      seatFinal = councilMap.getPubkeySeatKey(voter)!;
-    } else {
-      seatFinal = args.seat;
-      voter = councilMap.getSeatPublicKey(seatFinal)!;
-    }
+    const { voter, seatFinal } = await this.getVoterAndSeat(
+      args.seat,
+      councilMap
+    );
     return (
       await EngineUpdate.createVote(
         args.updateSpec,
@@ -266,11 +338,8 @@ export class ZkusdGoverningCouncilClient
     voteProof: EngineUpdateVoteProof,
     senderKeys: KeyPair,
     args?: { force?: boolean }
-  ): Promise<ProposalUpdateResults> {
-    const threshold = await this.councilContract.votePassThreshold.fetch();
-    if (!threshold) {
-      throw new Error('Could not fetch vote threshold from the contract');
-    }
+  ): Promise<UpdateResults> {
+    const threshold = await this.getThreshold();
 
     // get the current off-chain data
     let proposalMap = await this.data.proposalMap.get();
@@ -346,7 +415,7 @@ export class ZkusdGoverningCouncilClient
     updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair,
     opts?: { force?: boolean }
-  ): Promise<ProposalUpdateResults> {
+  ): Promise<UpdateResults> {
     const resolutionTree = await this.data.resolutionTree.get();
     const resolutionWitness = resolutionTree.getWitnessWrapped(
       updateSpec.govResolutionIndex.toBigint()
@@ -417,7 +486,7 @@ export class ZkusdGoverningCouncilClient
   public async applyPassedUpdateToEngine(
     updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair
-  ): Promise<ProposalUpdateResults> {
+  ): Promise<UpdateResults> {
     // -------------------------------------------------------------------------
     // 1. Build the witness once – it is reused for every setter call
     // -------------------------------------------------------------------------
@@ -515,7 +584,7 @@ export class ZkusdGoverningCouncilClient
     voteProof: EngineUpdateVoteProof;
     senderKeys: KeyPair;
     opts?: { force?: boolean };
-  }): Promise<ProposalUpdateResults> {
+  }): Promise<UpdateResults> {
     const { voteProof, opts } = args;
 
     // Submit the vote
