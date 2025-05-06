@@ -61,6 +61,8 @@ import {
 import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
 import { ZkusdEngineClient } from './client/engine.js';
+import {IZkusdGoverningCouncilClient, ZkusdGoverningCouncilClient} from './client/council.js';
+import {ZkusdUpdateProtocolState} from "./system/engine-update/protocol-state.js"
 import { KeyPair } from './types/utility.js';
 import {
   TransactionStatusNew,
@@ -76,6 +78,8 @@ import {
   OracleConfig,
 } from './config/oracles.js';
 import { VaultState } from './system/vault.js';
+import { EngineUpdateOperationFields } from './system/engine-update/operation.js';
+import { deserializeProof, serializeProof } from './proofs/serialization.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -153,6 +157,12 @@ export type {
 export { proveTransaction };
 
 export { ZkusdEngineClient as ZKUSDClient };
+
+export type {IZkusdGoverningCouncilClient as IZKUSDGovClient};
+export {ZkusdGoverningCouncilClient as ZKUSDGovClient};
+
+export {ZkusdUpdateProtocolState, EngineUpdateOperationFields}
+export {serializeProof, deserializeProof}
 
 //export oracle config
 export {

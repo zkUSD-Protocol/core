@@ -6,7 +6,7 @@ import {
 import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
 import { Bool, Poseidon, PublicKey, Signature, UInt8 } from 'o1js';
 import { EngineUpdateSpec } from '../system/engine-update/input.js';
-import { KeyPair } from '../types/utility.js';
+import { blockchain, KeyPair } from '../types/utility.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { TransactionManager } from '../transaction/manager.js';
 import { CouncilDataProvider } from '../system/council/data/data-provider.js';
@@ -29,6 +29,12 @@ import {
 } from '../proofs/council-update/prove.js';
 import { Seat } from '../system/council/seat.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
+import { MinaNetworkInterface } from '../mina/network-interface.js';
+import { HttpClientProver } from '../provers/httpclientprover.js';
+import { ExternalTransactionExecutor } from '../index.node.js';
+import { networkConfig } from 'o1js/dist/node/lib/mina/fetch.js';
+import { LocalTransactionExecutor } from '../transaction/local-executor.js';
+import { getNetworkKeys } from '../config/keys.js';
 
 type UpdateResults = {
   transactionIncluded: boolean;
@@ -114,7 +120,7 @@ export interface IZkusdGoverningCouncilClient {
 export class ZkusdGoverningCouncilClient
   implements IZkusdGoverningCouncilClient
 {
-  // Implement interface fields
+  // Implement interface field
   public readonly engineUpdate: EngineUpdateClient;
   public readonly councilUpdate: CouncilUpdateClient;
   readonly data: CouncilDataProvider;
@@ -142,20 +148,27 @@ export class ZkusdGoverningCouncilClient
     executeCouncilUpdate: this.executeCouncilUpdate.bind(this),
   };
 
-  static withDataFromContractEvents(
-    councilContract: ZkusdGoverningCouncilContract,
-    txMgr: TransactionManager<any>
+  static async default(
+    chain: blockchain,
   ) {
+    const mina = await MinaNetworkInterface.initChain(chain);
+    const txMgr = TransactionManager.new(mina,{default: new LocalTransactionExecutor()});
+    // fetch the contract account public key
+    const address = getNetworkKeys(chain).government;
+    if(!address){
+      throw new Error("Could not access council contract address.");
+    }
+    const contract = new ZkusdGoverningCouncilContract(address.publicKey);
     const fetchCurrentBlockHeight = async () => {
       // const ret = txMgr.mina.getNetworkState().blockchainLength; //
       return undefined;
     };
     return new ZkusdGoverningCouncilClient(
       CouncilDataProvider.fromContractEvents(
-        councilContract,
+        contract,
         fetchCurrentBlockHeight
       ),
-      councilContract,
+      contract,
       txMgr
     );
   }

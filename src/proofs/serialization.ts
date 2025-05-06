@@ -5,7 +5,7 @@ import { JsonProof } from 'o1js';
  * @param obj The object to serialize.
  * @returns The serialized object.
  */
-export function serializeToJson<T extends { toJSON(): JsonProof }>(obj: T): JsonProof {
+export function serializeProof<T extends { toJSON(): JsonProof }>(obj: T): JsonProof {
   return obj.toJSON();
 }
 
@@ -14,7 +14,7 @@ export function serializeToJson<T extends { toJSON(): JsonProof }>(obj: T): Json
  * @param serializedObj The serialized object.
  * @returns The deserialized object.
  */
-export async function deserializeFromJson<T>(
+export async function deserializeProof<T>(
   serializedObj: object,
   clazz: { fromJSON(json: JsonProof): T }
 ): Promise<T> {

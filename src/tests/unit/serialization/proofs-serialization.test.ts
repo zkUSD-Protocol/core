@@ -7,7 +7,7 @@ import { CouncilMap } from "../../../system/council/data/council-map.js";
 import { Seat } from "../../../system/council/seat.js";
 import { describe, before, it } from "node:test";
 import { FieldOperation } from "../../../system/engine-update/simple-operations.js";
-import { deserializeFromJson, serializeToJson } from "../../../proofs/serialization.js";
+import { deserializeProof, serializeProof } from "../../../proofs/serialization.js";
 
 
 
@@ -38,11 +38,11 @@ describe('JSON round-trip for Update proofs', () => {
     const seat = Seat.fromIndex(0);
     const signature = Signature.create(keys.privateKey, update.toFields());
     const proofOriginal = await EngineUpdate.createVote(update, signature, keys.publicKey, councilMap.provable, seat);
-    const proofSerialized = serializeToJson(proofOriginal.proof);
+    const proofSerialized = serializeProof(proofOriginal.proof);
     const proofJsonString = JSON.stringify(proofSerialized);
     //----------
     const proofJsonParsed = JSON.parse(proofJsonString);
-    const proofDeserialized = await deserializeFromJson(proofJsonParsed, EngineUpdateVoteProof);
+    const proofDeserialized = await deserializeProof(proofJsonParsed, EngineUpdateVoteProof);
 
     const updateDeserialized = proofDeserialized.publicInput;
     Poseidon.hash(updateDeserialized.toFields()).assertEquals(Poseidon.hash(update.toFields()));
@@ -73,11 +73,11 @@ describe('JSON round-trip for Update proofs', () => {
     const seat = Seat.fromIndex(0);
     const signature = Signature.create(keys.privateKey, updateInput.councilManagementSpec.toFields());
     const proofOriginal = await CouncilUpdate.createVote(updateInput, signature, keys.publicKey, seat);
-    const proofSerialized = serializeToJson(proofOriginal.proof);
+    const proofSerialized = serializeProof(proofOriginal.proof);
     const proofJsonString = JSON.stringify(proofSerialized);
     //----------
     const proofJsonParsed = JSON.parse(proofJsonString);
-    const proofDeserialized = await deserializeFromJson(proofJsonParsed, CouncilUpdateVoteProof);
+    const proofDeserialized = await deserializeProof(proofJsonParsed, CouncilUpdateVoteProof);
 
     const updateDeserialized = proofDeserialized.publicInput;
     Poseidon.hash(updateDeserialized.toFields()).assertEquals(Poseidon.hash(updateInput.toFields()));
