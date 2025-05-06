@@ -105,11 +105,11 @@ export const EngineUpdate = ZkProgram({
         );
 
         return {
-          publicOutput: {
+          publicOutput: new EngineUpdateOutput({
             proposalHash: Poseidon.hash(proofDataFields),
             councilMerkleMapRoot: councilMerkleMap.root,
             cummulatedVoteBitArray: seat.value,
-          },
+          }),
         };
       },
     },

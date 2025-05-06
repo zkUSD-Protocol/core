@@ -25,4 +25,12 @@ export class EngineUpdateOutput extends Struct({
    * Bit array (stored as a Field) encoding the accumulated votes.
    */
   cummulatedVoteBitArray: Field,
-}) {}
+}) {
+  public toFields(): Field[] {
+    return [
+      this.proposalHash,
+      this.councilMerkleMapRoot,
+      this.cummulatedVoteBitArray,
+    ];
+  }
+}
