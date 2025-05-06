@@ -25,7 +25,7 @@ import {
   CouncilUpdateActions,
   CouncilUpdateOperation,
 } from '../system/council/update/common.js';
-import { ManageCouncil } from '../proofs/council-update/prove.js';
+import { CouncilUpdate } from '../proofs/council-update/prove.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
 import { Seat } from '../system/council/seat.js';
 
@@ -127,8 +127,8 @@ export class DeploymentService {
     const EngineUpdateCompiled = await EngineUpdate.compile();
     this._EngineUpdateVk = EngineUpdateCompiled.verificationKey;
 
-    const manageCouncilCompiled = await ManageCouncil.compile();
-    this._manageCouncilVk = manageCouncilCompiled.verificationKey;
+    const councilUpdateCompiled = await CouncilUpdate.compile();
+    this._manageCouncilVk = councilUpdateCompiled.verificationKey;
     this.updateVerificationKeys();
 
     const ZkUsdEngine = ZkUsdEngineContract({

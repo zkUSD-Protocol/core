@@ -18,7 +18,7 @@ export class Seat extends Struct({
     return Seat.fromField(Field.from(2n ** BigInt(index)));
   }
   static fromField(field: Field): Seat {
-    field.assertLessThan(Seat.MAX_VALUE);
+    field.assertLessThan(Seat.MAX_VALUE, 'Seat must be less than MAX_VALUE');
     return new Seat({ value: field });
   }
 
@@ -28,13 +28,16 @@ export class Seat extends Struct({
   }
 
   assertValid(): void {
-    this.value.assertLessThan(Seat.MAX_VALUE);
+    this.value.assertLessThan(
+      Seat.MAX_VALUE,
+      'Seat must be less than MAX_VALUE'
+    );
     const x = this.value;
 
-    x.assertGreaterThan(Field(0));
+    x.assertGreaterThan(Field(0), 'Seat must be greater than 0');
     const xMinus1 = x.sub(Field(1));
 
     const andValue = Gadgets.and(x, xMinus1, MAX_COUNCIL_MEMBERS);
-    andValue.assertEquals(Field(0));
+    andValue.assertEquals(Field(0), 'Seat must be a power of 2');
   }
 }

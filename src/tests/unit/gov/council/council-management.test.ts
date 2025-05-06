@@ -13,7 +13,7 @@ import {
   VerificationKey,
   verify,
 } from 'o1js';
-import { ManageCouncil } from '../../../../proofs/council-update/prove.js';
+import { CouncilUpdate } from '../../../../proofs/council-update/prove.js';
 import {
   CouncilKeyWithIntent,
   CouncilUpdateIntent,
@@ -31,7 +31,7 @@ describe('CouncilUpdate', () => {
   let manageCouncilVk: VerificationKey;
   before(async () => {
     testHelper = await TestHelper.initLocalChain({ proofsEnabled: true });
-    const compilationData = await ManageCouncil.compile();
+    const compilationData = await CouncilUpdate.compile();
     manageCouncilVk = compilationData.verificationKey;
     council = testHelper.networkKeys.council!;
   });
@@ -64,7 +64,7 @@ describe('CouncilUpdate', () => {
         const councilKey = council[0].publicKey;
         const seatPosition = Seat.fromIndex(0);
 
-        const { proof } = await ManageCouncil.createVote(
+        const { proof } = await CouncilUpdate.createVote(
           input,
           signature,
           councilKey,
@@ -113,7 +113,7 @@ describe('CouncilUpdate', () => {
         const seatPosition = Seat.fromIndex(0);
 
         await assert.rejects(async () => {
-          await ManageCouncil.createVote(
+          await CouncilUpdate.createVote(
             input,
             differentSignature,
             councilKey,
@@ -143,7 +143,7 @@ describe('CouncilUpdate', () => {
         const seatPosition = Seat.fromIndex(0);
 
         await assert.rejects(async () => {
-          await ManageCouncil.createVote(
+          await CouncilUpdate.createVote(
             input,
             signature,
             councilKey,
@@ -171,7 +171,7 @@ describe('CouncilUpdate', () => {
         const seatPosition = Seat.fromIndex(1);
 
         await assert.rejects(async () => {
-          await ManageCouncil.createVote(
+          await CouncilUpdate.createVote(
             input,
             signature,
             councilKey,
@@ -201,7 +201,7 @@ describe('CouncilUpdate', () => {
         );
 
         await assert.rejects(async () => {
-          await ManageCouncil.createVote(
+          await CouncilUpdate.createVote(
             input,
             signature,
             newMemberPrivateKey.publicKey,
@@ -232,7 +232,7 @@ describe('CouncilUpdate', () => {
           input.councilManagementSpec.toFields()
         );
 
-        const { proof: proof1 } = await ManageCouncil.createVote(
+        const { proof: proof1 } = await CouncilUpdate.createVote(
           input,
           signature1,
           council[0].publicKey,
@@ -279,7 +279,7 @@ describe('CouncilUpdate', () => {
           input.councilManagementSpec.toFields()
         );
 
-        const { proof: p1 } = await ManageCouncil.createVote(
+        const { proof: p1 } = await CouncilUpdate.createVote(
           input,
           signature1,
           council[0].publicKey,
@@ -293,7 +293,7 @@ describe('CouncilUpdate', () => {
           input.councilManagementSpec.toFields()
         );
 
-        const { proof: p2 } = await ManageCouncil.createVote(
+        const { proof: p2 } = await CouncilUpdate.createVote(
           input,
           signature2,
           council[1].publicKey,
@@ -304,7 +304,7 @@ describe('CouncilUpdate', () => {
       });
 
       it('should merge two votes', async () => {
-        const mergedProof = await ManageCouncil.mergeVotes(
+        const mergedProof = await CouncilUpdate.mergeVotes(
           input,
           proof1,
           proof2
@@ -327,7 +327,7 @@ describe('CouncilUpdate', () => {
           );
 
         await assert.rejects(async () => {
-          await ManageCouncil.mergeVotes(differentInput, proof1, proof2);
+          await CouncilUpdate.mergeVotes(differentInput, proof1, proof2);
         }, 'Expected mergeVotes to fail with different input');
       });
 
@@ -347,7 +347,7 @@ describe('CouncilUpdate', () => {
           differentInput.councilManagementSpec.toFields()
         );
 
-        const { proof: p3 } = await ManageCouncil.createVote(
+        const { proof: p3 } = await CouncilUpdate.createVote(
           differentInput,
           signature3,
           council[2].publicKey,
@@ -355,7 +355,7 @@ describe('CouncilUpdate', () => {
         );
 
         await assert.rejects(async () => {
-          await ManageCouncil.mergeVotes(input, proof1, p3);
+          await CouncilUpdate.mergeVotes(input, proof1, p3);
         }, 'Expected mergeVotes to fail with different proof');
       });
     });
@@ -403,7 +403,7 @@ describe('CouncilUpdate', () => {
         input.councilManagementSpec.toFields()
       );
 
-      const { proof: proof1 } = await ManageCouncil.createVote(
+      const { proof: proof1 } = await CouncilUpdate.createVote(
         input,
         signature1,
         council[0].publicKey,
@@ -415,14 +415,14 @@ describe('CouncilUpdate', () => {
         input.councilManagementSpec.toFields()
       );
 
-      const { proof: proof2 } = await ManageCouncil.createVote(
+      const { proof: proof2 } = await CouncilUpdate.createVote(
         input,
         signature2,
         council[1].publicKey,
         Seat.fromIndex(1)
       );
 
-      const mergedProof = await ManageCouncil.mergeVotes(input, proof1, proof2);
+      const mergedProof = await CouncilUpdate.mergeVotes(input, proof1, proof2);
       initialUpdateProof = mergedProof.proof;
 
       //Update the council on chain

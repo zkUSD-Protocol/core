@@ -106,17 +106,9 @@ export class CouncilUpdateVoteInput extends Struct({
       );
     }
 
-    let councilManagementActions = new CouncilUpdateActions({
-      actions: [],
-    });
-
+    // replace below with the new helper that pads automatically
     const operations = currentCouncilMap.createActionsFromIntents(keyIntents);
-    councilManagementActions.actions.push(...operations);
-
-    // pad up to MaxLength with dummy operations
-    for (let i = operations.length; i < CouncilUpdateActions.MaxLength; i++) {
-      councilManagementActions.actions.push(CouncilUpdateOperation.dummy());
-    }
+    const councilManagementActions = CouncilUpdateActions.fromOperations(...operations);
 
     const councilManagementSpec = new CouncilUpdateSpec({
       councilManagementActions,

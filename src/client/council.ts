@@ -17,18 +17,15 @@ import {
 import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
 import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import { Field } from 'o1js/dist/node/lib/provable/field.js';
 import {
-  CouncilUpdateSpec,
   CouncilUpdateVoteInput,
 } from '../system/council/update/input.js';
 import {
   CouncilKeyWithIntent,
-  CouncilUpdateOperation,
 } from '../system/council/update/common.js';
 import {
+  CouncilUpdate,
   CouncilUpdateVoteProof,
-  ManageCouncil,
 } from '../proofs/council-update/prove.js';
 import { Seat } from '../system/council/seat.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
@@ -221,7 +218,7 @@ export class ZkusdGoverningCouncilClient
       await this.data.councilMap.get()
     );
 
-    const voteProof = await ManageCouncil.createVote(
+    const voteProof = await CouncilUpdate.createVote(
       args.input,
       args.signature,
       voter,
@@ -236,7 +233,7 @@ export class ZkusdGoverningCouncilClient
     rightVoteProof: CouncilUpdateVoteProof
   ): Promise<CouncilUpdateVoteProof> {
     return (
-      await ManageCouncil.mergeVotes(
+      await CouncilUpdate.mergeVotes(
         leftVoteProof.publicInput,
         leftVoteProof,
         rightVoteProof
