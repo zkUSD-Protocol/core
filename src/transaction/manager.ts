@@ -824,6 +824,8 @@ export class TransactionManager<E extends string> {
         options?.executor ?? this.transactionExecutors.default;
       const txExecutor = this.transactionExecutors[executorKey];
 
+
+      this.mina.reactivate();
       const lifecycle = await txExecutor.executeTransaction(preparedTx, {
         o1jsMutex: this._o1jsMutex,
         mina: this.mina,

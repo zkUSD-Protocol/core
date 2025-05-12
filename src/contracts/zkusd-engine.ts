@@ -5,7 +5,6 @@ import {
 import {
   AccountUpdate,
   Bool,
-  DeployArgs,
   Field,
   method,
   PublicKey,
@@ -20,7 +19,7 @@ import {
   UInt32,
   VerificationKey,
   UInt8,
-  Provable,
+  Struct,
 } from 'o1js';
 
 import { Vault, VaultErrors, VaultParams } from '../system/vault.js';
@@ -73,15 +72,16 @@ import { ZkUsdGovernmentConstructor } from './zkusd-gov-contract-base.js';
  *          and administrative functionality such as the oracle whitelist.
  */
 
-export interface ZkUsdEngineDeployProps extends Exclude<DeployArgs, undefined> {
-  admin: PublicKey;
-  validPriceBlockCount: UInt8;
-  emergencyStop: Bool;
-  vaultCreationDisabled: Bool;
-  collateralRatio: UInt8;
-  liquidationBonusRatio: UInt8;
-  vaultDebtCeiling: UInt64;
-}
+export class ZkUsdEngineDeployProps extends Struct({
+  admin: PublicKey,
+  validPriceBlockCount: UInt8,
+  emergencyStop: Bool,
+  vaultCreationDisabled: Bool,
+  collateralRatio: UInt8,
+  liquidationBonusRatio: UInt8,
+  vaultDebtCeiling: UInt64,
+  oracleWhitelistHash: Field,
+}) {}
 export const MinimalViableCollateralRatio: UInt8 = UInt8.from(115);
 export const MinimalViablePriceValidity: UInt8 = UInt8.one;
 
@@ -132,8 +132,8 @@ export function ZkUsdEngineContract(args: {
      * @notice  Deploys the oracle contract and sets initial state
      * @param   args.initialPrice We initialise the contract with a price
      */
-    async deploy(args: ZkUsdEngineDeployProps) {
-      await super.deploy(args);
+    async deploy() {
+      await super.deploy();
 
       this.account.permissions.set({
         ...Permissions.default(),
@@ -156,19 +156,6 @@ export function ZkUsdEngineContract(args: {
         send: Permissions.proof(),
       });
 
-      this.oracleWhitelistHash.set(Field.from(0));
-
-      this.protocolDataPacked.set(
-        ProtocolData.new({
-          admin: args.admin,
-          validPriceBlockCount: args.validPriceBlockCount,
-          emergencyStop: args.emergencyStop,
-          vaultCreationDisabled: args.vaultCreationDisabled,
-          collateralRatio: args.collateralRatio,
-          liquidationBonusRatio: args.liquidationBonusRatio,
-          vaultDebtCeiling: args.vaultDebtCeiling,
-        }).pack()
-      );
     }
 
     /**
@@ -182,7 +169,8 @@ export function ZkUsdEngineContract(args: {
      * @notice The initialize method is necessary for setting up the various helper token accounts
      *         that are used to track the state of the system.
      */
-    @method async initialize() {
+    @method async initialize(args: ZkUsdEngineDeployProps) {
+      super.init();
       //Ensure admin key
       this.ensureAdminSignature();
 
@@ -197,6 +185,20 @@ export function ZkUsdEngineContract(args: {
       //Here we can set the editState permission to none because these permissions are set
       //on a token account which means all updates have to be approved by the engine
       permissions.editState = Permissions.none();
+
+      this.oracleWhitelistHash.set(args.oracleWhitelistHash);
+
+      this.protocolDataPacked.set(
+        ProtocolData.new({
+          admin: args.admin,
+          validPriceBlockCount: args.validPriceBlockCount,
+          emergencyStop: args.emergencyStop,
+          vaultCreationDisabled: args.vaultCreationDisabled,
+          collateralRatio: args.collateralRatio,
+          liquidationBonusRatio: args.liquidationBonusRatio,
+          vaultDebtCeiling: args.vaultDebtCeiling,
+        }).pack()
+      );
     }
 
     /**

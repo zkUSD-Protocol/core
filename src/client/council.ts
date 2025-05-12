@@ -4,7 +4,7 @@ import {
   EngineUpdateOperationFields as EngineUpdateOperationFields,
 } from '../system/engine-update/operation.js';
 import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
-import { Bool, Poseidon, PublicKey, Signature, UInt8 } from 'o1js';
+import { Bool, Poseidon, Provable, provable, PublicKey, Signature, UInt8 } from 'o1js';
 import { EngineUpdateSpec } from '../system/engine-update/input.js';
 import { blockchain, KeyPair } from '../types/utility.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
@@ -30,11 +30,9 @@ import {
 import { Seat } from '../system/council/seat.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
-import { HttpClientProver } from '../provers/httpclientprover.js';
-import { ExternalTransactionExecutor } from '../index.node.js';
-import { networkConfig } from 'o1js/dist/node/lib/mina/fetch.js';
 import { LocalTransactionExecutor } from '../transaction/local-executor.js';
 import { getNetworkKeys } from '../config/keys.js';
+import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 
 type UpdateResults = {
   transactionIncluded: boolean;
@@ -109,6 +107,7 @@ export interface CouncilUpdateClient {
 
 export interface IZkusdGoverningCouncilClient {
   readonly data: CouncilDataProvider;
+  readonly engineContract: InstanceType<ReturnType<typeof ZkUsdEngineContract>>;
   readonly councilContract: ZkusdGoverningCouncilContract;
 
   engineUpdate: EngineUpdateClient;
@@ -120,13 +119,53 @@ export interface IZkusdGoverningCouncilClient {
 export class ZkusdGoverningCouncilClient
   implements IZkusdGoverningCouncilClient
 {
+  private _engineUpdateProverCompiled: boolean = false;
+  private _councilUpdateProverCompiled: boolean = false;
+  private _councilContractCompiled: boolean = false;
+  private _engineContractClass: ReturnType<typeof ZkUsdEngineContract>;
+  private _engineContractCompiled: boolean = false;
   // Implement interface field
-  public readonly engineUpdate: EngineUpdateClient;
-  public readonly councilUpdate: CouncilUpdateClient;
+  public get engineUpdate(): EngineUpdateClient {
+    return this.engineUpdateImpl;
+  }
+  public get councilUpdate(): CouncilUpdateClient {
+    return this.councilUpdateImpl;
+  }
   readonly data: CouncilDataProvider;
   readonly councilContract: ZkusdGoverningCouncilContract;
+  readonly engineContract: InstanceType<ReturnType<typeof ZkUsdEngineContract>>;
 
   txMgr: TransactionManager<any>;
+
+  private async compileEngineUpdateProver() {
+    if (!this._engineUpdateProverCompiled) {
+      await EngineUpdate.compile();
+      this._engineUpdateProverCompiled = true;
+    }
+  }
+
+  private async compileCouncilUpdateProver() {
+    if (!this._councilUpdateProverCompiled) {
+      await CouncilUpdate.compile();
+      this._councilUpdateProverCompiled = true;
+    }
+  }
+
+  private async compileCouncilContract() {
+    if (!this._councilContractCompiled) {
+      await this.compileCouncilUpdateProver();
+      await this.compileEngineUpdateProver();
+      await ZkusdGoverningCouncilContract.compile();
+      this._councilContractCompiled = true;
+    }
+  }
+
+  private async compileEngineContract() {
+    if (!this._engineContractCompiled) {
+      await this._engineContractClass.compile();
+      this._engineContractCompiled = true;
+    }
+  }
 
   // --- EngineUpdateClient interface adapter ---
   private engineUpdateImpl: EngineUpdateClient = {
@@ -152,7 +191,7 @@ export class ZkusdGoverningCouncilClient
     chain: blockchain,
   ) {
     const mina = await MinaNetworkInterface.initChain(chain);
-    const txMgr = TransactionManager.new(mina,{default: new LocalTransactionExecutor()});
+    const txMgr = TransactionManager.new(mina,{local: new LocalTransactionExecutor(), default:'local'});
     // fetch the contract account public key
     const address = getNetworkKeys(chain).government;
     if(!address){
@@ -163,12 +202,39 @@ export class ZkusdGoverningCouncilClient
       // const ret = txMgr.mina.getNetworkState().blockchainLength; //
       return undefined;
     };
+    const engineAddress = getNetworkKeys(chain).engine;
+    if(!engineAddress){
+      throw new Error("Could not access engine contract address.");
+    }
+
+    const tokenAddress = getNetworkKeys(chain).token;
+    if(!tokenAddress){
+      throw new Error("Could not access token contract address.");
+    }
+
+    const oracleAggCompiled = await AggregateOraclePrices.compile();
+    const oracleAggregationVkh = oracleAggCompiled.verificationKey.hash;
+
+
+      // zkUsdTokenAddress: this._networkKeys.token.publicKey,
+      // minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
+      // zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
+      // GovernmentClass: ZkusdGoverningCouncilContract,
+    const ZkusdEngine = ZkUsdEngineContract({
+      zkUsdTokenAddress: tokenAddress.publicKey,
+      minaPriceInputZkProgramVkHash: oracleAggregationVkh,
+      zkUsdGovernmentAddress: address.publicKey,
+      GovernmentClass: ZkusdGoverningCouncilContract,
+    });
+    const engine = new ZkusdEngine(engineAddress.publicKey);
     return new ZkusdGoverningCouncilClient(
       CouncilDataProvider.fromContractEvents(
         contract,
         fetchCurrentBlockHeight
       ),
       contract,
+      engine,
+      ZkusdEngine,
       txMgr
     );
   }
@@ -176,10 +242,14 @@ export class ZkusdGoverningCouncilClient
   constructor(
     data: CouncilDataProvider,
     councilContract: ZkusdGoverningCouncilContract,
+    engineContract: InstanceType<ReturnType<typeof ZkUsdEngineContract>>,
+    engineContractClass: ReturnType<typeof ZkUsdEngineContract>,
     txMgr: TransactionManager<any>
   ) {
     this.data = data;
     this.councilContract = councilContract;
+    this.engineContract = engineContract;
+    this._engineContractClass = engineContractClass;
     this.txMgr = txMgr;
   }
 
@@ -198,6 +268,11 @@ export class ZkusdGoverningCouncilClient
     } else {
       seatFinal = seat;
       voter = councilMap.getSeatPublicKey(seatFinal)!;
+    }
+    // debug information about seat
+     // if seat is not found throw error
+    if (!seatFinal || !voter) {
+      throw new Error('Could not find seat or voter');
     }
     return { voter, seatFinal };
   }
@@ -226,9 +301,10 @@ export class ZkusdGoverningCouncilClient
     signature: Signature;
     seat: Seat | PublicKey;
   }): Promise<CouncilUpdateVoteProof> {
+    const councilMap = await this.data.councilMap.get();
     const { voter, seatFinal } = await this.getVoterAndSeat(
       args.seat,
-      await this.data.councilMap.get()
+      councilMap
     );
 
     const voteProof = await CouncilUpdate.createVote(
@@ -315,6 +391,7 @@ export class ZkusdGoverningCouncilClient
     signature: Signature;
     seat: Seat | PublicKey;
   }): Promise<EngineUpdateVoteProof> {
+    await this.compileEngineUpdateProver();
     const councilMap = await this.data.councilMap.get();
     const { voter, seatFinal } = await this.getVoterAndSeat(
       args.seat,
@@ -335,6 +412,7 @@ export class ZkusdGoverningCouncilClient
     leftVoteProof: EngineUpdateVoteProof,
     rightVoteProof: EngineUpdateVoteProof
   ): Promise<EngineUpdateVoteProof> {
+    await this.compileEngineUpdateProver();
     return (
       await EngineUpdate.mergeVotes(
         leftVoteProof.publicInput,
@@ -349,6 +427,7 @@ export class ZkusdGoverningCouncilClient
     senderKeys: KeyPair,
     args?: { force?: boolean }
   ): Promise<UpdateResults> {
+    await this.compileCouncilContract();
     const threshold = await this.getThreshold();
 
     // get the current off-chain data
@@ -426,6 +505,7 @@ export class ZkusdGoverningCouncilClient
     senderKeys: KeyPair,
     opts?: { force?: boolean }
   ): Promise<UpdateResults> {
+    await this.compileCouncilContract();
     const resolutionTree = await this.data.resolutionTree.get();
     const resolutionWitness = resolutionTree.getWitnessWrapped(
       updateSpec.govResolutionIndex.toBigint()
@@ -497,6 +577,8 @@ export class ZkusdGoverningCouncilClient
     updateSpec: EngineUpdateSpec,
     senderKeys: KeyPair
   ): Promise<UpdateResults> {
+    await this.compileEngineContract();
+    await this.compileCouncilContract();
     // -------------------------------------------------------------------------
     // 1. Build the witness once – it is reused for every setter call
     // -------------------------------------------------------------------------
@@ -555,7 +637,7 @@ export class ZkusdGoverningCouncilClient
         const txh = await this.txMgr.tx(
           senderKeys,
           async () => {
-            await (this.councilContract as any)[setter](
+            await (this.engineContract as any)[setter](
               updateSpec,
               resolutionWitness
             );

@@ -1,4 +1,4 @@
-import { Field, PublicKey, Experimental, Poseidon, Bool } from 'o1js';
+import { Field, PublicKey, Experimental, Poseidon, Bool, Provable } from 'o1js';
 
 import {
   CouncilKeyWithIntent,
@@ -39,10 +39,10 @@ export class CouncilMap {
   static readonly SEAT_LIMIT = MAX_COUNCIL_MEMBERS;
 
   /** Array of public keys representing seated council members. */
-  private readonly _seatingKeys: Map<Seat, PublicKey> = new Map();
+  private readonly _seatingKeys: Map<bigint, string> = new Map();
 
   /** Map from public key to its seat key (seat field value) */
-  private readonly _pubkeyToSeatKey: Map<PublicKey, Seat>;
+  private readonly _pubkeyToSeatKey: Map<string, bigint>;
 
   /**
    * Initializes a new CouncilTree from an array of public keys.
@@ -83,14 +83,14 @@ export class CouncilMap {
       const seat = Seat.fromIndex(index);
       const leafValue = CouncilMap.hashCouncilSeat(key);
       this.provableMap.insert(seat.value, leafValue);
-      this._pubkeyToSeatKey.set(key, seat);
-      this._seatingKeys.set(seat, key);
+      this._pubkeyToSeatKey.set(key.toBase58(), seat.value.toBigInt());
+      this._seatingKeys.set(seat.value.toBigInt(), key.toBase58());
     });
   }
   /**
    * Returns the map of seat keys to public keys.
    */
-  public get seatingKeys(): Map<Seat, PublicKey> {
+  public get seatingKeys(): Map<bigint, string> {
     return this._seatingKeys;
   }
 
@@ -113,20 +113,19 @@ export class CouncilMap {
    */
   public insertAtSeat(councilKey: PublicKey, seat: Seat): void {
     // check if the public key is already seated
-    if (!councilKey.isEmpty() && this._pubkeyToSeatKey.has(councilKey)) {
+    if (!councilKey.isEmpty() && this._pubkeyToSeatKey.has(councilKey.toBase58())) {
       throw new Error('Council key already seated');
     }
 
-    if (this._seatingKeys.has(seat)) {
+    if (this._seatingKeys.has(seat.value.toBigInt())) {
       throw new Error('Seat already occupied');
     }
-
     const value = CouncilMap.hashCouncilSeat(councilKey);
     // will fail on override
     this.provableMap.getOption(seat.value).assertNone();
     this.provableMap.insert(seat.value, value);
-    this._pubkeyToSeatKey.set(councilKey, seat);
-    this._seatingKeys.set(seat, councilKey);
+    this._pubkeyToSeatKey.set(councilKey.toBase58(), seat.value.toBigInt());
+    this._seatingKeys.set(seat.value.toBigInt(), councilKey.toBase58());
   }
 
   /**
@@ -162,11 +161,15 @@ export class CouncilMap {
    * @returns The public key of the seated council member, or undefined if the seat is empty.
    */
   public getSeatPublicKey(seat: Seat): PublicKey | undefined {
-    return this.seatingKeys.get(seat);
+    const pubkey = this.seatingKeys.get(seat.value.toBigInt());
+    if (!pubkey) return undefined;
+    return PublicKey.fromBase58(pubkey);
   }
 
   public getPubkeySeatKey(key: PublicKey): Seat | undefined {
-    return this._pubkeyToSeatKey.get(key);
+    const seatKey = this._pubkeyToSeatKey.get(key.toBase58());
+    if (!seatKey) return undefined;
+    return Seat.fromField(Field(seatKey));
   }
 
   /**
@@ -194,8 +197,9 @@ export class CouncilMap {
   public clone(): CouncilMap {
     const leaves = this.provableMap.data.get().sortedLeaves;
     const pubkeys = this._seatingKeys;
-    const valueToPubkey = new Map<BigInt, PublicKey>();
-    pubkeys.forEach((pubkey) => {
+    const valueToPubkey = new Map<bigint, PublicKey>();
+    pubkeys.forEach((pk58) => {
+      const pubkey = PublicKey.fromBase58(pk58);
       valueToPubkey.set(CouncilMap.hashCouncilSeat(pubkey).toBigInt(), pubkey);
     });
     const ret = new CouncilMap([]);
@@ -262,7 +266,7 @@ export class CouncilMap {
       actualSeat = seat;
     }
     // remove the seat from the pubkeyToSeatKey map
-    const pubkey = this.seatingKeys.get(actualSeat);
+    const pubkey = this.seatingKeys.get(actualSeat.value.toBigInt());
     if (pubkey) {
       this._pubkeyToSeatKey.delete(pubkey);
     } else if (force) {
@@ -271,7 +275,7 @@ export class CouncilMap {
     // set 0 at the seat key in the provable
     this.provableMap.set(actualSeat.value, Field(0));
     // remove the seat from the seatingKeys map
-    this._seatingKeys.delete(actualSeat);
+    this._seatingKeys.delete(actualSeat.value.toBigInt());
   }
 
   /**

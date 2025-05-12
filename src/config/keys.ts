@@ -230,10 +230,10 @@ const localKeys: NetworkKeyPairs = {
   council: [
     {
       privateKey: PrivateKey.fromBase58(
-        'EKEvMHQgZFfnH3VMFFQmikHY1c7qH3h3ZBs8KVuUKqHxoiSG6TfH'
+        'EKF212UmfgUmF3QzuiAEiGw9tX4J6BzZyKjjMadUcwqEYB3UgEgA'
       ),
       publicKey: PublicKey.fromBase58(
-        'B62qoNAsVRPde4JM7BKFcPyL6Sg6PnoNXLBxPMJPRndcu3iD2H98PhZ'
+        'B62qp7q22BwLdmu8mdh7pNuZ26ioLJwf3ae93J49BSq4eJwHgAe2n6q'
       ),
     },
     {

@@ -61,10 +61,6 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
   };
   readonly events = ZkusdGoverningCouncilContract.events;
 
-  init() {
-    super.init();
-  }
-
   // a helper method that, coompute the valid merkle tree root.
   // this computation is not within provable code.
   async initialize(
@@ -92,6 +88,7 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     initialCouncilActions: CouncilUpdateActions,
     votePassThreshold: UInt8
   ) {
+    super.init();
     const proposalsMerkleMapRoot = new ProposalMap();
     const resolutionMerkleRoot = new ResolutionTree();
     this.councilMerkleMapRoot.set(councilMerkleMapRoot);
@@ -197,6 +194,8 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
     proposalMap: ProposalMap,
     resolutionTree: ResolutionTree
   ) {
+    let ret;
+      try{
     const proposalWitness = proposalMap.getWitness(
       voteProof.publicOutput.proposalHash
     );
@@ -207,12 +206,17 @@ export class ZkusdGoverningCouncilContract extends ZkUsdGovernmentContract {
       voteProof.publicOutput.proposalHash
     );
 
-    return await this.supportProposal(
+ret  = await this.supportProposal(
       voteProof,
       proposalWitness,
       proposalCurrentVoteBitArray,
       resolutionWitness
     );
+
+      }catch(e: any){
+        throw new Error("Error in supportProposal: " + e.message);
+      }
+    return ret;
   }
 
   // This method allows to create and cast a vote for a proposal
