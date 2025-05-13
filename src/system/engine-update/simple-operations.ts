@@ -378,17 +378,17 @@ export function printOperation(
     if(operation.isNoop().toBoolean()) {
       return null;
     }
-    const isFlip = operation.operation.equals(2);
+    const isFlip = operation.operation.equals(2).toBoolean();
     if(isFlip){
       return `BoolOperation(flip)`;
     }
-    return `BoolOperation(set to ${operation.operation.equals(1) ? 'true' : 'false'})`;
+    return `BoolOperation(set to ${operation.operation.equals(1).toBoolean() ? 'true' : 'false'})`;
   } else if (operation instanceof UInt8Operation) {
     if(operation.isNoop().toBoolean()) {
       return null;
     }
-    const isAdd = operation.operation.equals(1);
-    const isSub = operation.operation.equals(2);
+    const isAdd = operation.operation.equals(1).toBoolean();
+    const isSub = operation.operation.equals(2).toBoolean();
     if(isAdd){
       return `UInt8Operation(add ${operation.value.toString()})`;
     }
@@ -401,8 +401,8 @@ export function printOperation(
     if(operation.isNoop().toBoolean()) {
       return null;
     }
-    const isAdd = operation.operation.equals(1);
-    const isSub = operation.operation.equals(2);
+    const isAdd = operation.operation.equals(1).toBoolean();
+    const isSub = operation.operation.equals(2).toBoolean();
     if(isAdd){
       return `FieldOperation(add ${operation.value.toString()})`;
     }
@@ -415,8 +415,8 @@ export function printOperation(
     if(operation.isNoop().toBoolean()) {
       return null;
     }
-    const isAdd = operation.operation.equals(1);
-    const isSub = operation.operation.equals(2);
+    const isAdd = operation.operation.equals(1).toBoolean();
+    const isSub = operation.operation.equals(2).toBoolean();
     if(isAdd){
       return `UInt64Operation(add ${operation.value.toString()})`;
     }
