@@ -75,17 +75,52 @@ export class CouncilUpdateActions extends Struct({
   /** Array of council update operations, exactly CouncilUpdateActionCount in length */
   actions: Provable.Array(CouncilUpdateOperation, COUNCIL_UPDATE_ACTION_COUNT),
 }) {
+
+  /**
+   * Creates a CouncilUpdateActions instance from an array of operations.
+   * Pads the array with dummy operations if necessary.
+   *
+   * @param operations - Array of CouncilUpdateOperation instances
+   * @returns A CouncilUpdateActions instance with the provided operations
+   */
+  static fromOperations(...operations: CouncilUpdateOperation[]): CouncilUpdateActions {
+    if(operations.length > COUNCIL_UPDATE_ACTION_COUNT) {
+      throw new Error('Too many operations');
+    }
+    const paddedActions = [...operations, ...Array.from({ length: COUNCIL_UPDATE_ACTION_COUNT - operations.length }, () => CouncilUpdateOperation.dummy())];
+    return new CouncilUpdateActions({
+      actions: paddedActions,
+    });
+  }
+
+  /**
+   * Creates a CouncilUpdateActions instance with operations to add new members to specific seats.
+   *
+   * @param newMembers - Array of tuples containing public keys and their corresponding seats
+   * @returns A CouncilUpdateActions instance with operations to add new members
+   */
+  static addKeysForSeats(...newMembers: [PublicKey, Seat][]): CouncilUpdateActions {
+    if(newMembers.length > COUNCIL_UPDATE_ACTION_COUNT) {
+      throw new Error('Too many new members');
+    }
+    const actions = newMembers.map(([key, seat]) => {
+      return new CouncilUpdateOperation({
+        member: key,
+        seat,
+        shouldAdd: Bool(true),
+        isDummy: Bool(false),
+      });
+    });
+    return this.fromOperations(...actions);
+  }
+  
   /**
    * Creates an empty CouncilUpdateActions with all dummy operations.
    *
    * @returns A CouncilUpdateActions instance filled with dummy operations
    */
   static empty(): CouncilUpdateActions {
-    return new CouncilUpdateActions({
-      actions: Array.from({ length: COUNCIL_UPDATE_ACTION_COUNT }, () =>
-        CouncilUpdateOperation.dummy()
-      ),
-    });
+    return this.fromOperations();
   }
 
   /** Reference to the maximum allowed actions for convenience */

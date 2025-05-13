@@ -228,6 +228,21 @@ describe('CouncilMapContractEventsProvider#refresh()', () => {
 /*                     rebuildCouncilMerkleMap()                              */
 /* -------------------------------------------------------------------------- */
 describe('CouncilMapContractEventsProvider.rebuildCouncilMerkleMap()', () => {
+ it('applies valid CouncilUpdateActionEvents in blockHeight order', () => {
+    const seen: number[] = [];
+    const stub = {
+      applyOperations: (op: CouncilUpdateOperation) =>
+        seen.push(Number(op.seat.value.toBigInt())),
+    } as unknown as CouncilMap;
+
+    CouncilMapContractEventsProvider.applyEvents(stub, [
+      makeCouncilActionEvent(2, 7),
+      makeCouncilActionEvent(1, 3),
+      makeCouncilActionEvent(3, 1),
+    ]);
+
+    assert.deepStrictEqual(seen, [8, 2, 4]);
+  });
   it('filters and applies CouncilUpdateActionEvents in blockHeight order', () => {
     const calls: CouncilUpdateOperation[] = [];
 

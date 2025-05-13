@@ -1,7 +1,8 @@
-import { Field, Struct } from 'o1js';
+import { Field, Provable, Struct } from 'o1js';
 import {
   BoolOperation,
   FieldOperation,
+  printOperation,
   UInt64Operation,
   UInt8Operation,
 } from './simple-operations.js';
@@ -81,3 +82,24 @@ export class EngineUpdateOperation extends Struct({
     ];
   }
 }
+
+export function prettyPrintOperation(operation: EngineUpdateOperation): string {
+  // use printOperation from simple-operations.ts
+  // make a list of no noop operations
+  const operations = {
+    emergencyStop: operation.emergencyStop,
+    vaultCreationDisabled: operation.vaultCreationDisabled,
+    collateralRatio: operation.collateralRatio,
+    validPriceBlockCount: operation.validPriceBlockCount,
+    liquidationBonusRatio: operation.liquidationBonusRatio,
+    oracleWhitelistHash: operation.oracleWhitelistHash,
+    configMerkleRoot: operation.configMerkleRoot,
+    newVerificationKey: operation.newVerificationKey,
+    vaultDebtCeiling: operation.vaultDebtCeiling,
+  };
+  // display both key and value for each operation  
+  const nonNoopOperations = Object.entries(operations).filter(([_, op]) => !op.isNoop().toBoolean());
+  const operLines = nonNoopOperations.map(([key, op]) => `- ${key}: ${printOperation(op)}`).join("\n");
+  return `EngineUpdateOperation:\n${operLines}`;
+}
+  

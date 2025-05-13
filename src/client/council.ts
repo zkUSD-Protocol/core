@@ -4,9 +4,9 @@ import {
   EngineUpdateOperationFields as EngineUpdateOperationFields,
 } from '../system/engine-update/operation.js';
 import { ZkusdProtocolPreconditions } from '../system/engine-update/protocol-preconditions.js';
-import { Bool, Poseidon, PublicKey, Signature, UInt8 } from 'o1js';
+import { Bool, Poseidon, Provable, provable, PublicKey, Signature, UInt8, VerificationKey } from 'o1js';
 import { EngineUpdateSpec } from '../system/engine-update/input.js';
-import { KeyPair } from '../types/utility.js';
+import { blockchain, KeyPair } from '../types/utility.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { TransactionManager } from '../transaction/manager.js';
 import { CouncilDataProvider } from '../system/council/data/data-provider.js';
@@ -17,21 +17,23 @@ import {
 import { ProposalMap } from '../system/council/data/proposal-merkle-map.js';
 import { ResolutionTree } from '../system/council/data/resolution-tree.js';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
-import { Field } from 'o1js/dist/node/lib/provable/field.js';
 import {
-  CouncilUpdateSpec,
   CouncilUpdateVoteInput,
 } from '../system/council/update/input.js';
 import {
   CouncilKeyWithIntent,
-  CouncilUpdateOperation,
 } from '../system/council/update/common.js';
 import {
+  CouncilUpdate,
   CouncilUpdateVoteProof,
-  ManageCouncil,
 } from '../proofs/council-update/prove.js';
 import { Seat } from '../system/council/seat.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
+import { MinaNetworkInterface } from '../mina/network-interface.js';
+import { LocalTransactionExecutor } from '../transaction/local-executor.js';
+import { getNetworkKeys } from '../config/keys.js';
+import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
+import { OracleWhitelist } from '../index.js';
 
 type UpdateResults = {
   transactionIncluded: boolean;
@@ -70,13 +72,17 @@ export interface EngineUpdateClient {
 
   applyPassedProposal(
     updateSpec: EngineUpdateSpec,
-    senderKeys: KeyPair
+    senderKeys: KeyPair,
+    extra?: {
+      oracleWhitelist?: OracleWhitelist;
+      verificationKey?: VerificationKey;
+    }
   ): Promise<UpdateResults>;
 
   submitVoteAndTryPassAndApply(args: {
     voteProof: EngineUpdateVoteProof;
     senderKeys: KeyPair;
-    opts?: { force?: boolean };
+    opts?: { force?: boolean, oracleWhitelist?: OracleWhitelist, verificationKey?: VerificationKey };
   }): Promise<UpdateResults>;
 }
 
@@ -106,6 +112,7 @@ export interface CouncilUpdateClient {
 
 export interface IZkusdGoverningCouncilClient {
   readonly data: CouncilDataProvider;
+  readonly engineContract: InstanceType<ReturnType<typeof ZkUsdEngineContract>>;
   readonly councilContract: ZkusdGoverningCouncilContract;
 
   engineUpdate: EngineUpdateClient;
@@ -117,13 +124,50 @@ export interface IZkusdGoverningCouncilClient {
 export class ZkusdGoverningCouncilClient
   implements IZkusdGoverningCouncilClient
 {
-  // Implement interface fields
-  public readonly engineUpdate: EngineUpdateClient;
-  public readonly councilUpdate: CouncilUpdateClient;
+private _compiled = {
+  engineUpdateProver: false,
+  councilUpdateProver: false,
+  councilContract: false,
+  engineContract: false,
+};
+  public get engineUpdate(): EngineUpdateClient {
+    return this.engineUpdateImpl;
+  }
+  public get councilUpdate(): CouncilUpdateClient {
+    return this.councilUpdateImpl;
+  }
+
+  private _engineContractClass: ReturnType<typeof ZkUsdEngineContract>;
+
   readonly data: CouncilDataProvider;
   readonly councilContract: ZkusdGoverningCouncilContract;
+  readonly engineContract: InstanceType<ReturnType<typeof ZkUsdEngineContract>>;
 
   txMgr: TransactionManager<any>;
+
+public async ensureCompiled(target: keyof typeof this._compiled): Promise<void> {
+  if (this._compiled[target]) return;
+
+  switch (target) {
+    case 'engineUpdateProver':
+      await EngineUpdate.compile();
+      break;
+    case 'councilUpdateProver':
+      await CouncilUpdate.compile();
+      break;
+    case 'councilContract':
+      await this.ensureCompiled('engineUpdateProver');
+      await this.ensureCompiled('councilUpdateProver');
+      await ZkusdGoverningCouncilContract.compile();
+      break;
+    case 'engineContract':
+      await this.ensureCompiled('engineUpdateProver');
+      await this._engineContractClass.compile();
+      break;
+  }
+
+  this._compiled[target] = true;
+}
 
   // --- EngineUpdateClient interface adapter ---
   private engineUpdateImpl: EngineUpdateClient = {
@@ -132,7 +176,7 @@ export class ZkusdGoverningCouncilClient
     mergeVoteProofs: this.mergeEngineUpdateVoteProofs.bind(this),
     submitVote: this.submitEngineUpdateVote.bind(this),
     tryPassProposal: this.tryPassEngineUpdateProposal.bind(this),
-    applyPassedProposal: this.applyPassedUpdateToEngine.bind(this),
+    applyPassedProposal: this.applyPassedProposal.bind(this),
     submitVoteAndTryPassAndApply:
       this.submitEngineUpdateVoteAndTryPassAndApply.bind(this),
   };
@@ -145,20 +189,54 @@ export class ZkusdGoverningCouncilClient
     executeCouncilUpdate: this.executeCouncilUpdate.bind(this),
   };
 
-  static withDataFromContractEvents(
-    councilContract: ZkusdGoverningCouncilContract,
-    txMgr: TransactionManager<any>
+  static async default(
+    chain: blockchain,
   ) {
+    const mina = await MinaNetworkInterface.initChain(chain);
+    const txMgr = TransactionManager.new(mina,{local: new LocalTransactionExecutor(), default:'local'});
+    // fetch the contract account public key
+    const address = getNetworkKeys(chain).government;
+    if(!address){
+      throw new Error("Could not access council contract address.");
+    }
+    const contract = new ZkusdGoverningCouncilContract(address.publicKey);
     const fetchCurrentBlockHeight = async () => {
       // const ret = txMgr.mina.getNetworkState().blockchainLength; //
       return undefined;
     };
+    const engineAddress = getNetworkKeys(chain).engine;
+    if(!engineAddress){
+      throw new Error("Could not access engine contract address.");
+    }
+
+    const tokenAddress = getNetworkKeys(chain).token;
+    if(!tokenAddress){
+      throw new Error("Could not access token contract address.");
+    }
+
+    const oracleAggCompiled = await AggregateOraclePrices.compile();
+    const oracleAggregationVkh = oracleAggCompiled.verificationKey.hash;
+
+
+      // zkUsdTokenAddress: this._networkKeys.token.publicKey,
+      // minaPriceInputZkProgramVkHash: this._oracleAggregationVk.hash,
+      // zkUsdGovernmentAddress: this._networkKeys.government.publicKey,
+      // GovernmentClass: ZkusdGoverningCouncilContract,
+    const ZkusdEngine = ZkUsdEngineContract({
+      zkUsdTokenAddress: tokenAddress.publicKey,
+      minaPriceInputZkProgramVkHash: oracleAggregationVkh,
+      zkUsdGovernmentAddress: address.publicKey,
+      GovernmentClass: ZkusdGoverningCouncilContract,
+    });
+    const engine = new ZkusdEngine(engineAddress.publicKey);
     return new ZkusdGoverningCouncilClient(
       CouncilDataProvider.fromContractEvents(
-        councilContract,
+        contract,
         fetchCurrentBlockHeight
       ),
-      councilContract,
+      contract,
+      engine,
+      ZkusdEngine,
       txMgr
     );
   }
@@ -166,10 +244,14 @@ export class ZkusdGoverningCouncilClient
   constructor(
     data: CouncilDataProvider,
     councilContract: ZkusdGoverningCouncilContract,
+    engineContract: InstanceType<ReturnType<typeof ZkUsdEngineContract>>,
+    engineContractClass: ReturnType<typeof ZkUsdEngineContract>,
     txMgr: TransactionManager<any>
   ) {
     this.data = data;
     this.councilContract = councilContract;
+    this.engineContract = engineContract;
+    this._engineContractClass = engineContractClass;
     this.txMgr = txMgr;
   }
 
@@ -188,6 +270,11 @@ export class ZkusdGoverningCouncilClient
     } else {
       seatFinal = seat;
       voter = councilMap.getSeatPublicKey(seatFinal)!;
+    }
+    // debug information about seat
+     // if seat is not found throw error
+    if (!seatFinal || !voter) {
+      throw new Error('Could not find seat or voter');
     }
     return { voter, seatFinal };
   }
@@ -216,12 +303,13 @@ export class ZkusdGoverningCouncilClient
     signature: Signature;
     seat: Seat | PublicKey;
   }): Promise<CouncilUpdateVoteProof> {
+    const councilMap = await this.data.councilMap.get();
     const { voter, seatFinal } = await this.getVoterAndSeat(
       args.seat,
-      await this.data.councilMap.get()
+      councilMap
     );
 
-    const voteProof = await ManageCouncil.createVote(
+    const voteProof = await CouncilUpdate.createVote(
       args.input,
       args.signature,
       voter,
@@ -236,7 +324,7 @@ export class ZkusdGoverningCouncilClient
     rightVoteProof: CouncilUpdateVoteProof
   ): Promise<CouncilUpdateVoteProof> {
     return (
-      await ManageCouncil.mergeVotes(
+      await CouncilUpdate.mergeVotes(
         leftVoteProof.publicInput,
         leftVoteProof,
         rightVoteProof
@@ -305,6 +393,7 @@ export class ZkusdGoverningCouncilClient
     signature: Signature;
     seat: Seat | PublicKey;
   }): Promise<EngineUpdateVoteProof> {
+    await this.ensureCompiled('engineUpdateProver');
     const councilMap = await this.data.councilMap.get();
     const { voter, seatFinal } = await this.getVoterAndSeat(
       args.seat,
@@ -325,6 +414,7 @@ export class ZkusdGoverningCouncilClient
     leftVoteProof: EngineUpdateVoteProof,
     rightVoteProof: EngineUpdateVoteProof
   ): Promise<EngineUpdateVoteProof> {
+    await this.ensureCompiled('engineUpdateProver');
     return (
       await EngineUpdate.mergeVotes(
         leftVoteProof.publicInput,
@@ -339,6 +429,7 @@ export class ZkusdGoverningCouncilClient
     senderKeys: KeyPair,
     args?: { force?: boolean }
   ): Promise<UpdateResults> {
+    await this.ensureCompiled('councilContract');
     const threshold = await this.getThreshold();
 
     // get the current off-chain data
@@ -416,6 +507,7 @@ export class ZkusdGoverningCouncilClient
     senderKeys: KeyPair,
     opts?: { force?: boolean }
   ): Promise<UpdateResults> {
+    await this.ensureCompiled('councilContract');
     const resolutionTree = await this.data.resolutionTree.get();
     const resolutionWitness = resolutionTree.getWitnessWrapped(
       updateSpec.govResolutionIndex.toBigint()
@@ -483,107 +575,74 @@ export class ZkusdGoverningCouncilClient
    * A field is considered “live” when `fieldOp.isNoop()` is `false`.
    * The mapping `field → setter` is defined in `setterMap` below.
    */
-  public async applyPassedUpdateToEngine(
-    updateSpec: EngineUpdateSpec,
-    senderKeys: KeyPair
-  ): Promise<UpdateResults> {
-    // -------------------------------------------------------------------------
-    // 1. Build the witness once – it is reused for every setter call
-    // -------------------------------------------------------------------------
-    const resolutionTree = await this.data.resolutionTree.get();
-    const resolutionWitness: ResolutionTree.Witness =
-      resolutionTree.getWitnessWrapped(
-        updateSpec.govResolutionIndex.toBigint()
-      );
+async applyPassedProposal(
+  updateSpec: EngineUpdateSpec,
+  senderKeys: any,
+  extra?: {
+    oracleWhitelist?: OracleWhitelist;
+    verificationKey?: VerificationKey;
+  }
+): Promise<UpdateResults> {
+  await this.ensureCompiled('engineContract');
+  await this.ensureCompiled('councilContract');
 
-    // -------------------------------------------------------------------------
-    // 2. Helper: map operation field → council-contract setter
-    // -------------------------------------------------------------------------
-    const setterMap: Partial<
-      Record<
-        keyof EngineUpdateOperation,
-        keyof InstanceType<ReturnType<typeof ZkUsdEngineContract>>
-      >
-    > = {
-      emergencyStop: 'govToggleEmergencyStop',
-      vaultCreationDisabled: 'govToggleVaultCreation',
-      collateralRatio: 'govUpdateCollateralRatio',
-      validPriceBlockCount: 'govUpdateValidPriceBlockCount',
-      liquidationBonusRatio: 'govUpdateLiquidationBonusRatio',
-      oracleWhitelistHash: 'govUpdateOracleWhitelist',
-      configMerkleRoot: 'govUpdateConfigMerkleRoot',
-      newVerificationKey: 'govUpdateEngineVerificationKey',
-      vaultDebtCeiling: 'govUpdateVaultDebtCeiling',
-    };
+  const resolutionTree = await this.data.resolutionTree.get();
+  const resolutionWitness = resolutionTree.getWitnessWrapped(updateSpec.govResolutionIndex.toBigint());
 
-    // -------------------------------------------------------------------------
-    // 3. Iterate over every field, submit a tx for the non-noop ones
-    // -------------------------------------------------------------------------
-    const op = updateSpec.protocolUpdateOperation;
-    const failed: string[] = [];
-    let anySucceeded = false;
+  const setterMap = {
+    emergencyStop: 'govToggleEmergencyStop',
+    vaultCreationDisabled: 'govToggleVaultCreation',
+    collateralRatio: 'govUpdateCollateralRatio',
+    validPriceBlockCount: 'govUpdateValidPriceBlockCount',
+    liquidationBonusRatio: 'govUpdateLiquidationBonusRatio',
+    oracleWhitelistHash: 'govUpdateOracleWhitelist',
+    configMerkleRoot: 'govUpdateConfigMerkleRoot',
+    newVerificationKey: 'govUpdateEngineVerificationKey',
+    vaultDebtCeiling: 'govUpdateVaultDebtCeiling',
+  } as const;
 
-    for (const fieldName of Object.keys(setterMap) as Array<
-      keyof typeof setterMap
-    >) {
-      const fieldOp = op[fieldName];
+  const op = updateSpec.protocolUpdateOperation;
+  const failed: string[] = [];
+  let anySucceeded = false;
 
-      if (!hasIsNoopMethod(fieldOp)) {
-        throw new Error(
-          `Protocol update field '${fieldName}' does not implement isNoop(). Make sure all update operations implement the isNoop(): Bool method.`
-        );
-      }
-      if (fieldOp.isNoop().toBoolean()) continue;
+  for (const fieldName in setterMap) {
+const fieldOp = op[fieldName as keyof typeof op];
+if (!hasIsNoopMethod(fieldOp) || fieldOp.isNoop().toBoolean()) continue;
 
-      const setter = setterMap[fieldName];
-      if (setter === undefined) {
-        throw new Error(
-          `Setter for field ${fieldName} not found in setterMap. It should be one of ${Object.keys(setterMap).join(', ')}. Is it outdated?`
-        );
-      }
-      try {
-        const txh = await this.txMgr.tx(
-          senderKeys,
-          async () => {
-            await (this.councilContract as any)[setter](
-              updateSpec,
-              resolutionWitness
-            );
-          },
-          {
-            name: `Engine-update: ${String(setter)} for proposal ${updateSpec.govResolutionIndex.toString()}`,
-          }
-        );
-        await txh.awaitIncluded();
-        anySucceeded = true;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        failed.push(`${String(setter)} failed: ${msg}`);
-      }
+    const setter = setterMap[fieldName as keyof typeof setterMap];
+
+    try {
+      const txh = await this.txMgr.tx(senderKeys, async () => {
+        const engine = this.engineContract as any;
+
+        if (setter === 'govUpdateOracleWhitelist') {
+          if (!extra?.oracleWhitelist) throw new Error('Missing oracleWhitelist');
+          await engine[setter](extra.oracleWhitelist, updateSpec, resolutionWitness);
+        } else if (setter === 'govUpdateEngineVerificationKey') {
+          if (!extra?.verificationKey) throw new Error('Missing verificationKey');
+          await engine[setter](extra.verificationKey, updateSpec, resolutionWitness);
+        } else {
+          await engine[setter](updateSpec, resolutionWitness);
+        }
+      });
+
+      await txh.awaitIncluded();
+      anySucceeded = true;
+    } catch (err) {
+      failed.push(`${setter} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    // -------------------------------------------------------------------------
-    // 4. Compose result
-    // -------------------------------------------------------------------------
-    if (!anySucceeded && failed.length === 0) {
-      // all ops were no-ops
-      return {
-        transactionIncluded: false,
-        info: 'Nothing to apply – every operation in the proposal is a noop.',
-      };
-    }
-
-    return {
-      transactionIncluded: anySucceeded,
-      info:
-        failed.length > 0 ? `Some updates failed:\n${failed.join('\n')}` : null,
-    };
   }
 
-  public async submitEngineUpdateVoteAndTryPassAndApply(args: {
+  return {
+    transactionIncluded: anySucceeded,
+    info: failed.length ? failed.join('\n') : null,
+  };
+}
+
+public async submitEngineUpdateVoteAndTryPassAndApply(args: {
     voteProof: EngineUpdateVoteProof;
     senderKeys: KeyPair;
-    opts?: { force?: boolean };
+    opts?: { force?: boolean, oracleWhitelist?: OracleWhitelist, verificationKey?: VerificationKey };
   }): Promise<UpdateResults> {
     const { voteProof, opts } = args;
 
@@ -617,9 +676,13 @@ export class ZkusdGoverningCouncilClient
     }
 
     // Apply the protocol change to the engine
-    const applyResult = await this.applyPassedUpdateToEngine(
+    const applyResult = await this.applyPassedProposal(
       updateSpec,
-      args.senderKeys
+      args.senderKeys,
+      {
+        oracleWhitelist: opts?.oracleWhitelist,
+        verificationKey: opts?.verificationKey,
+      }
     );
 
     // Aggregate info

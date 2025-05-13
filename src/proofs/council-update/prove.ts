@@ -28,8 +28,8 @@ function pubkeyToCouncilSeatLeafFromFieldValue(
   return Poseidon.hash([indexFieldValue, ...councilKey.toFields()]);
 }
 
-const ManageCouncil = ZkProgram({
-  name: 'ManageCouncil',
+const CouncilUpdate = ZkProgram({
+  name: 'CouncilUpdate',
   publicInput: CouncilUpdateVoteInput,
   publicOutput: CouncilUpdateVoteOutput,
   methods: {
@@ -135,11 +135,11 @@ const ManageCouncil = ZkProgram({
   },
 });
 
-class CouncilUpdateVoteProof extends ZkProgram.Proof(ManageCouncil) {}
+class CouncilUpdateVoteProof extends ZkProgram.Proof(CouncilUpdate) {}
 
 export {
   CouncilUpdateVoteProof,
-  ManageCouncil,
+  CouncilUpdate,
   pubkeyToCouncilSeatLeaf,
   pubkeyToCouncilSeatLeafFromFieldValue,
 };

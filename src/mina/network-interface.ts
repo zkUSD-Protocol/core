@@ -166,6 +166,7 @@ class DevnetChain {
 }
 
 interface IMinaNetworkInterface extends ZkusdMinaApi {
+  reactivate(): void;
   get slotDuration(): UInt64;
   get nonceManager(): INonceManager;
   get network(): MinaNetwork;
@@ -215,8 +216,13 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
   declare getNetworkConstants: MinaApi['getNetworkConstants'];
   declare getNetworkId: MinaApi['getNetworkId'];
   declare proofsEnabled: MinaApi['proofsEnabled'];
-  public get Mina() {
+
+  public reactivate() {
     Mina.setActiveInstance(this.instance);
+}
+
+  public get Mina() {
+    this.reactivate();
     return Mina;
   }
 
@@ -300,6 +306,7 @@ class MinaNetworkInterface implements IMinaNetworkInterface {
     publicKey: string | PublicKey,
     options?: { tokenId?: Field; force?: boolean }
   ): Promise<MinaAccount | undefined> {
+    Mina.setActiveInstance(this.instance)
     const ret = await zkcwfetchMinaAccount({
       publicKey:
         typeof publicKey === 'string'

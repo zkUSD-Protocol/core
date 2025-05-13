@@ -61,6 +61,8 @@ import {
 import { TxProvingTracker } from './transaction/execution.js';
 import { FailedBeforeSending } from './transaction/status.js';
 import { ZkusdEngineClient } from './client/engine.js';
+import {IZkusdGoverningCouncilClient, ZkusdGoverningCouncilClient} from './client/council.js';
+import {ZkusdUpdateProtocolState} from "./system/engine-update/protocol-state.js"
 import { KeyPair } from './types/utility.js';
 import {
   TransactionStatusNew,
@@ -76,6 +78,18 @@ import {
   OracleConfig,
 } from './config/oracles.js';
 import { VaultState } from './system/vault.js';
+import { EngineUpdateOperation, EngineUpdateOperationFields, prettyPrintOperation } from './system/engine-update/operation.js';
+import { deserializeProof, serializeProof } from './proofs/serialization.js';
+import { LocalTransactionExecutor } from './transaction/local-executor.js';
+import { ProposalMap } from './system/council/data/proposal-merkle-map.js';
+import { CouncilMap } from './system/council/data/council-map.js';
+import { Seat } from './system/council/seat.js';
+import { ResolutionTree } from './system/council/data/resolution-tree.js';
+import { ZkusdProtocolPreconditions } from './system/engine-update/protocol-preconditions.js';
+import { MinaChainPreconditions } from './system/engine-update/blockchain-preconditions.js';
+import { EngineUpdateVoteProof } from './proofs/engine-update/prove.js';
+import { BoolOperation, FieldOperation, UInt64Operation, UInt8Operation } from './system/engine-update/simple-operations.js';
+import { CouncilUpdateVoteProof } from './proofs/council-update/prove.js';
 
 const oracleAggregationVk: VerificationKey = {
   data: verificationKeys.oracleAggregation.data,
@@ -153,6 +167,19 @@ export type {
 export { proveTransaction };
 
 export { ZkusdEngineClient as ZKUSDClient };
+
+export type {IZkusdGoverningCouncilClient as IZKUSDGovClient};
+export {ZkusdGoverningCouncilClient as ZKUSDGovClient};
+export {ProposalMap, CouncilMap, Seat, ResolutionTree}
+export {ZkusdProtocolPreconditions, MinaChainPreconditions }
+export {EngineUpdateOperation, prettyPrintOperation}
+export {EngineUpdateVoteProof}
+export {CouncilUpdateVoteProof}
+export {BoolOperation, FieldOperation, UInt64Operation, UInt8Operation}
+
+export {ZkusdUpdateProtocolState, EngineUpdateOperationFields}
+export {serializeProof, deserializeProof}
+export {LocalTransactionExecutor}
 
 //export oracle config
 export {

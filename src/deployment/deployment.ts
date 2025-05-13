@@ -13,7 +13,7 @@ import {
   UInt8,
   VerificationKey,
 } from 'o1js';
-import { ContractInstance, KeyPair } from '../types/utility.js';
+import { blockchain, ContractInstance, KeyPair } from '../types/utility.js';
 import { AggregateOraclePrices } from '../proofs/oracle-price-aggregation/prove.js';
 import { TransactionManager } from '../transaction/manager.js';
 import { IMinaNetworkInterface } from '../mina/network-interface.js';
@@ -25,9 +25,10 @@ import {
   CouncilUpdateActions,
   CouncilUpdateOperation,
 } from '../system/council/update/common.js';
-import { ManageCouncil } from '../proofs/council-update/prove.js';
+import { CouncilUpdate } from '../proofs/council-update/prove.js';
 import { CouncilMap } from '../system/council/data/council-map.js';
 import { Seat } from '../system/council/seat.js';
+import { OracleWhitelist } from '../system/oracle.js';
 
 /**
  * Represents the set of deployed smart contracts and verification keys.
@@ -127,8 +128,8 @@ export class DeploymentService {
     const EngineUpdateCompiled = await EngineUpdate.compile();
     this._EngineUpdateVk = EngineUpdateCompiled.verificationKey;
 
-    const manageCouncilCompiled = await ManageCouncil.compile();
-    this._manageCouncilVk = manageCouncilCompiled.verificationKey;
+    const councilUpdateCompiled = await CouncilUpdate.compile();
+    this._manageCouncilVk = councilUpdateCompiled.verificationKey;
     this.updateVerificationKeys();
 
     const ZkUsdEngine = ZkUsdEngineContract({
@@ -187,7 +188,8 @@ export class DeploymentService {
    * @returns Object containing references to deployed contracts and verification keys
    */
   async deploy(force: boolean = false): Promise<DeployedContracts> {
-    console.log(`Deploying Contracts on ${this._mina.network.chainId}`);
+    const chain = this._mina.network.chainId;
+    console.log(`Deploying Contracts on ${chain}`);
 
     // Create protocol admin account if it doesn't exist
     const protocolAdminAccount = await this._mina.fetchMinaAccount(
@@ -244,17 +246,7 @@ export class DeploymentService {
             UInt8.from(9),
             Bool(false)
           );
-          await this._engine.contract.deploy({
-            admin: this._networkKeys.protocolAdmin.publicKey,
-            validPriceBlockCount: UInt8.from(
-              validPriceBlockCounts[this._txMgr.mina.network.chainId]
-            ),
-            emergencyStop: Bool(false),
-            collateralRatio: UInt8.from(150),
-            liquidationBonusRatio: UInt8.from(110),
-            vaultDebtCeiling: UInt64.from(200_000n * BigInt(1e9)), // 200k USD
-            vaultCreationDisabled: Bool(false),
-          });
+          await this._engine.contract.deploy();
         },
         {
           extraSigners: [
@@ -357,7 +349,18 @@ export class DeploymentService {
         async () => {
           if (!engineTokenAccount)
             AccountUpdate.fundNewAccount(this._deployer.publicKey, 1);
-          await this._engine.contract.initialize();
+          await this._engine.contract.initialize({
+            admin: this._networkKeys.protocolAdmin.publicKey,
+            validPriceBlockCount: UInt8.from(
+              validPriceBlockCounts[this._txMgr.mina.network.chainId]
+            ),
+            emergencyStop: Bool(false),
+            collateralRatio: UInt8.from(150),
+            liquidationBonusRatio: UInt8.from(110),
+            vaultDebtCeiling: UInt64.from(200_000n * BigInt(1e9)), // 200k USD
+            vaultCreationDisabled: Bool(false),
+            oracleWhitelistHash: getOracleWhitelistHash(chain)
+          });
         },
         {
           extraSigners: [
@@ -382,4 +385,18 @@ export class DeploymentService {
       gov: this._gov.contract,
     };
   }
+}
+
+function getOracleWhitelistHash(chain: blockchain) {
+ const keys = getNetworkKeys(chain);
+  const whitelist = new OracleWhitelist({
+    addresses: [],
+  });
+
+  //Update the oracle whitelist
+  for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
+    whitelist.addresses[i] = keys.oracles![i].publicKey;
+  }
+  const oracleWhitelistHash = OracleWhitelist.hash(whitelist);
+  return oracleWhitelistHash;
 }

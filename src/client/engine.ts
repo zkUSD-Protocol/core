@@ -1,4 +1,4 @@
-import { AccountUpdate, PrivateKey, PublicKey, UInt64 } from 'o1js';
+import { Account, AccountUpdate, fetchAccount, Field, PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { MinaNetworkInterface } from '../mina/network-interface.js';
 import { MinaPriceInput } from '../proofs/oracle-price-aggregation/index.js';
 import { HttpClientProver } from '../provers/httpclientprover.js';
@@ -8,7 +8,7 @@ import {
   TransactionManager,
   TransactionOptions,
 } from '../transaction/manager.js';
-import { blockchain, KeyPair } from '../types/utility.js';
+import { blockchain, KeyPair, WithDefault } from '../types/utility.js';
 import { FungibleTokenContract } from '@minatokens/token';
 import { ZkUsdEngineContract } from '../contracts/zkusd-engine.js';
 import { verificationKeys } from '../config/verification-keys.js';
@@ -21,6 +21,9 @@ import { VaultState, Vault } from '../system/vault.js';
 import { getContractKeys } from '../config/keys.js';
 import { ZkusdGoverningCouncilContract } from '../contracts/zkusd-governing-council.js';
 import { calculateHealthFactor, calculateLTV } from '../utils/loan.js';
+import { LocalTransactionExecutor } from '../transaction/local-executor.js';
+import { ITransactionExecutor } from '../transaction/executor.js';
+import { ZkusdUpdateProtocolState } from '../system/engine-update/protocol-state.js';
 
 interface ZkusdEngineClientConfig {
   chain: blockchain;
@@ -35,19 +38,32 @@ interface TransactionContext {
   newAccounts?: number;
 }
 
+type TxMgr = TransactionManager<'executor' | 'local'>;
+
 export class ZkusdEngineClient {
-  private txMgr: TransactionManager<'executor'>;
+  private txMgr: TxMgr;
   private engine: InstanceType<ReturnType<typeof ZkUsdEngineContract>>;
   private token: InstanceType<ReturnType<typeof FungibleTokenContract>>;
 
+  public get transactionManager(): TxMgr {
+    return this.txMgr;
+  }
+
   constructor(
-    txMgr: TransactionManager<'executor'>,
+    txMgr: TxMgr,
     engine: InstanceType<ReturnType<typeof ZkUsdEngineContract>>,
     token: InstanceType<ReturnType<typeof FungibleTokenContract>>
   ) {
     this.txMgr = txMgr;
     this.engine = engine;
     this.token = token;
+  }
+
+  public async fetchMinaAccount(
+    publicKey: string | PublicKey,
+    options?: { tokenId?: Field; force?: boolean }
+  ): Promise<Account | undefined> {
+    return this.txMgr.mina.fetchMinaAccount(publicKey, options);
   }
 
   static async create(config: ZkusdEngineClientConfig) {
@@ -64,9 +80,13 @@ export class ZkusdEngineClient {
     const executor = await ExternalTransactionExecutor.start(mina, {
       prover,
     });
-    const txMgr = TransactionManager.new(mina, {
-      executor,
-    });
+    const local = new LocalTransactionExecutor();
+
+    const txMgr = TransactionManager.new<'executor' | 'local'>(mina, {
+  executor,
+  local,
+  default: 'executor',
+} as WithDefault<'executor' | 'local', ITransactionExecutor>);
 
     const ZkUsdEngine = ZkUsdEngineContract({
       zkUsdTokenAddress: tokenAddress,
@@ -84,7 +104,7 @@ export class ZkusdEngineClient {
   }
 
   /**
-   * Creates a new vault
+   * Creates  new vault
    * @param sender The account creating the vault
    * @param vaultPrivateKey The private key for the new vault
    * @returns Transaction handle for tracking status
@@ -132,6 +152,20 @@ export class ZkusdEngineClient {
   getToken(): InstanceType<ReturnType<typeof FungibleTokenContract>> {
     return this.token;
   }
+    /**
+     * Fetches the current protocol state
+     */
+    async buildProtocolState(): Promise<ZkusdUpdateProtocolState> {
+      const engineAccount = await fetchAccount({publicKey: this.engine.address});
+      if (!engineAccount) {
+        throw new Error('Engine account not found');
+      }
+      
+      return this.engine.buildProtocolState();
+    }
+
+
+
 
   /**
    * Deposits collateral into a vault

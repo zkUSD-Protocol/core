@@ -97,19 +97,17 @@ export const EngineUpdate = ZkProgram({
         // if yes, then we can skip the index value computation as you cannot cheat it.
         const councilMember = councilMerkleMap.get(seat.value);
 
-        Provable.log('councilMember', councilMember);
-
         councilMember.assertEquals(
           Poseidon.hash(voterPublicKey.toFields()),
           'Council member not correct'
         );
 
         return {
-          publicOutput: {
+          publicOutput: new EngineUpdateOutput({
             proposalHash: Poseidon.hash(proofDataFields),
             councilMerkleMapRoot: councilMerkleMap.root,
             cummulatedVoteBitArray: seat.value,
-          },
+          }),
         };
       },
     },

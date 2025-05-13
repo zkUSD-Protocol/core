@@ -1,84 +1,61 @@
-// import { MinaNetworkInterface } from '../../mina/network-interface.js';
-// import { TransactionManager } from '../../transaction/manager.js';
-// import { DeploymentService } from '../../deployment/deployment.js';
-// import { AccountUpdate, PublicKey } from 'o1js';
-// import { LocalTransactionExecutor } from '../../transaction/local-executor.js';
-// import { OracleWhitelist } from '../../system/oracle.js';
-// import { getNetworkKeys } from '../../config/keys.js';
-// import { ITransactionExecutor } from '../../index.node.js';
+import { MinaNetworkInterface } from '../../mina/network-interface.js';
+import { TransactionManager } from '../../transaction/manager.js';
+import { DeploymentService } from '../../deployment/deployment.js';
+import { AccountUpdate, PublicKey } from 'o1js';
+import { LocalTransactionExecutor } from '../../transaction/local-executor.js';
+import { getNetworkKeys } from '../../config/keys.js';
+import { ITransactionExecutor } from '../../index.node.js';
 
-// const RECEIVER_PUBLIC_KEY =
-//   'B62qmbTQ56amhVUBTH3umviEEnnQhTbKf5EkpyXb62Rzho3T3A1dPYx';
-// const AMOUNT = 500e9; // 100 Mina
+const AMOUNT = 500e9; // 100 Mina
 
-// async function main() {
-//   const MinaChain = await MinaNetworkInterface.initLightnet();
-//   const executor: ITransactionExecutor = new LocalTransactionExecutor();
-//   const txMgr = TransactionManager.new(MinaChain, { local: executor });
-//   const deploymentService = await DeploymentService.create(txMgr);
+async function main() {
+  const MinaChain = await MinaNetworkInterface.initLightnet();
+  const executor: ITransactionExecutor = new LocalTransactionExecutor();
+  const txMgr = TransactionManager.new(MinaChain, { local: executor });
+  const deploymentService = await DeploymentService.create(txMgr);
+  await deploymentService.deploy();
+  await fundCouncilMembers(deploymentService, txMgr);
+}
 
-//   const keys = getNetworkKeys('lightnet');
+async function fundCouncilMembers(
+  deploymentService: DeploymentService,
+  txMgr: TransactionManager<any>
+) {
+  const chain = txMgr.mina.network.chainId;
 
-//   const contracts = await deploymentService.deploy();
+  const councilKeys: PublicKey[] =
+    getNetworkKeys(chain).council?.map((keypair) => keypair.publicKey) ?? [];
 
-//   const whitelist = new OracleWhitelist({
-//     addresses: [],
-//   });
+    if (!councilKeys) {
+      console.warn(`No council keys found for ${chain}`);
+      return;
+    }
 
-//   //Update the oracle whitelist
-//   for (let i = 0; i < OracleWhitelist.MAX_PARTICIPANTS; i++) {
-//     whitelist.addresses[i] = keys.oracles![i].publicKey;
-//   }
+  councilKeys.forEach(async (key, index) => {
+    const receiverAccount = await txMgr.mina.fetchMinaAccount(key);
 
-//   const oracleWhitelistHash = OracleWhitelist.hash(whitelist);
+    const receiverAccountTx = await txMgr.tx(
+      deploymentService.deployer,
+      async () => {
+        if (!receiverAccount) {
+          AccountUpdate.fundNewAccount(deploymentService.deployer.publicKey, 1);
+        }
+        const au = AccountUpdate.createSigned(
+          deploymentService.deployer.publicKey
+        );
+        au.send({
+          to: key,
+          amount: AMOUNT,
+        });
+      },
+      {
+        name: `Funding Council Member ${index}`,
+      }
+    );
 
-//   const engineOracleWhitelistHash =
-//     await contracts.engine.contract.oracleWhitelistHash.fetch();
+    await receiverAccountTx.awaitIncluded();
+    console.log(`Funded council member ${index} with ${AMOUNT} to ${key.toBase58()}`);
+  });
+}
 
-//   if (
-//     !!engineOracleWhitelistHash &&
-//     engineOracleWhitelistHash.toBigInt() == oracleWhitelistHash.toBigInt()
-//   ) {
-//     console.log('Oracle whitelist already set');
-//   } else {
-//     console.log('Updating oracle whitelist');
-
-//     const txHandle = await txMgr.tx(
-//       deploymentService.deployer,
-//       async () => {
-//         await contracts.engine.contract.updateOracleWhitelist(whitelist);
-//       },
-//       {
-//         name: 'Updating oracle whitelist',
-//         extraSigners: [keys.protocolAdmin.privateKey],
-//       }
-//     );
-//     await txHandle.awaitIncluded();
-//   }
-
-//   const receiverAccount =
-//     await txMgr.mina.fetchMinaAccount(RECEIVER_PUBLIC_KEY);
-
-//   const receiverAccountTx = await txMgr.tx(
-//     deploymentService.deployer,
-//     async () => {
-//       if (!receiverAccount) {
-//         AccountUpdate.fundNewAccount(deploymentService.deployer.publicKey, 1);
-//       }
-//       const au = AccountUpdate.createSigned(
-//         deploymentService.deployer.publicKey
-//       );
-//       au.send({
-//         to: PublicKey.fromBase58(RECEIVER_PUBLIC_KEY),
-//         amount: AMOUNT,
-//       });
-//     },
-//     {
-//       name: 'Fund Receiver Account',
-//     }
-//   );
-
-//   await receiverAccountTx.awaitIncluded();
-// }
-
-// main();
+main();

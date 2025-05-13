@@ -370,3 +370,60 @@ export class UInt64Operation extends Struct({
     return [this.operation, this.value.value];
   }
 }
+
+export function printOperation(
+  operation: BoolOperation | UInt8Operation | FieldOperation | UInt64Operation
+): string | null {
+  if (operation instanceof BoolOperation) {
+    if(operation.isNoop().toBoolean()) {
+      return null;
+    }
+    const isFlip = operation.operation.equals(2).toBoolean();
+    if(isFlip){
+      return `BoolOperation(flip)`;
+    }
+    return `BoolOperation(set to ${operation.operation.equals(1).toBoolean() ? 'true' : 'false'})`;
+  } else if (operation instanceof UInt8Operation) {
+    if(operation.isNoop().toBoolean()) {
+      return null;
+    }
+    const isAdd = operation.operation.equals(1).toBoolean();
+    const isSub = operation.operation.equals(2).toBoolean();
+    if(isAdd){
+      return `UInt8Operation(add ${operation.value.toString()})`;
+    }
+    if(isSub){
+      return `UInt8Operation(sub ${operation.value.toString()})`;
+    }
+    return `UInt8Operation(set to ${operation.value.toString()})`;
+    
+  } else if (operation instanceof FieldOperation) {
+    if(operation.isNoop().toBoolean()) {
+      return null;
+    }
+    const isAdd = operation.operation.equals(1).toBoolean();
+    const isSub = operation.operation.equals(2).toBoolean();
+    if(isAdd){
+      return `FieldOperation(add ${operation.value.toString()})`;
+    }
+    if(isSub){
+      return `FieldOperation(sub ${operation.value.toString()})`;
+    }
+    return `FieldOperation(set to ${operation.value.toString()})`;
+    
+  } else if (operation instanceof UInt64Operation) {
+    if(operation.isNoop().toBoolean()) {
+      return null;
+    }
+    const isAdd = operation.operation.equals(1).toBoolean();
+    const isSub = operation.operation.equals(2).toBoolean();
+    if(isAdd){
+      return `UInt64Operation(add ${operation.value.toString()})`;
+    }
+    if(isSub){
+      return `UInt64Operation(sub ${operation.value.toString()})`;
+    }
+    return `UInt64Operation(set to ${operation.value.toString()})`;
+  }
+  throw new Error('Unknown operation type');
+}
