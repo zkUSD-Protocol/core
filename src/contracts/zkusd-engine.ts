@@ -769,6 +769,7 @@ export function ZkUsdEngineContract(args: {
 
       this.oracleWhitelistHash.set(whitelisthash);
 
+      // TODO publish the oracle public keys in the event!
       this.emitEvent(
         'OracleWhitelistUpdated',
         new OracleWhitelistUpdatedEvent({
