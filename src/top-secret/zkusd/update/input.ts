@@ -1,8 +1,8 @@
-import { Provable, PublicKey, Signature, Struct } from 'o1js';
-import { ZkUsdState } from './common';
+import { Field, Provable, PublicKey, Signature, Struct } from 'o1js';
+import { ZkUsdState } from './common.js';
 import { Note } from '../data/note.js';
-import { UtxoWitness } from '../data/utxo-tree';
-import { NullifierWitness } from '../data/nullifier-map';
+import { NullifierWitness } from '../data/nullifier-map.js';
+import { UtxoWitness } from '../data/utxo-tree.js';
 
 /**
  * Public input for the ZkUSD program.
@@ -33,4 +33,5 @@ export class ZkUsdTransferInput extends Struct({
   outputUtxoWitnesses: Provable.Array(UtxoWitness, MAX_OUTPUT_NOTE_COUNT),
   spendingSignature: Signature,
   spendingPublicKey: PublicKey,
+  nullifierKey: Field,
 }) {}

@@ -19,13 +19,13 @@ export class Note extends Struct({
   isDummy: Bool,
 }) {
   static create(
-    amount: number,
+    amount: UInt64,
     address: PaymentAddress,
     secret: Field,
     nonce: Field
   ): Note {
     return new Note({
-      amount: UInt64.from(amount),
+      amount,
       address,
       secret,
       nonce,

@@ -24,3 +24,7 @@ export class UtxoTree extends MerkleTree {
     this._next++;
   }
 }
+
+export namespace UtxoTree {
+  export type Witness = UtxoWitness;
+}

@@ -1,5 +1,5 @@
 import { Struct } from 'o1js';
-import { ZkUsdState } from './common';
+import { ZkUsdState } from './common.js';
 
 /**
  * Public output for the ZkUSD program.
