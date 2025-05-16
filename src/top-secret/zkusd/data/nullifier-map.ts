@@ -1,4 +1,5 @@
-import { MerkleMap, MerkleMapWitness } from 'o1js';
+import { Field, MerkleMap, MerkleMapWitness } from 'o1js';
+import { Bool } from 'o1js';
 
 /**
  * A MerkleMap that stores nullifiers.
@@ -9,4 +10,11 @@ import { MerkleMap, MerkleMapWitness } from 'o1js';
 
 export class NullifierMap extends MerkleMap {}
 
-export class NullifierWitness extends MerkleMapWitness {}
+export class NullifierWitness extends MerkleMapWitness {
+  static dummy(): NullifierWitness {
+    // Create a temporary empty map
+    const emptyMap = new NullifierMap();
+    // Get a real witness for key Field(0), which should be empty by default
+    return emptyMap.getWitness(Field(0));
+  }
+}
