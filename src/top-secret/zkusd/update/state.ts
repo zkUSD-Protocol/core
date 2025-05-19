@@ -10,7 +10,7 @@ import { VaultMap } from '../data/vault-map.js';
 export class ZkUsdState extends Struct({
   vaultMap: VaultMap,
   utxoTreeRoot: Field,
-  nullifierMapRoot: Field,
+  nullifierMap: NullifierMap,
   sequence: UInt64,
   blockNumber: UInt32,
 }) {
@@ -18,7 +18,7 @@ export class ZkUsdState extends Struct({
     return new ZkUsdState({
       vaultMap: new VaultMap(),
       utxoTreeRoot: new UtxoTree().getRoot(),
-      nullifierMapRoot: new NullifierMap().getRoot(),
+      nullifierMap: new NullifierMap(),
       sequence: UInt64.from(0),
       blockNumber: UInt32.from(0),
     });
@@ -27,7 +27,7 @@ export class ZkUsdState extends Struct({
   static assertEqual(a: ZkUsdState, b: ZkUsdState) {
     a.vaultMap.root.assertEquals(b.vaultMap.root);
     a.utxoTreeRoot.assertEquals(b.utxoTreeRoot);
-    a.nullifierMapRoot.assertEquals(b.nullifierMapRoot);
+    a.nullifierMap.root.assertEquals(b.nullifierMap.root);
     a.sequence.assertEquals(b.sequence);
     a.blockNumber.assertEquals(b.blockNumber);
   }

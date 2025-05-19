@@ -47,7 +47,7 @@ export const ZkUsd = ZkProgram({
           publicOutput: new ZkUsdState({
             vaultMap: publicInput.vaultMap,
             utxoTreeRoot: newRoot,
-            nullifierMapRoot: publicInput.nullifierMapRoot,
+            nullifierMap: publicInput.nullifierMap,
             sequence: publicInput.sequence.add(UInt64.from(1)),
             blockNumber: publicInput.blockNumber,
           }),
@@ -63,19 +63,19 @@ export const ZkUsd = ZkProgram({
         const empty = Field(0);
         const nullified = Field(1);
         let valueIn = UInt64.zero;
-        let nRoot = publicInput.nullifierMapRoot;
         let uRoot = publicInput.utxoTreeRoot;
         let spender = transferInput.spendingPublicKey;
         let spenderSig = transferInput.spendingSignature;
         let nullifierKey = transferInput.nullifierKey;
+        let nullifierMap = transferInput.nullifierMap;
 
         spenderSig.verify(spender, transferInput.inputNotes.toFields().flat());
 
         for (let i = 0; i < MAX_INPUT_NOTE_COUNT; i++) {
           const inN = transferInput.inputNotes.notes[i];
           const inW = transferInput.inputUtxoWitnesses[i];
-          const inNNW = transferInput.nullifierWitnesses[i];
           const inNHash = inN.hash();
+          const inNNullifier = inN.nullifier(nullifierKey);
 
           //Make sure the input note is part of the utxo tree
           const calculatedURoot = inW.calculateRoot(inNHash);
@@ -92,23 +92,11 @@ export const ZkUsd = ZkProgram({
 
           inN.address.spendingPublicKey.assertEquals(spenderToCheck);
 
-          const [nRootBefore, nKey] = inNNW.computeRootAndKey(empty);
+          //Make sure the nullifier is not spent
+          nullifierMap.assertNotIncluded(inNNullifier);
 
-          let nRootToCheck = Provable.if(inN.isDummy, nRoot, nRootBefore);
-
-          nRootToCheck.assertEquals(nRoot);
-
-          let keyToCheck = Provable.if(
-            inN.isDummy,
-            empty,
-            inN.nullifier(nullifierKey)
-          );
-
-          keyToCheck.assertEquals(nKey);
-
-          const [nRootAfter, _] = inNNW.computeRootAndKey(nullified);
-
-          nRoot = Provable.if(inN.isDummy, nRoot, nRootAfter);
+          //Add the nullifier to the nullifier map
+          nullifierMap.setIf(inN.isDummy.not(), inNNullifier, nullified);
 
           valueIn = valueIn.add(inN.amount);
         }
@@ -131,7 +119,7 @@ export const ZkUsd = ZkProgram({
           publicOutput: new ZkUsdState({
             vaultMap: publicInput.vaultMap,
             utxoTreeRoot: uRoot,
-            nullifierMapRoot: nRoot,
+            nullifierMap: nullifierMap,
             sequence: publicInput.sequence.add(UInt64.from(1)),
             blockNumber: publicInput.blockNumber,
           }),

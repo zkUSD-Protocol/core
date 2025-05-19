@@ -1,4 +1,4 @@
-import { Field, MerkleMap, MerkleMapWitness } from 'o1js';
+import { Experimental, Field, MerkleMap, MerkleMapWitness } from 'o1js';
 import { Bool } from 'o1js';
 
 /**
@@ -8,13 +8,8 @@ import { Bool } from 'o1js';
  * - Values are `Bool` indicating if the nullifier has been spent.
  */
 
-export class NullifierMap extends MerkleMap {}
+const NULLIFIER_MAP_HEIGHT = 52; // 1,099,511,627,776 - 1 trillion
 
-export class NullifierWitness extends MerkleMapWitness {
-  static dummy(): NullifierWitness {
-    // Create a temporary empty map
-    const emptyMap = new NullifierMap();
-    // Get a real witness for key Field(0), which should be empty by default
-    return emptyMap.getWitness(Field(0));
-  }
-}
+const { IndexedMerkleMap } = Experimental;
+
+export class NullifierMap extends IndexedMerkleMap(NULLIFIER_MAP_HEIGHT) {}

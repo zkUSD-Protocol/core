@@ -10,7 +10,7 @@ import {
   UInt64,
 } from 'o1js';
 import { Note } from '../data/note.js';
-import { NullifierMap, NullifierWitness } from '../data/nullifier-map.js';
+import { NullifierMap } from '../data/nullifier-map.js';
 import { UtxoTree, UtxoWitness } from '../data/utxo-tree.js';
 import { PaymentAddress } from '../types/keys.js';
 import { ZkUsdState } from './state.js';
@@ -30,7 +30,7 @@ export class InputNotes extends Struct({
 export class ZkUsdTransferInput extends Struct({
   inputNotes: InputNotes,
   inputUtxoWitnesses: Provable.Array(UtxoWitness, MAX_INPUT_NOTE_COUNT),
-  nullifierWitnesses: Provable.Array(NullifierWitness, MAX_INPUT_NOTE_COUNT),
+  nullifierMap: NullifierMap,
   outputNotes: Provable.Array(Note, MAX_OUTPUT_NOTE_COUNT),
   outputUtxoWitnesses: Provable.Array(UtxoWitness, MAX_OUTPUT_NOTE_COUNT),
   spendingSignature: Signature,
@@ -50,9 +50,7 @@ export class ZkUsdTransferInput extends Struct({
       inputUtxoWitnesses: Array(MAX_INPUT_NOTE_COUNT).fill(
         new UtxoWitness(Array(UtxoWitness.HEIGHT).fill(Field(0)))
       ),
-      nullifierWitnesses: Array(MAX_INPUT_NOTE_COUNT).fill(
-        new NullifierWitness([Bool(false)], [Field(0)])
-      ),
+      nullifierMap: new NullifierMap(),
       outputNotes: Array(MAX_OUTPUT_NOTE_COUNT).fill(Note.dummy()),
       outputUtxoWitnesses: Array(MAX_OUTPUT_NOTE_COUNT).fill(
         new UtxoWitness(Array(UtxoWitness.HEIGHT).fill(Field(0)))
@@ -78,7 +76,6 @@ export class ZkUsdTransferInput extends Struct({
   static createTransfer(
     inputNotes: Note[],
     utxoTree: UtxoTree,
-    nullifierMap: NullifierMap,
     recipientAddress: PaymentAddress,
     currentState: ZkUsdState,
     amount: UInt64,
@@ -88,7 +85,6 @@ export class ZkUsdTransferInput extends Struct({
     //Clone the state
 
     const uT = utxoTree;
-    const nM = nullifierMap;
 
     if (inputNotes.length > MAX_INPUT_NOTE_COUNT) {
       throw new Error(
@@ -134,10 +130,8 @@ export class ZkUsdTransferInput extends Struct({
 
     // Get witnesses for input notes
     const inputUtxoWitnesses: UtxoWitness[] = [];
-    const nullifierWitnesses: NullifierWitness[] = [];
 
     const empty = Field(0);
-    const nullified = Field(1);
 
     for (const note of inputNotes) {
       const commitment = note.hash();
@@ -153,29 +147,11 @@ export class ZkUsdTransferInput extends Struct({
       );
 
       inputUtxoWitnesses.push(utxoWitness);
-
-      const nullifier = note.nullifier(nullifierKey);
-      const nullifierWitness = nM.getWitness(nullifier);
-      const [computedRoot, key] = nullifierWitness.computeRootAndKey(empty);
-
-      computedRoot.assertEquals(
-        nM.getRoot(),
-        `Nullifier root mismatch for note: ${JSON.stringify(note)}`
-      );
-      key.assertEquals(
-        nullifier,
-        `Nullifier key mismatch for note: ${JSON.stringify(note)}`
-      );
-
-      nullifierWitnesses.push(nullifierWitness);
-
-      nM.set(nullifier, nullified);
     }
 
     // Pad arrays with dummy values if needed
     while (inputUtxoWitnesses.length < MAX_INPUT_NOTE_COUNT) {
       inputUtxoWitnesses.push(UtxoWitness.dummy());
-      nullifierWitnesses.push(NullifierWitness.dummy());
     }
 
     // Find available positions in UTXO tree for output notes
@@ -219,7 +195,7 @@ export class ZkUsdTransferInput extends Struct({
     const input = new ZkUsdTransferInput({
       inputNotes: inputNotesStruct,
       inputUtxoWitnesses,
-      nullifierWitnesses,
+      nullifierMap: currentState.nullifierMap,
       outputNotes: outputNotes,
       outputUtxoWitnesses,
       spendingSignature: signature,
@@ -230,7 +206,7 @@ export class ZkUsdTransferInput extends Struct({
     const state = new ZkUsdState({
       vaultMap: currentState.vaultMap,
       utxoTreeRoot: uT.getRoot(),
-      nullifierMapRoot: nM.getRoot(),
+      nullifierMap: currentState.nullifierMap,
       sequence: currentState.sequence.add(UInt64.from(1)),
       blockNumber: currentState.blockNumber,
     });

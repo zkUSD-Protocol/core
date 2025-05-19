@@ -57,7 +57,7 @@ describe('ZkUsd Payment Address Test Suite', () => {
     state = new ZkUsdState({
       vaultMap: vaultMap,
       utxoTreeRoot: utxoTree.getRoot(),
-      nullifierMapRoot: nullifierMap.getRoot(),
+      nullifierMap: nullifierMap,
       sequence,
       blockNumber,
     });
@@ -126,7 +126,6 @@ describe('ZkUsd Payment Address Test Suite', () => {
     const { input: txInput } = ZkUsdTransferInput.createTransfer(
       [aliceNote],
       utxoTree,
-      nullifierMap,
       bob.paymentAddress,
       state,
       UInt64.from(10e9),
@@ -148,8 +147,8 @@ describe('ZkUsd Payment Address Test Suite', () => {
     );
 
     assert.deepStrictEqual(
-      transfer.proof.publicOutput.nullifierMapRoot,
-      nullifierMap.getRoot()
+      transfer.proof.publicOutput.nullifierMap.root,
+      nullifierMap.root
     );
   });
 
@@ -164,7 +163,6 @@ describe('ZkUsd Payment Address Test Suite', () => {
       ZkUsdTransferInput.createTransfer(
         [bobsNote],
         utxoTree,
-        nullifierMap,
         alice.paymentAddress,
         state,
         UInt64.from(5e9),
@@ -178,7 +176,6 @@ describe('ZkUsd Payment Address Test Suite', () => {
       ZkUsdTransferInput.createTransfer(
         [alicesNote],
         utxoTree,
-        nullifierMap,
         bob.paymentAddress,
         state,
         UInt64.from(5e9),
@@ -234,14 +231,14 @@ describe('ZkUsd Payment Address Test Suite', () => {
         utxoTreeRoot:
           proof.publicOutput.utxoTreeRoot.toString().slice(0, 10) + '...',
         nullifierMapRoot:
-          proof.publicOutput.nullifierMapRoot.toString().slice(0, 10) + '...',
+          proof.publicOutput.nullifierMap.root.toString().slice(0, 10) + '...',
       };
 
       const shortInputRoots = {
         utxoTreeRoot:
           proof.publicInput.utxoTreeRoot.toString().slice(0, 10) + '...',
         nullifierMapRoot:
-          proof.publicInput.nullifierMapRoot.toString().slice(0, 10) + '...',
+          proof.publicInput.nullifierMap.root.toString().slice(0, 10) + '...',
       };
 
       console.log(`Proof #${i}: ${proofTypes[i]}`);
