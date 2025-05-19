@@ -45,8 +45,11 @@ export const ZkUsd = ZkProgram({
 
         return {
           publicOutput: new ZkUsdState({
+            vaultMap: publicInput.vaultMap,
             utxoTreeRoot: newRoot,
             nullifierMapRoot: publicInput.nullifierMapRoot,
+            sequence: publicInput.sequence.add(UInt64.from(1)),
+            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -126,8 +129,11 @@ export const ZkUsd = ZkProgram({
 
         return {
           publicOutput: new ZkUsdState({
+            vaultMap: publicInput.vaultMap,
             utxoTreeRoot: uRoot,
             nullifierMapRoot: nRoot,
+            sequence: publicInput.sequence.add(UInt64.from(1)),
+            blockNumber: publicInput.blockNumber,
           }),
         };
       },

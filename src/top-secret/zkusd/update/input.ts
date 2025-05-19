@@ -6,12 +6,15 @@ import {
   PublicKey,
   Signature,
   Struct,
+  UInt32,
   UInt64,
 } from 'o1js';
 import { Note } from '../data/note.js';
 import { NullifierMap, NullifierWitness } from '../data/nullifier-map.js';
 import { UtxoTree, UtxoWitness } from '../data/utxo-tree.js';
 import { PaymentAddress } from '../types/keys.js';
+import { ZkUsdState } from './state.js';
+import { VaultMap } from '../data/vault-map.js';
 
 export const MAX_INPUT_NOTE_COUNT = 3;
 export const MAX_OUTPUT_NOTE_COUNT = 2;
@@ -77,10 +80,16 @@ export class ZkUsdTransferInput extends Struct({
     utxoTree: UtxoTree,
     nullifierMap: NullifierMap,
     recipientAddress: PaymentAddress,
+    currentState: ZkUsdState,
     amount: UInt64,
     spendingPrivateKey: PrivateKey,
     nullifierKey: Field
-  ): ZkUsdTransferInput {
+  ): { input: ZkUsdTransferInput; state: ZkUsdState } {
+    //Clone the state
+
+    const uT = utxoTree;
+    const nM = nullifierMap;
+
     if (inputNotes.length > MAX_INPUT_NOTE_COUNT) {
       throw new Error(
         `Too many input notes. Maximum allowed is ${MAX_INPUT_NOTE_COUNT}`
@@ -134,9 +143,9 @@ export class ZkUsdTransferInput extends Struct({
       const commitment = note.hash();
       const utxoIndex = note.nonce.toBigInt();
 
-      const utxoWitness = new UtxoWitness(utxoTree.getWitness(utxoIndex));
+      const utxoWitness = new UtxoWitness(uT.getWitness(utxoIndex));
 
-      const utxo = utxoTree.getLeaf(utxoIndex);
+      const utxo = uT.getLeaf(utxoIndex);
 
       utxo.assertEquals(
         commitment,
@@ -146,11 +155,11 @@ export class ZkUsdTransferInput extends Struct({
       inputUtxoWitnesses.push(utxoWitness);
 
       const nullifier = note.nullifier(nullifierKey);
-      const nullifierWitness = nullifierMap.getWitness(nullifier);
+      const nullifierWitness = nM.getWitness(nullifier);
       const [computedRoot, key] = nullifierWitness.computeRootAndKey(empty);
 
       computedRoot.assertEquals(
-        nullifierMap.getRoot(),
+        nM.getRoot(),
         `Nullifier root mismatch for note: ${JSON.stringify(note)}`
       );
       key.assertEquals(
@@ -160,7 +169,7 @@ export class ZkUsdTransferInput extends Struct({
 
       nullifierWitnesses.push(nullifierWitness);
 
-      nullifierMap.set(nullifier, nullified);
+      nM.set(nullifier, nullified);
     }
 
     // Pad arrays with dummy values if needed
@@ -173,11 +182,9 @@ export class ZkUsdTransferInput extends Struct({
     const outputUtxoWitnesses: UtxoWitness[] = [];
 
     for (const note of outputNotes) {
-      const witness = new UtxoWitness(
-        utxoTree.getWitness(note.nonce.toBigInt())
-      );
+      const witness = new UtxoWitness(uT.getWitness(note.nonce.toBigInt()));
 
-      const utxo = utxoTree.getLeaf(note.nonce.toBigInt());
+      const utxo = uT.getLeaf(note.nonce.toBigInt());
       utxo.assertEquals(
         empty,
         `Index already taken for output note: ${JSON.stringify(utxo)}`
@@ -185,7 +192,7 @@ export class ZkUsdTransferInput extends Struct({
 
       outputUtxoWitnesses.push(witness);
 
-      utxoTree.setLeaf(note.nonce.toBigInt(), note.hash());
+      uT.setLeaf(note.nonce.toBigInt(), note.hash());
     }
 
     // Pad output witnesses if needed
@@ -209,7 +216,7 @@ export class ZkUsdTransferInput extends Struct({
       inputNotesStruct.toFields()
     );
 
-    return new ZkUsdTransferInput({
+    const input = new ZkUsdTransferInput({
       inputNotes: inputNotesStruct,
       inputUtxoWitnesses,
       nullifierWitnesses,
@@ -219,5 +226,18 @@ export class ZkUsdTransferInput extends Struct({
       spendingPublicKey: spendingPrivateKey.toPublicKey(),
       nullifierKey,
     });
+
+    const state = new ZkUsdState({
+      vaultMap: currentState.vaultMap,
+      utxoTreeRoot: uT.getRoot(),
+      nullifierMapRoot: nM.getRoot(),
+      sequence: currentState.sequence.add(UInt64.from(1)),
+      blockNumber: currentState.blockNumber,
+    });
+
+    return {
+      input,
+      state,
+    };
   }
 }
