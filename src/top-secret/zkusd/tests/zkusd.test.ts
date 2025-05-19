@@ -12,16 +12,14 @@ import {
 } from 'o1js';
 import { Note } from '../data/note.js';
 import { ZkUsd, ZkUsdProof } from '../program.js';
-import { UtxoTree, UtxoWitness } from '../data/utxo-tree.js';
-import { NullifierMap } from '../data/nullifier-map.js';
 import { ZkUsdTransferInput } from '../update/input.js';
 import { ZkUsdState } from '../update/state.js';
 import { VaultMap } from '../data/vault-map.js';
+import { ZkUsdMap } from '../data/zkusd-map.js';
 
 describe('ZkUsd Payment Address Test Suite', () => {
   let keys: Keys;
-  let utxoTree: UtxoTree;
-  let nullifierMap: NullifierMap;
+  let zkUsdMap: ZkUsdMap;
   let vaultMap: VaultMap;
   let utxos: Note[] = [];
   let alice: Keys;
@@ -50,14 +48,12 @@ describe('ZkUsd Payment Address Test Suite', () => {
     alice = Keys.fromPrivateKey(PrivateKey.random());
     bob = Keys.fromPrivateKey(PrivateKey.random());
 
-    utxoTree = new UtxoTree();
-    nullifierMap = new NullifierMap();
+    zkUsdMap = new ZkUsdMap();
     vaultMap = new VaultMap();
 
     state = new ZkUsdState({
       vaultMap: vaultMap,
-      utxoTreeRoot: utxoTree.getRoot(),
-      nullifierMap: nullifierMap,
+      zkUsdMap: zkUsdMap,
       sequence,
       blockNumber,
     });
@@ -92,20 +88,15 @@ describe('ZkUsd Payment Address Test Suite', () => {
       Field.random()
     );
 
-    const witness = new UtxoTree.Witness(
-      utxoTree.getWitness(note.nonce.toBigInt())
-    );
-
-    const mint = await ZkUsd.mint(state, note, witness);
+    const mint = await ZkUsd.mint(state, note);
 
     state = mint.proof.publicOutput;
-
-    utxoTree.setLeaf(note.nonce.toBigInt(), note.hash());
 
     utxos.push(note);
     proofs.push(mint.proof);
 
-    assert.deepStrictEqual(state.utxoTreeRoot, utxoTree.getRoot());
+    //Make sure the note is included in the zkusd map
+    assert.deepStrictEqual(state.zkUsdMap.get(note.hash()), Field(1));
   });
 
   it('should be able to transfer zkusd', async () => {
@@ -123,9 +114,8 @@ describe('ZkUsd Payment Address Test Suite', () => {
 
     //This alters the state of the utxo tree and nullifier map
     //Alice transfers 10zkusd to Bob
-    const { input: txInput } = ZkUsdTransferInput.createTransfer(
+    const txInput = ZkUsdTransferInput.createTransfer(
       [aliceNote],
-      utxoTree,
       bob.paymentAddress,
       state,
       UInt64.from(10e9),
@@ -133,7 +123,9 @@ describe('ZkUsd Payment Address Test Suite', () => {
       alice.nullifierKey
     );
 
-    utxos.push(...txInput.outputNotes);
+    utxos.push(...txInput.outputNotes.notes);
+
+    console.log('txInput', JSON.stringify(txInput, null, 2));
 
     const transfer = await ZkUsd.transfer(state, txInput);
 
@@ -141,14 +133,25 @@ describe('ZkUsd Payment Address Test Suite', () => {
 
     proofs.push(transfer.proof);
 
+    //Make sure the note is nullified in the zkusd map
     assert.deepStrictEqual(
-      transfer.proof.publicOutput.utxoTreeRoot,
-      utxoTree.getRoot()
+      state.zkUsdMap.get(aliceNote.nullifier(alice.nullifierKey)),
+      Field(1),
+      'Alice note should be nullified'
     );
 
+    //Make sure the output note is included in the zkusd map
     assert.deepStrictEqual(
-      transfer.proof.publicOutput.nullifierMap.root,
-      nullifierMap.root
+      state.zkUsdMap.get(txInput.outputNotes.notes[0].hash()),
+      Field(1),
+      'Output note should be included'
+    );
+
+    //Make sure the change note is not included in the zkusd map
+    assert.deepStrictEqual(
+      state.zkUsdMap.get(txInput.outputNotes.notes[1].hash()),
+      Field(1),
+      'Change note should be included'
     );
   });
 
@@ -156,38 +159,37 @@ describe('ZkUsd Payment Address Test Suite', () => {
     const bobsNote = utxos[1];
     const alicesNote = utxos[2];
 
+    //First make a couple new transfers
+    const txInput1 = ZkUsdTransferInput.createTransfer(
+      [bobsNote],
+      alice.paymentAddress,
+      state,
+      UInt64.from(5e9),
+      bob.spendingKey,
+      bob.nullifierKey
+    );
+
+    utxos.push(...txInput1.outputNotes.notes);
+
     const preTx1State = state;
 
-    //First make a couple new transfers
-    const { input: txInput1, state: preTx2State } =
-      ZkUsdTransferInput.createTransfer(
-        [bobsNote],
-        utxoTree,
-        alice.paymentAddress,
-        state,
-        UInt64.from(5e9),
-        bob.spendingKey,
-        bob.nullifierKey
-      );
-
-    utxos.push(...txInput1.outputNotes);
-
-    const { input: txInput2, state: preTx3State } =
-      ZkUsdTransferInput.createTransfer(
-        [alicesNote],
-        utxoTree,
-        bob.paymentAddress,
-        state,
-        UInt64.from(5e9),
-        alice.spendingKey,
-        alice.nullifierKey
-      );
-
-    utxos.push(...txInput2.outputNotes);
-
-    const tx1Transfer = await ZkUsd.transfer(preTx1State, txInput1);
+    const tx1Transfer = await ZkUsd.transfer(state, txInput1);
     console.time('Tx 2 time');
-    const tx2Transfer = await ZkUsd.transfer(preTx2State, txInput2);
+
+    state = tx1Transfer.proof.publicOutput;
+
+    const txInput2 = ZkUsdTransferInput.createTransfer(
+      [alicesNote],
+      bob.paymentAddress,
+      state,
+      UInt64.from(5e9),
+      alice.spendingKey,
+      alice.nullifierKey
+    );
+
+    utxos.push(...txInput2.outputNotes.notes);
+
+    const tx2Transfer = await ZkUsd.transfer(state, txInput2);
     console.timeEnd('Tx 2 time');
     proofs.push(tx1Transfer.proof, tx2Transfer.proof);
 
@@ -228,28 +230,19 @@ describe('ZkUsd Payment Address Test Suite', () => {
               : 'Combined State';
 
       const shortOutputRoots = {
-        utxoTreeRoot:
-          proof.publicOutput.utxoTreeRoot.toString().slice(0, 10) + '...',
-        nullifierMapRoot:
-          proof.publicOutput.nullifierMap.root.toString().slice(0, 10) + '...',
+        zkUsdMapRoot:
+          proof.publicOutput.zkUsdMap.root.toString().slice(0, 10) + '...',
       };
 
       const shortInputRoots = {
-        utxoTreeRoot:
-          proof.publicInput.utxoTreeRoot.toString().slice(0, 10) + '...',
-        nullifierMapRoot:
-          proof.publicInput.nullifierMap.root.toString().slice(0, 10) + '...',
+        zkUsdMapRoot:
+          proof.publicInput.zkUsdMap.root.toString().slice(0, 10) + '...',
       };
 
       console.log(`Proof #${i}: ${proofTypes[i]}`);
-      console.log(
-        `  ├─ Starting Nullifier Root: ${shortInputRoots.nullifierMapRoot}`
-      );
-      console.log(`  ├─ Starting UTXO Root: ${shortInputRoots.utxoTreeRoot}`);
-      console.log(
-        `  ├─ Ending Nullifier Root: ${shortOutputRoots.nullifierMapRoot}`
-      );
-      console.log(`  └─ Ending UTXO Root: ${shortOutputRoots.utxoTreeRoot}`);
+      console.log(`  ├─ Starting ZkUsd Root: ${shortInputRoots.zkUsdMapRoot}`);
+
+      console.log(`  ├─ Ending ZkUsd Root: ${shortOutputRoots.zkUsdMapRoot}`);
 
       // Add merge visualization for merge proofs
       if (i >= 4) {
@@ -277,10 +270,10 @@ describe('ZkUsd Payment Address Test Suite', () => {
 
     console.log('\nFinal Result:');
     console.log(
-      `  Expected UTXO Root: ${utxoTree.getRoot().toString().slice(0, 15)}...`
+      `  Expected ZkUsd Root: ${zkUsdMap.root.toString().slice(0, 15)}...`
     );
     console.log(
-      `  Actual UTXO Root:   ${proofs[6].publicOutput.utxoTreeRoot.toString().slice(0, 15)}...`
+      `  Actual ZkUsd Root:   ${proofs[6].publicOutput.zkUsdMap.root.toString().slice(0, 15)}...`
     );
     console.log('===========================================');
 

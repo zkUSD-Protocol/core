@@ -40,8 +40,8 @@ export class Note extends Struct({
         viewingPublicKey: PublicKey.empty(),
         spendingPublicKey: PublicKey.empty(),
       }),
-      secret: Field(0),
-      nonce: Field(0),
+      secret: Field.random(),
+      nonce: Field.random(),
       isDummy: Bool(true),
     });
   }

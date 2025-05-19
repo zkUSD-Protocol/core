@@ -14,40 +14,34 @@ import {
   ZkUsdTransferInput,
 } from './update/input.js';
 import { ZkUsdState } from './update/state.js';
-import { UtxoWitness } from './data/utxo-tree.js';
 import { Note } from './data/note.js';
-
+import { ZkUsdMap } from './data/zkusd-map.js';
 export const ZkUsd = ZkProgram({
   name: 'ZkUsd',
   publicInput: ZkUsdState,
   publicOutput: ZkUsdState,
   methods: {
     mint: {
-      privateInputs: [Note, UtxoWitness],
+      privateInputs: [Note],
       async method(
         publicInput: ZkUsdState,
-        note: Note,
-        utxoWitness: UtxoWitness
+        note: Note
       ): Promise<{ publicOutput: ZkUsdState }> {
+        const zkUsdMap = publicInput.zkUsdMap;
         //First we have to ensure that the utxo tree root is correct
-
-        const empty = Field(0);
-        const oldRoot = publicInput.utxoTreeRoot;
-
-        const calculatedUtxoTreeRoot = utxoWitness.calculateRoot(empty);
-        calculatedUtxoTreeRoot.assertEquals(oldRoot);
-
-        //Add the note to the utxo tree
-        //Commitment
+        const minted = Field(1);
         const commitment = note.hash();
 
-        const newRoot = utxoWitness.calculateRoot(commitment);
+        //Ensure its not already in the zkusd map
+        zkUsdMap.assertNotIncluded(note.hash());
+
+        //Add the note to the zkusd map
+        zkUsdMap.set(commitment, minted);
 
         return {
           publicOutput: new ZkUsdState({
             vaultMap: publicInput.vaultMap,
-            utxoTreeRoot: newRoot,
-            nullifierMap: publicInput.nullifierMap,
+            zkUsdMap: zkUsdMap,
             sequence: publicInput.sequence.add(UInt64.from(1)),
             blockNumber: publicInput.blockNumber,
           }),
@@ -60,43 +54,38 @@ export const ZkUsd = ZkProgram({
         publicInput: ZkUsdState,
         transferInput: ZkUsdTransferInput
       ): Promise<{ publicOutput: ZkUsdState }> {
-        const empty = Field(0);
-        const nullified = Field(1);
+        const included = Field(1);
+        let zkUsdMap = publicInput.zkUsdMap;
         let valueIn = UInt64.zero;
-        let uRoot = publicInput.utxoTreeRoot;
         let spender = transferInput.spendingPublicKey;
         let spenderSig = transferInput.spendingSignature;
         let nullifierKey = transferInput.nullifierKey;
-        let nullifierMap = transferInput.nullifierMap;
 
-        spenderSig.verify(spender, transferInput.inputNotes.toFields().flat());
+        spenderSig.verify(spender, transferInput.inputNotes.toFields());
 
         for (let i = 0; i < MAX_INPUT_NOTE_COUNT; i++) {
           const inN = transferInput.inputNotes.notes[i];
-          const inW = transferInput.inputUtxoWitnesses[i];
           const inNHash = inN.hash();
           const inNNullifier = inN.nullifier(nullifierKey);
 
-          //Make sure the input note is part of the utxo tree
-          const calculatedURoot = inW.calculateRoot(inNHash);
+          //We only want to make sure its part of the zkusd map if its not a dummy note
+          const inNToCheck = Provable.if(inN.isDummy.not(), inNHash, Field(0));
 
-          const uRootToCheck = Provable.if(inN.isDummy, uRoot, calculatedURoot);
-
-          uRootToCheck.assertEquals(uRoot);
+          zkUsdMap.assertIncluded(inNToCheck);
 
           let spenderToCheck = Provable.if(
-            inN.isDummy,
-            PublicKey.empty(),
-            spender
+            inN.isDummy.not(),
+            spender,
+            PublicKey.empty()
           );
 
           inN.address.spendingPublicKey.assertEquals(spenderToCheck);
 
           //Make sure the nullifier is not spent
-          nullifierMap.assertNotIncluded(inNNullifier);
+          zkUsdMap.assertNotIncluded(inNNullifier);
 
           //Add the nullifier to the nullifier map
-          nullifierMap.setIf(inN.isDummy.not(), inNNullifier, nullified);
+          zkUsdMap.setIf(inN.isDummy.not(), inNNullifier, included);
 
           valueIn = valueIn.add(inN.amount);
         }
@@ -104,11 +93,11 @@ export const ZkUsd = ZkProgram({
         let valueOut = UInt64.zero;
 
         for (let i = 0; i < MAX_OUTPUT_NOTE_COUNT; i++) {
-          const outN = transferInput.outputNotes[i];
-          const outW = transferInput.outputUtxoWitnesses[i];
+          const outN = transferInput.outputNotes.notes[i];
+          const outNHash = outN.hash();
 
-          outW.calculateRoot(empty).assertEquals(uRoot);
-          uRoot = outW.calculateRoot(outN.hash());
+          zkUsdMap.assertNotIncluded(outNHash);
+          zkUsdMap.setIf(outN.isDummy.not(), outN.hash(), included);
 
           valueOut = valueOut.add(outN.amount);
         }
@@ -118,8 +107,7 @@ export const ZkUsd = ZkProgram({
         return {
           publicOutput: new ZkUsdState({
             vaultMap: publicInput.vaultMap,
-            utxoTreeRoot: uRoot,
-            nullifierMap: nullifierMap,
+            zkUsdMap: zkUsdMap,
             sequence: publicInput.sequence.add(UInt64.from(1)),
             blockNumber: publicInput.blockNumber,
           }),

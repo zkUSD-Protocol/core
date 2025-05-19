@@ -1,7 +1,6 @@
 import { Field, Struct, UInt32, UInt64 } from 'o1js';
-import { UtxoTree } from '../data/utxo-tree.js';
-import { NullifierMap } from '../data/nullifier-map.js';
 import { VaultMap } from '../data/vault-map.js';
+import { ZkUsdMap } from '../data/zkusd-map.js';
 
 /**
  * Represents the state of the ZkUSD system.
@@ -9,16 +8,14 @@ import { VaultMap } from '../data/vault-map.js';
  */
 export class ZkUsdState extends Struct({
   vaultMap: VaultMap,
-  utxoTreeRoot: Field,
-  nullifierMap: NullifierMap,
+  zkUsdMap: ZkUsdMap,
   sequence: UInt64,
   blockNumber: UInt32,
 }) {
   static new(): ZkUsdState {
     return new ZkUsdState({
       vaultMap: new VaultMap(),
-      utxoTreeRoot: new UtxoTree().getRoot(),
-      nullifierMap: new NullifierMap(),
+      zkUsdMap: new ZkUsdMap(),
       sequence: UInt64.from(0),
       blockNumber: UInt32.from(0),
     });
@@ -26,8 +23,7 @@ export class ZkUsdState extends Struct({
 
   static assertEqual(a: ZkUsdState, b: ZkUsdState) {
     a.vaultMap.root.assertEquals(b.vaultMap.root);
-    a.utxoTreeRoot.assertEquals(b.utxoTreeRoot);
-    a.nullifierMap.root.assertEquals(b.nullifierMap.root);
+    a.zkUsdMap.root.assertEquals(b.zkUsdMap.root);
     a.sequence.assertEquals(b.sequence);
     a.blockNumber.assertEquals(b.blockNumber);
   }
