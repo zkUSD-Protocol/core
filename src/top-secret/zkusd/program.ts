@@ -21,7 +21,7 @@ import {
   LiquidateInput,
   TransferInput,
 } from './update/input.js';
-import { ZkUsdState } from './update/state.js';
+import { ZkUsdState } from './data/state.js';
 import { Note } from './data/note.js';
 import { ZkUsdMap } from './data/zkusd-map.js';
 import { VaultMap } from './data/vault-map.js';
@@ -48,7 +48,10 @@ export const ZkUsd = ZkProgram({
         vaultMap.root.assertEquals(publicInput.vaultMapRoot);
 
         //Create a new vault
-        const newVault = Vault.new(type);
+        const newVault = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).new(type);
 
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, newVault.toFields());
@@ -66,11 +69,8 @@ export const ZkUsd = ZkProgram({
         vaultMap.insert(vaultKey, newVault.pack());
 
         return {
-          publicOutput: new ZkUsdState({
+          publicOutput: ZkUsdState.update(publicInput, {
             vaultMapRoot: vaultMap.root,
-            zkUsdMapRoot: publicInput.zkUsdMapRoot,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -96,7 +96,10 @@ export const ZkUsd = ZkProgram({
         vaultMap.assertIncluded(vaultKey);
 
         //Get the vault
-        const vault = Vault.unpack(vaultMap.get(vaultKey));
+        const vault = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).unpack(vaultMap.get(vaultKey));
 
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, vault.toFields());
@@ -108,11 +111,8 @@ export const ZkUsd = ZkProgram({
         vaultMap.update(vaultKey, vault.pack());
 
         return {
-          publicOutput: new ZkUsdState({
+          publicOutput: ZkUsdState.update(publicInput, {
             vaultMapRoot: vaultMap.root,
-            zkUsdMapRoot: publicInput.zkUsdMapRoot,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -157,7 +157,10 @@ export const ZkUsd = ZkProgram({
         vaultMap.assertIncluded(vaultKey);
 
         //Get the vault
-        const vault = Vault.unpack(vaultMap.get(vaultKey));
+        const vault = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).unpack(vaultMap.get(vaultKey));
 
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, vault.toFields());
@@ -181,11 +184,9 @@ export const ZkUsd = ZkProgram({
         zkUsdMap.insert(commitment, minted);
 
         return {
-          publicOutput: new ZkUsdState({
+          publicOutput: ZkUsdState.update(publicInput, {
             vaultMapRoot: vaultMap.root,
             zkUsdMapRoot: zkUsdMap.root,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -224,7 +225,10 @@ export const ZkUsd = ZkProgram({
         vaultMap.assertIncluded(vaultKey);
 
         //Get the vault
-        const vault = Vault.unpack(vaultMap.get(vaultKey));
+        const vault = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).unpack(vaultMap.get(vaultKey));
 
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, vault.toFields());
@@ -281,11 +285,9 @@ export const ZkUsd = ZkProgram({
         vaultMap.update(vaultKey, vault.pack());
 
         return {
-          publicOutput: new ZkUsdState({
+          publicOutput: ZkUsdState.update(publicInput, {
             vaultMapRoot: vaultMap.root,
             zkUsdMapRoot: zkUsdMap.root,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -325,7 +327,10 @@ export const ZkUsd = ZkProgram({
         vaultMap.assertIncluded(vaultKey);
 
         //Get the vault
-        const vault = Vault.unpack(vaultMap.get(vaultKey));
+        const vault = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).unpack(vaultMap.get(vaultKey));
 
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, vault.toFields());
@@ -337,11 +342,8 @@ export const ZkUsd = ZkProgram({
         vaultMap.update(vaultKey, vault.pack());
 
         return {
-          publicOutput: new ZkUsdState({
+          publicOutput: ZkUsdState.update(publicInput, {
             vaultMapRoot: vaultMap.root,
-            zkUsdMapRoot: publicInput.zkUsdMapRoot,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -383,7 +385,10 @@ export const ZkUsd = ZkProgram({
         vaultMap.assertIncluded(vaultKey);
 
         //Get the vault
-        const vault = Vault.unpack(vaultMap.get(vaultKey));
+        const vault = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).unpack(vaultMap.get(vaultKey));
 
         const included = Field(1);
         let valueIn = UInt64.zero;
@@ -436,11 +441,9 @@ export const ZkUsd = ZkProgram({
         vaultMap.update(vaultKey, vault.pack());
 
         return {
-          publicOutput: new ZkUsdState({
+          publicOutput: ZkUsdState.update(publicInput, {
             vaultMapRoot: vaultMap.root,
             zkUsdMapRoot: zkUsdMap.root,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },
@@ -513,11 +516,8 @@ export const ZkUsd = ZkProgram({
         valueIn.assertEquals(valueOut);
 
         return {
-          publicOutput: new ZkUsdState({
-            vaultMapRoot: publicInput.vaultMapRoot,
+          publicOutput: ZkUsdState.update(publicInput, {
             zkUsdMapRoot: zkUsdMap.root,
-            sequence: publicInput.sequence.add(UInt64.from(1)),
-            blockNumber: publicInput.blockNumber,
           }),
         };
       },

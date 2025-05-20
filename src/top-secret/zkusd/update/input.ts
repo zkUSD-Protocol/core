@@ -13,7 +13,7 @@ import {
 import { Note } from '../data/note.js';
 import { ZkUsdMap } from '../data/zkusd-map.js';
 import { PaymentAddress } from '../types/keys.js';
-import { ZkUsdState } from './state.js';
+import { ZkUsdState } from '../data/state.js';
 import { VaultMap } from '../data/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../proofs/oracle-price-aggregation/prove.js';
 
@@ -141,7 +141,6 @@ export class TransferInput extends Struct({
   static createTransfer(
     inputNotes: Note[],
     recipientAddress: PaymentAddress,
-    currentState: ZkUsdState,
     amount: UInt64,
     spendingPrivateKey: PrivateKey,
     nullifierKey: Field

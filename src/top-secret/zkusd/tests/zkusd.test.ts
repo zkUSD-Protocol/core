@@ -2,18 +2,20 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { PaymentAddress, Keys } from '../types/keys.js';
 import {
+  Bool,
   Encryption,
   Field,
   PrivateKey,
   PublicKey,
   UInt32,
   UInt64,
+  UInt8,
   initializeBindings,
 } from 'o1js';
 import { Note } from '../data/note.js';
 import { ZkUsd, ZkUsdProof } from '../program.js';
-import { ZkUsdTransferInput } from '../update/input.js';
-import { ZkUsdState } from '../update/state.js';
+import { TransferInput } from '../update/input.js';
+import { ZkUsdState } from '../data/state.js';
 import { VaultMap } from '../data/vault-map.js';
 import { ZkUsdMap } from '../data/zkusd-map.js';
 import { AggregateOraclePrices } from '../../../proofs/oracle-price-aggregation/prove.js';
@@ -57,11 +59,9 @@ describe('ZkUsd Payment Address Test Suite', () => {
     zkUsdMap = new ZkUsdMap();
     vaultMap = new VaultMap();
 
-    state = new ZkUsdState({
-      vaultMapRoot: vaultMap.root,
-      zkUsdMapRoot: zkUsdMap.root,
-      sequence,
-      blockNumber,
+    state = ZkUsdState.new({
+      vaultMap,
+      zkUsdMap,
     });
   });
 
