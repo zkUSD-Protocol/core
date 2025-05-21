@@ -8,6 +8,7 @@ import {
   UInt64,
   UInt8,
   ZkProgram,
+  Encryption,
 } from 'o1js';
 import { ZkUsdMap } from '../../data/zkusd-map.js';
 import { Note, OutputNoteCommitment } from '../../data/note.js';
@@ -93,7 +94,7 @@ export const MintIntent = ZkProgram({
         const outputNoteCommitment = OutputNoteCommitment.create(note.hash());
 
         //assert the note is not already in the zkusd map
-        intentZkUsdMap.assertNotIncluded(note.hash());
+        intentZkUsdMap.assertNotIncluded(outputNoteCommitment.commitment);
 
         const vaultUpdate = new VaultUpdate({
           vaultAddress: vaultKey,

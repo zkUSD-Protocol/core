@@ -1,4 +1,4 @@
-import { Field, Poseidon, SelfProof, ZkProgram } from 'o1js';
+import { Field, Poseidon, SelfProof, UInt32, ZkProgram } from 'o1js';
 import { ZkUsdState } from '../data/state.js';
 import { ZkUsdMap } from '../data/zkusd-map.js';
 import {
@@ -20,10 +20,12 @@ import { RedeemIntentProof } from './intents/redeem.js';
 import { LiquidateIntentProof } from './intents/liquidate.js';
 
 //TODOS:
+// - Deposits / Withdrawals using an ioMap and oracle network (Eigan layer?)
 // - What if the user gives exact amount in inputNote for burn
 // - Price proof
 // - Handle the liquidation results from the vault - transfering the collateral to the owner/liquidator via the ioMap
 // - How do we handle the updating of intent roots?
+// - How do we ensure the Note is encrypted properly and communicated out
 
 export const ZkUsdRollup = ZkProgram({
   name: 'ZkUsdRollup',
@@ -65,8 +67,19 @@ export const ZkUsdRollup = ZkProgram({
         vaultMap.insert(vaultKey, newVault.pack());
 
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
+            liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -107,8 +120,19 @@ export const ZkUsdRollup = ZkProgram({
         vaultMap.update(vaultKey, vault.pack());
 
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
+            liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -156,9 +180,19 @@ export const ZkUsdRollup = ZkProgram({
         );
 
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             liveZkUsdMapRoot: zkUsdMap.root,
             liveVaultMapRoot: vaultMap.root,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -218,9 +252,19 @@ export const ZkUsdRollup = ZkProgram({
         );
 
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             liveZkUsdMapRoot: zkUsdMap.root,
             liveVaultMapRoot: vaultMap.root,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -257,8 +301,19 @@ export const ZkUsdRollup = ZkProgram({
         );
 
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
+            liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -316,10 +371,22 @@ export const ZkUsdRollup = ZkProgram({
             .pack()
         );
 
+        //We need send collateral back to the liquidator and the owner
+
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
-            liveZkUsdMapRoot: zkUsdMap.root,
+          publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
+            liveZkUsdMapRoot: zkUsdMap.root,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -360,8 +427,19 @@ export const ZkUsdRollup = ZkProgram({
         }
 
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             liveZkUsdMapRoot: zkUsdMap.root,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            liveVaultMapRoot: publicInput.liveVaultMapRoot,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
           }),
         };
       },
@@ -373,9 +451,19 @@ export const ZkUsdRollup = ZkProgram({
       ): Promise<{ publicOutput: ZkUsdState }> {
         //How do we handle this?
         return {
-          publicOutput: ZkUsdState.update(publicInput, {
+          publicOutput: new ZkUsdState({
             intentZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
             intentVaultMapRoot: publicInput.liveVaultMapRoot,
+            liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            liveVaultMapRoot: publicInput.liveVaultMapRoot,
+            sequence: publicInput.sequence.add(UInt32.from(1)),
+            blockNumber: publicInput.blockNumber,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
           }),
         };
       },

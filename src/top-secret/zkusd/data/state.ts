@@ -58,48 +58,4 @@ export class ZkUsdState extends Struct({
     a.vaultDebtCeiling.assertEquals(b.vaultDebtCeiling);
     a.oraclesHash.assertEquals(b.oraclesHash);
   }
-
-  /**
-   * Creates a modified copy of the ZkUsdState with specified changes.
-   * Automatically increments the sequence number by 1 unless overridden.
-   */
-  static update(
-    state: ZkUsdState,
-    changes: Partial<{
-      intentVaultMapRoot: Field;
-      intentZkUsdMapRoot: Field;
-      liveVaultMapRoot: Field;
-      liveZkUsdMapRoot: Field;
-      sequence: UInt32;
-      blockNumber: UInt32;
-      validPriceBlockCount: UInt8;
-      emergencyStop: Bool;
-      collateralRatio: UInt8;
-      liquidationBonusRatio: UInt8;
-      vaultDebtCeiling: UInt64;
-      oraclesHash: Field;
-    }>
-  ): ZkUsdState {
-    // By default increment sequence by 1 if not explicitly provided
-    const newSequence = changes.sequence ?? state.sequence.add(UInt32.from(1));
-
-    return new ZkUsdState({
-      intentVaultMapRoot:
-        changes.intentVaultMapRoot ?? state.intentVaultMapRoot,
-      intentZkUsdMapRoot:
-        changes.intentZkUsdMapRoot ?? state.intentZkUsdMapRoot,
-      liveVaultMapRoot: changes.liveVaultMapRoot ?? state.liveVaultMapRoot,
-      liveZkUsdMapRoot: changes.liveZkUsdMapRoot ?? state.liveZkUsdMapRoot,
-      sequence: newSequence,
-      blockNumber: changes.blockNumber ?? state.blockNumber,
-      validPriceBlockCount:
-        changes.validPriceBlockCount ?? state.validPriceBlockCount,
-      emergencyStop: changes.emergencyStop ?? state.emergencyStop,
-      collateralRatio: changes.collateralRatio ?? state.collateralRatio,
-      liquidationBonusRatio:
-        changes.liquidationBonusRatio ?? state.liquidationBonusRatio,
-      vaultDebtCeiling: changes.vaultDebtCeiling ?? state.vaultDebtCeiling,
-      oraclesHash: changes.oraclesHash ?? state.oraclesHash,
-    });
-  }
 }

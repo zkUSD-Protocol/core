@@ -140,6 +140,15 @@ describe('ZkUsd Payment Address Test Suite', () => {
       Field(1)
     );
     const encryptedNote = note.encrypt();
+
+    // Calculate size by converting to JSON and measuring length
+    const serializedNote = JSON.stringify(encryptedNote);
+    console.log('encryptedNote size in bytes:', serializedNote.length);
+    console.log(
+      'encryptedNote size in KB:',
+      (serializedNote.length / 1024).toFixed(2) + ' KB'
+    );
+
     const decryptedNote = note.decrypt(encryptedNote, alice.viewingKey);
     assert.deepStrictEqual(note, decryptedNote);
   });
