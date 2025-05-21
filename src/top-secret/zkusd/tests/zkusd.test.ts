@@ -13,8 +13,19 @@ import {
   initializeBindings,
 } from 'o1js';
 import { Note } from '../data/note.js';
-import { ZkUsd, ZkUsdProof } from '../program.js';
-import { TransferInput } from '../update/input.js';
+
+import { ZkUsdRollupProof, ZkUsdRollup } from '../programs/rollup.js';
+import {
+  TransferIntentProof,
+  TransferIntent,
+} from '../programs/intents/transfer.js';
+import { BurnIntentProof, BurnIntent } from '../programs/intents/burn.js';
+import { MintIntentProof, MintIntent } from '../programs/intents/mint.js';
+import {
+  LiquidateIntentProof,
+  LiquidateIntent,
+} from '../programs/intents/liquidate.js';
+import { RedeemIntentProof, RedeemIntent } from '../programs/intents/redeem.js';
 import { ZkUsdState } from '../data/state.js';
 import { VaultMap } from '../data/vault-map.js';
 import { ZkUsdMap } from '../data/zkusd-map.js';
@@ -27,7 +38,7 @@ describe('ZkUsd Payment Address Test Suite', () => {
   let utxos: Note[] = [];
   let alice: Keys;
   let bob: Keys;
-  let proofs: ZkUsdProof[] = [];
+  let proofs: ZkUsdRollupProof[] = [];
   let sequence: UInt64 = UInt64.from(0);
   let blockNumber: UInt32 = UInt32.from(0);
   let state: ZkUsdState;
@@ -36,22 +47,74 @@ describe('ZkUsd Payment Address Test Suite', () => {
     await initializeBindings();
 
     console.log('compiling zkprogram');
-    console.time('compiled zkprogram');
+    console.time('compiled zkprograms');
+    console.time('AggregateOraclePrices');
     await AggregateOraclePrices.compile();
-    await ZkUsd.compile();
-    console.timeEnd('compiled zkprogram');
+    console.timeEnd('AggregateOraclePrices');
+    console.time('TransferIntent');
+    await TransferIntent.compile();
+    console.timeEnd('TransferIntent');
+    console.time('BurnIntent');
+    await BurnIntent.compile();
+    console.timeEnd('BurnIntent');
+    console.time('MintIntent');
+    await MintIntent.compile();
+    console.timeEnd('MintIntent');
+    console.time('LiquidateIntent');
+    await LiquidateIntent.compile();
+    console.timeEnd('LiquidateIntent');
+    console.time('RedeemIntent');
+    await RedeemIntent.compile();
+    console.timeEnd('RedeemIntent');
+    console.time('ZkUsdRollup');
+    await ZkUsdRollup.compile();
+    console.timeEnd('ZkUsdRollup');
+    console.timeEnd('compiled zkprograms');
 
-    const analysis = await ZkUsd.analyzeMethods();
-    console.log('Analysis of merge method');
-    console.log(analysis.merge.summary());
+    const aggAnalysis = await AggregateOraclePrices.analyzeMethods();
+    console.log('Analysis of aggregateOraclePrices method');
+    console.log(aggAnalysis.compute.summary());
+
+    const transferAnalysis = await TransferIntent.analyzeMethods();
+    console.log('Analysis of transferIntent method');
+    console.log(transferAnalysis.transfer.summary());
+
+    const burnAnalysis = await BurnIntent.analyzeMethods();
+    console.log('Analysis of burnIntent method');
+    console.log(burnAnalysis.burn.summary());
+
+    const mintAnalysis = await MintIntent.analyzeMethods();
+    console.log('Analysis of mintIntent method');
+    console.log(mintAnalysis.mint.summary());
+
+    const liquidateAnalysis = await LiquidateIntent.analyzeMethods();
+    console.log('Analysis of liquidateIntent method');
+    console.log(liquidateAnalysis.liquidate.summary());
+
+    const redeemAnalysis = await RedeemIntent.analyzeMethods();
+    console.log('Analysis of redeemIntent method');
+    console.log(redeemAnalysis.redeem.summary());
+
+    const rollupAnalysis = await ZkUsdRollup.analyzeMethods();
+    console.log('Analysis of Rollup methods:');
     console.log('Analysis of createVault method');
-    console.log(analysis.createVault.summary());
+    console.log(rollupAnalysis.createVault.summary());
     console.log('Analysis of depositCollateral method');
-    console.log(analysis.depositCollateral.summary());
-    console.log('Analysis of mint method');
-    console.log(analysis.mintZkUsd.summary());
+    console.log(rollupAnalysis.depositCollateral.summary());
+    console.log('Analysis of mintZkUsd method');
+    console.log(rollupAnalysis.mintZkUsd.summary());
+    console.log('Analysis of burnZkUsd method');
+    console.log(rollupAnalysis.burnZkUsd.summary());
+    console.log('Analysis of redeemCollateral method');
+    console.log(rollupAnalysis.redeemCollateral.summary());
+    console.log('Analysis of liquidate method');
+    console.log(rollupAnalysis.liquidate.summary());
     console.log('Analysis of transfer method');
-    console.log(analysis.transfer.summary());
+    console.log(rollupAnalysis.transfer.summary());
+    console.log('Analysis of updateIntentRoots method');
+    console.log(rollupAnalysis.updateIntentRoots.summary());
+    console.log('Analysis of merge method');
+    console.log(rollupAnalysis.merge.summary());
 
     alice = Keys.fromPrivateKey(PrivateKey.random());
     bob = Keys.fromPrivateKey(PrivateKey.random());

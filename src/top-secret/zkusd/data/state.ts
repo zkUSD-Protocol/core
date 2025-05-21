@@ -8,8 +8,10 @@ import { Vault } from '../../../system/vault.js';
  * Contains the roots of the UTXO tree and nullifier map.
  */
 export class ZkUsdState extends Struct({
-  vaultMapRoot: Field,
-  zkUsdMapRoot: Field,
+  intentVaultMapRoot: Field,
+  intentZkUsdMapRoot: Field,
+  liveVaultMapRoot: Field,
+  liveZkUsdMapRoot: Field,
   sequence: UInt32,
   blockNumber: UInt32,
   validPriceBlockCount: UInt8,
@@ -27,8 +29,10 @@ export class ZkUsdState extends Struct({
     zkUsdMap: ZkUsdMap;
   }): ZkUsdState {
     return new ZkUsdState({
-      vaultMapRoot: vaultMap.root,
-      zkUsdMapRoot: zkUsdMap.root,
+      intentVaultMapRoot: vaultMap.root,
+      intentZkUsdMapRoot: zkUsdMap.root,
+      liveVaultMapRoot: vaultMap.root,
+      liveZkUsdMapRoot: zkUsdMap.root,
       sequence: UInt32.from(0),
       blockNumber: UInt32.from(0),
       validPriceBlockCount: UInt8.from(1),
@@ -41,8 +45,10 @@ export class ZkUsdState extends Struct({
   }
 
   static assertEqual(a: ZkUsdState, b: ZkUsdState) {
-    a.vaultMapRoot.assertEquals(b.vaultMapRoot);
-    a.zkUsdMapRoot.assertEquals(b.zkUsdMapRoot);
+    a.intentVaultMapRoot.assertEquals(b.intentVaultMapRoot);
+    a.intentZkUsdMapRoot.assertEquals(b.intentZkUsdMapRoot);
+    a.liveVaultMapRoot.assertEquals(b.liveVaultMapRoot);
+    a.liveZkUsdMapRoot.assertEquals(b.liveZkUsdMapRoot);
     a.sequence.assertEquals(b.sequence);
     a.blockNumber.assertEquals(b.blockNumber);
     a.validPriceBlockCount.assertEquals(b.validPriceBlockCount);
@@ -60,8 +66,10 @@ export class ZkUsdState extends Struct({
   static update(
     state: ZkUsdState,
     changes: Partial<{
-      vaultMapRoot: Field;
-      zkUsdMapRoot: Field;
+      intentVaultMapRoot: Field;
+      intentZkUsdMapRoot: Field;
+      liveVaultMapRoot: Field;
+      liveZkUsdMapRoot: Field;
       sequence: UInt32;
       blockNumber: UInt32;
       validPriceBlockCount: UInt8;
@@ -76,8 +84,12 @@ export class ZkUsdState extends Struct({
     const newSequence = changes.sequence ?? state.sequence.add(UInt32.from(1));
 
     return new ZkUsdState({
-      vaultMapRoot: changes.vaultMapRoot ?? state.vaultMapRoot,
-      zkUsdMapRoot: changes.zkUsdMapRoot ?? state.zkUsdMapRoot,
+      intentVaultMapRoot:
+        changes.intentVaultMapRoot ?? state.intentVaultMapRoot,
+      intentZkUsdMapRoot:
+        changes.intentZkUsdMapRoot ?? state.intentZkUsdMapRoot,
+      liveVaultMapRoot: changes.liveVaultMapRoot ?? state.liveVaultMapRoot,
+      liveZkUsdMapRoot: changes.liveZkUsdMapRoot ?? state.liveZkUsdMapRoot,
       sequence: newSequence,
       blockNumber: changes.blockNumber ?? state.blockNumber,
       validPriceBlockCount:

@@ -47,6 +47,11 @@ export class VaultState extends Struct({
   debtAmount: UInt64,
 }) {}
 
+export class VaultUpdate extends Struct({
+  vaultAddress: Field,
+  vaultState: VaultState,
+}) {}
+
 /**
  * @title   Vault Struct
  * @notice  Core vault implementation that manages user collateral and debt positions
@@ -73,6 +78,14 @@ export function Vault(params: VaultParams) {
         type: type,
         collateralAmount: UInt64.zero,
         debtAmount: UInt64.zero,
+      });
+    }
+
+    static fromState(state: VaultState): Vault_ {
+      return new Vault_({
+        type: state.type,
+        collateralAmount: state.collateralAmount,
+        debtAmount: state.debtAmount,
       });
     }
 

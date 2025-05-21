@@ -10,31 +10,18 @@ import {
   UInt64,
   UInt8,
 } from 'o1js';
-import { Note } from '../data/note.js';
+import {
+  Note,
+  InputNotes,
+  OutputNotes,
+  MAX_INPUT_NOTE_COUNT,
+  MAX_OUTPUT_NOTE_COUNT,
+} from '../data/note.js';
 import { ZkUsdMap } from '../data/zkusd-map.js';
 import { PaymentAddress } from '../types/keys.js';
 import { ZkUsdState } from '../data/state.js';
 import { VaultMap } from '../data/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../proofs/oracle-price-aggregation/prove.js';
-
-export const MAX_INPUT_NOTE_COUNT = 3;
-export const MAX_OUTPUT_NOTE_COUNT = 2;
-
-export class InputNotes extends Struct({
-  notes: Provable.Array(Note, MAX_INPUT_NOTE_COUNT),
-}) {
-  toFields() {
-    return this.notes.map((n) => n.toFields()).flat();
-  }
-}
-
-export class OutputNotes extends Struct({
-  notes: Provable.Array(Note, MAX_OUTPUT_NOTE_COUNT),
-}) {
-  toFields() {
-    return this.notes.map((n) => n.toFields()).flat();
-  }
-}
 
 export class CreateVaultInput extends Struct({
   vaultMap: VaultMap,
