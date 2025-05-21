@@ -14,10 +14,11 @@ import {
   DepositIntentKey,
   DepositPrivateInput,
   VaultKey,
-} from './deposit';
-import { VaultMap } from '../../data/vault-map';
-import { Vault as Vault_ } from '../../data/vault';
-import { before } from 'node:test';
+} from './deposit.js';
+import { VaultMap } from '../../data/vault-map.js';
+import { Vault as Vault_ } from '../../data/vault.js';
+import { before, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 
 export interface DepositIntentTestInput {
   publicInput: DepositIntentInput;
@@ -114,12 +115,12 @@ describe('Deposit Intent Suite', () => {
 
     const {
       publicOutput: { vaultKey: outputVaultKey, vaultPack },
-    } = await DepositIntent.rawMethods.createVault(publicInput, privateInput);
+    } = await DepositIntent.rawMethods.deposit(publicInput, privateInput);
 
     Provable.log(outputVaultKey);
 
     // Verify the vault key matches
-    expect(outputVaultKey).toEqual(vaultKey);
+    assert.deepEqual(outputVaultKey, vaultKey);
 
     // Unpack the vault to verify its state after deposit
     const unpackedVault = Vault.unpack(vaultPack);
@@ -140,9 +141,9 @@ describe('Deposit Intent Suite', () => {
     publicInput.vaultMapRoot = Field(0);
 
     // expect to throw
-    await expect(
-      DepositIntent.rawMethods.createVault(publicInput, privateInput)
-    ).rejects.toThrow();
+    await assert.rejects(async () => {
+      await DepositIntent.rawMethods.deposit(publicInput, privateInput);
+    });
   });
 
   it('should fail if the ownerSignature is invalid', async () => {
@@ -157,9 +158,9 @@ describe('Deposit Intent Suite', () => {
     privateInput.ownerSignature = Signature.create(privateKey, invalidMessage);
 
     // expect to throw
-    await expect(
-      DepositIntent.rawMethods.createVault(publicInput, privateInput)
-    ).rejects.toThrow();
+    await assert.rejects(async () => {
+      await DepositIntent.rawMethods.deposit(publicInput, privateInput);
+    });
   });
 
   it('should fail if the publicKey does not match the signer of the signature', async () => {
@@ -174,9 +175,9 @@ describe('Deposit Intent Suite', () => {
     privateInput.ownerPublicKey = differentPrivateKey.toPublicKey();
 
     // expect to throw
-    await expect(
-      DepositIntent.rawMethods.createVault(publicInput, privateInput)
-    ).rejects.toThrow();
+    await assert.rejects(async () => {
+      await DepositIntent.rawMethods.deposit(publicInput, privateInput);
+    });
   });
 
   it('should fail if the vault does not exist in the vault map', async () => {
@@ -188,9 +189,9 @@ describe('Deposit Intent Suite', () => {
     });
 
     // expect to throw since the vault doesn't exist
-    await expect(
-      DepositIntent.rawMethods.createVault(publicInput, privateInput)
-    ).rejects.toThrow();
+    await assert.rejects(async () => {
+      await DepositIntent.rawMethods.deposit(publicInput, privateInput);
+    });
   });
 
   it('should correctly include the deposit amount in the vault', async () => {
@@ -204,13 +205,14 @@ describe('Deposit Intent Suite', () => {
 
     const {
       publicOutput: { vaultPack },
-    } = await DepositIntent.rawMethods.createVault(publicInput, privateInput);
+    } = await DepositIntent.rawMethods.deposit(publicInput, privateInput);
 
     // Unpack the vault to verify the deposit was applied
     const unpackedVault = Vault.unpack(vaultPack);
 
     // Add assertions to verify the deposit amount was correctly applied
     // This will depend on how the vault's internal state tracks deposits
+    // TODO
   });
 
   it('should include DepositIntentKey in the signed message', async () => {
@@ -229,9 +231,9 @@ describe('Deposit Intent Suite', () => {
     });
 
     // expect to throw due to invalid signature (wrong intent key)
-    await expect(
-      DepositIntent.rawMethods.createVault(publicInput, privateInput)
-    ).rejects.toThrow();
+    await assert.rejects(async () => {
+      await DepositIntent.rawMethods.deposit(publicInput, privateInput);
+    });
   });
 
   it('should use the correct fields from ownerPublicKey in Poseidon hash', async () => {
@@ -243,7 +245,7 @@ describe('Deposit Intent Suite', () => {
 
     const {
       publicOutput: { vaultKey: outputVaultKey },
-    } = await DepositIntent.rawMethods.createVault(publicInput, privateInput);
+    } = await DepositIntent.rawMethods.deposit(publicInput, privateInput);
 
     // Manually compute the expected vault key
     const expectedKey = new VaultKey({
@@ -254,7 +256,6 @@ describe('Deposit Intent Suite', () => {
       ]),
     });
 
-    expect(outputVaultKey).toEqual(expectedKey);
+    assert.deepEqual(outputVaultKey, expectedKey);
   });
-
 });

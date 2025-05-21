@@ -14,10 +14,11 @@ import {
   CreateVaultIntentKey,
   CreateVaultPrivateInput,
   VaultKey,
-} from './create-vault';
-import { VaultMap } from '../../data/vault-map';
-import { sign } from 'mina-signer/dist/node/mina-signer/src/signature';
-import { before } from 'node:test';
+} from './create-vault.js';
+import { VaultMap } from '../../data/vault-map.js';
+import { before, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
 
 export interface VaultIntentTestInput {
   publicInput: CreateVaultIntentInput;
@@ -87,8 +88,9 @@ describe('Create Vault Intent Suite', () => {
         CreateVaultIntentKey,
       ]),
     });
-    expect(vaultKey).toEqual(expectedKey);
-    expect(vaultType).toEqual(type);
+    assert.deepEqual(vaultKey, expectedKey);
+    assert.deepEqual(vaultType, type);
+
   });
 
   it('should fail if the vaultMap root does not match the public input', async () => {
@@ -100,9 +102,10 @@ describe('Create Vault Intent Suite', () => {
     publicInput.vaultMapRoot = Field(0);
 
     // expect to throw
-    await expect(
-      CreateVaultIntent.rawMethods.createVault(publicInput, privateInput)
-    ).rejects.toThrow();
+    await assert.rejects(async () => {
+  await CreateVaultIntent.rawMethods.createVault(publicInput, privateInput);
+});
+
   });
 
   it('should fail if the ownerSignature is invalid', async () => {

@@ -8,8 +8,8 @@ import {
   UInt8,
   ZkProgram,
 } from 'o1js';
-import { VaultMap } from '../../data/vault-map';
-import { Vault } from '../../data/vault';
+import { VaultMap } from '../../data/vault-map.js';
+import { Vault } from '../../data/vault.js';
 
 export class DepositIntentInput extends Struct({
   vaultMapRoot: Field,
@@ -23,7 +23,7 @@ export class VaultKey extends Struct({
 
 export class DepositIntentOutput extends Struct({
   vaultKey: VaultKey,
-  vaultPack: Field
+  vaultPack: Field,
 }) {}
 
 export class DepositPrivateInput extends Struct({
@@ -42,7 +42,7 @@ export const DepositIntent = ZkProgram({
   publicInput: DepositIntentInput,
   publicOutput: DepositIntentOutput,
   methods: {
-    createVault: {
+    deposit: {
       privateInputs: [DepositPrivateInput],
       async method(
         publicInput: DepositIntentInput,
@@ -55,11 +55,7 @@ export const DepositIntent = ZkProgram({
         vaultMap.root.assertEquals(vaultMapRoot);
 
         // signature message
-        const message: Field[] = [
-          vaultMapRoot,
-          type.value,
-          DepositIntentKey,
-        ];
+        const message: Field[] = [vaultMapRoot, type.value, DepositIntentKey];
 
         // Validate the owner's signature
         const isValidSignature = ownerSignature.verify(ownerPublicKey, message);
@@ -80,14 +76,15 @@ export const DepositIntent = ZkProgram({
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
         }).unpack(vaultMap.get(vaultKey.key));
 
-
         return {
           publicOutput: new DepositIntentOutput({
             vaultKey: vaultKey,
-            vaultPack: vault.pack()
+            vaultPack: vault.pack(),
           }),
         };
       },
     },
   },
 });
+
+export class DepositIntentProof extends ZkProgram.Proof(DepositIntent) {}

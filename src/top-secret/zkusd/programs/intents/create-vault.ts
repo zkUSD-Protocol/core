@@ -7,8 +7,7 @@ import {
   UInt8,
   ZkProgram,
 } from 'o1js';
-import { VaultMap } from '../../data/vault-map';
-import exp from 'constants';
+import { VaultMap } from '../../data/vault-map.js';
 
 export class CreateVaultIntentInput extends Struct({
   vaultMapRoot: Field,
@@ -80,3 +79,8 @@ export const CreateVaultIntent = ZkProgram({
     },
   },
 });
+
+// Create proof types for our intent programs
+export class CreateVaultIntentProof extends ZkProgram.Proof(
+  CreateVaultIntent
+) {}

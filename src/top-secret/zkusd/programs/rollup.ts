@@ -11,13 +11,24 @@ import {
   Note,
   Nullifier,
 } from '../data/note.js';
-import { CreateVaultInput, DepositCollateralInput } from '../update/input.js';
 import { Vault } from '../data/vault.js';
 import { MintIntentProof } from './intents/mint.js';
 import { VaultMap } from '../data/vault-map.js';
 import { BurnIntentProof } from './intents/burn.js';
 import { RedeemIntentProof } from './intents/redeem.js';
 import { LiquidateIntentProof } from './intents/liquidate.js';
+import {
+  DepositIntent,
+  DepositIntentInput,
+  DepositIntentOutput,
+  DepositIntentProof,
+} from './intents/deposit.js';
+import {
+  CreateVaultIntent,
+  CreateVaultIntentOutput,
+  CreateVaultIntentInput,
+  CreateVaultIntentProof,
+} from './intents/create-vault.js';
 
 //TODOS:
 // - Deposits / Withdrawals using an ioMap and oracle network (Eigan layer?)
@@ -34,37 +45,36 @@ export const ZkUsdRollup = ZkProgram({
   overrideWrapDomain: 2,
   methods: {
     createVault: {
-      privateInputs: [CreateVaultInput],
+      privateInputs: [CreateVaultIntentProof, VaultMap],
       async method(
         publicInput: ZkUsdState,
-        createVaultInput: CreateVaultInput
+        createVaultIntentProof: CreateVaultIntentProof,
+        vaultMap: VaultMap
       ): Promise<{ publicOutput: ZkUsdState }> {
-        const { vaultMap, type, ownerSignature, ownerPublicKey } =
-          createVaultInput;
+        // Verify the intent proof
+        createVaultIntentProof.verify();
 
-        //Is this the same map
+        // Get the output from the intent proof
+        const { vaultKey, vaultType } = createVaultIntentProof.publicOutput;
+
+        // Verify the intent input matches the rollup state
+        const { vaultMapRoot } = createVaultIntentProof.publicInput;
+        vaultMapRoot.assertEquals(publicInput.intentVaultMapRoot);
+
+        // Verify the vault map root matches the live vault map
         vaultMap.root.assertEquals(publicInput.liveVaultMapRoot);
 
-        //Create a new vault
+        // Ensure the vault is not already in the map
+        vaultMap.assertNotIncluded(vaultKey.key);
+
+        // Create a new vault
         const newVault = Vault({
           collateralRatio: publicInput.collateralRatio,
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
-        }).new(type);
+        }).new(vaultType);
 
-        //Verify the owner signature
-        ownerSignature.verify(ownerPublicKey, newVault.toFields());
-
-        //Hash the public key with the vault type
-        const vaultKey = Poseidon.hash([
-          ...ownerPublicKey.toFields(),
-          type.value,
-        ]);
-
-        //Ensure the vault is not already in the map
-        vaultMap.assertNotIncluded(vaultKey);
-
-        //Add the vault to the map
-        vaultMap.insert(vaultKey, newVault.pack());
+        // Add the vault to the map
+        vaultMap.insert(vaultKey.key, newVault.pack());
 
         return {
           publicOutput: new ZkUsdState({
@@ -85,39 +95,34 @@ export const ZkUsdRollup = ZkProgram({
       },
     },
     depositCollateral: {
-      privateInputs: [DepositCollateralInput],
+      privateInputs: [DepositIntentProof, VaultMap],
       async method(
         publicInput: ZkUsdState,
-        depositCollateralInput: DepositCollateralInput
+        depositIntentProof: DepositIntentProof,
+        vaultMap: VaultMap
       ): Promise<{ publicOutput: ZkUsdState }> {
-        const { vaultMap, type, ownerSignature, ownerPublicKey, amount } =
-          depositCollateralInput;
+        // Verify the intent proof
+        depositIntentProof.verify();
 
-        //Is this the same map
+        // Get the output from the intent proof
+        const { vaultKey, vaultPack } = depositIntentProof.publicOutput;
+
+        // Verify the intent input matches the rollup state
+        const { vaultMapRoot, collateralRatio, liquidationBonusRatio } =
+          depositIntentProof.publicInput;
+
+        vaultMapRoot.assertEquals(publicInput.intentVaultMapRoot);
+        collateralRatio.assertEquals(publicInput.collateralRatio);
+        liquidationBonusRatio.assertEquals(publicInput.liquidationBonusRatio);
+
+        // Verify the vault map root matches the live vault map
         vaultMap.root.assertEquals(publicInput.liveVaultMapRoot);
 
-        const vaultKey = Poseidon.hash([
-          ...ownerPublicKey.toFields(),
-          type.value,
-        ]);
+        // Ensure the vault is in the map
+        vaultMap.assertIncluded(vaultKey.key);
 
-        //Ensure the vault is in the map
-        vaultMap.assertIncluded(vaultKey);
-
-        //Get the vault
-        const vault = Vault({
-          collateralRatio: publicInput.collateralRatio,
-          liquidationBonusRatio: publicInput.liquidationBonusRatio,
-        }).unpack(vaultMap.get(vaultKey));
-
-        //Verify the owner signature
-        ownerSignature.verify(ownerPublicKey, vault.toFields());
-
-        //Deposit collateral
-        vault.depositCollateral(amount);
-
-        //Update the vault in the map
-        vaultMap.update(vaultKey, vault.pack());
+        // Update the vault in the map with the new state from the intent
+        vaultMap.update(vaultKey.key, vaultPack);
 
         return {
           publicOutput: new ZkUsdState({
