@@ -1,6 +1,6 @@
-import { Field, method, Proof, SmartContract, state } from 'o1js';
-import { SettlementDataPacked } from './data/settlement';
-import { ZkUsdRollupProof } from './programs/rollup';
+import { Field, method, SmartContract, state } from 'o1js';
+import { SettlementDataPacked } from './data/settlement.js';
+import { ZkUsdRollupProof } from './programs/rollup.js';
 
 export class ZkUsdSettlementContract extends SmartContract {
   @state(Field) vaultMapRoot: Field;
