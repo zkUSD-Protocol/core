@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@minatokens/token": "^0.16.16",
+    "@mysten/sui": "^1.30.0",
     "dotenv": "^16.4.7",
     "mina-signer": "^3.0.7"
   },

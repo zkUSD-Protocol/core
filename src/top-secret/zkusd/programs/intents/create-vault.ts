@@ -1,6 +1,7 @@
 import {
   Field,
   Poseidon,
+  PrivateKey,
   PublicKey,
   Signature,
   Struct,
@@ -8,6 +9,36 @@ import {
   ZkProgram,
 } from 'o1js';
 import { VaultMap } from '../../data/vault-map.js';
+
+/**
+ * Generates both public and private inputs for CreateVaultIntent.
+ */
+export function generateCreateVaultIntentInputs(params: {
+  vaultMap: VaultMap;
+  type: UInt8;
+  privateKey: PrivateKey;
+}): Promise<{
+  publicInput: CreateVaultIntentInput;
+  privateInput: CreateVaultPrivateInput;
+}> {
+  const signatureMsg = [
+    params.vaultMap.root,
+    params.type.value,
+    CreateVaultIntentKey,
+  ];
+  const signature = Signature.create(params.privateKey, signatureMsg);
+  return Promise.resolve({
+    publicInput: new CreateVaultIntentInput({
+      vaultMapRoot: params.vaultMap.root,
+    }),
+    privateInput: new CreateVaultPrivateInput({
+      vaultMap: params.vaultMap,
+      type: params.type,
+      ownerSignature: signature,
+      ownerPublicKey: params.privateKey.toPublicKey(),
+    }),
+  });
+}
 
 export class CreateVaultIntentInput extends Struct({
   vaultMapRoot: Field,
