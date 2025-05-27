@@ -82,7 +82,8 @@ interface MetadataChainFile extends WalrusFile {
 
   // Current state
   latestEpoch: number;
-  latestRoot: string; // hex string
+  latestVaultMapRoot: string; // hex string
+  latestZkUsdMapRoot: string; // hex string
   totalOperations: number;
 
   // Epoch history (most recent first)
@@ -116,8 +117,10 @@ interface Operation {
 
 interface EpochMetadata {
   epoch: number;
-  root: string; // hex string
-  length: string; // number of leaves after this epoch
+  vaultMapRoot: string; // hex string
+  zkUsdMapRoot: string; // hex string
+  vaultMapLength: string; // number of leaves after this epoch
+  zkUsdMapLength: string; // number of leaves after this epoch
   timestamp: number;
   operationCount: number;
 
