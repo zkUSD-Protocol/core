@@ -8,7 +8,7 @@ import {
   UInt8,
   ZkProgram,
 } from 'o1js';
-import { VaultMap } from '../../data/vault-map.js';
+import { VaultMap } from '../../data/maps/vault-map.js';
 import { Vault } from '../../data/vault.js';
 
 export class DepositIntentInput extends Struct({

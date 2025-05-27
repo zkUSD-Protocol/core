@@ -15,7 +15,7 @@ import {
   DepositPrivateInput,
   VaultKey,
 } from './deposit.js';
-import { VaultMap } from '../../data/vault-map.js';
+import { VaultMap } from '../../data/maps/vault-map.js';
 import { Vault as Vault_ } from '../../data/vault.js';
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';

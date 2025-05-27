@@ -1,5 +1,6 @@
 import {
   Field,
+  Poseidon,
   Provable,
   PublicKey,
   Signature,
@@ -7,7 +8,7 @@ import {
   UInt64,
   ZkProgram,
 } from 'o1js';
-import { ZkUsdMap } from '../../data/zkusd-map.js';
+import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import {
   InputNotes,
   MAX_INPUT_NOTE_COUNT,
@@ -34,7 +35,6 @@ export class TransferIntentPrivateInput extends Struct({
   outputNotes: OutputNotes,
   spendingSignature: Signature,
   spendingPublicKey: PublicKey,
-  nullifierKey: Field,
 }) {}
 
 export const TransferIntent = ZkProgram({
@@ -57,7 +57,6 @@ export const TransferIntent = ZkProgram({
           outputNotes,
           spendingSignature,
           spendingPublicKey,
-          nullifierKey,
         } = intent;
 
         const included = Field(1);
@@ -70,7 +69,7 @@ export const TransferIntent = ZkProgram({
         for (let i = 0; i < MAX_INPUT_NOTE_COUNT; i++) {
           const inN = inputNotes.notes[i];
           const inNHash = inN.hash();
-          const inNNullifier = inN.nullifier(nullifierKey);
+          const inNNullifier = inN.nullifier(spendingSignature.r);
 
           //We only want to make sure its part of the zkusd map if its not a dummy note
           const inNToCheck = Provable.if(inN.isDummy.not(), inNHash, Field(0));

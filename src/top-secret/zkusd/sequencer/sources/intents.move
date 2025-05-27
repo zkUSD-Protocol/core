@@ -8,125 +8,22 @@ use sui::event;
 use sui::hash;
 use sui::table::{Self, Table};
 
-const CREATE_VAULT: u8 = 0;
-const DEPOSIT_COLLATERAL: u8 = 1;
-const MINT_ZKUSD: u8 = 2;
-const REDEEM_COLLATERAL: u8 = 3;
-const BURN_ZKUSD: u8 = 4;
-const LIQUIDATE_VAULT: u8 = 5;
-const TRANSFER_ZKUSD: u8 = 6;
-
-const PENDING: u8 = 0;
-const VERIFIED: u8 = 1;
-const SEQUENCED: u8 = 2;
+// const CREATE_VAULT: u8 = 0;
+// const DEPOSIT_COLLATERAL: u8 = 1;
+// const MINT_ZKUSD: u8 = 2;
+// const REDEEM_COLLATERAL: u8 = 3;
+// const BURN_ZKUSD: u8 = 4;
+// const LIQUIDATE_VAULT: u8 = 5;
+// const TRANSFER_ZKUSD: u8 = 6;
 
 const EPOCH_DURATION_MS: u64 = 100000; // 100 seconds in milliseconds
-
-public struct CreateVaultIntentOutput has store {
-  vault_update: String,
-}
-
-public struct CreateVaultIntentInput has store {
-  vault_map_root: String,
-}
-
-public struct DepositCollateralIntentOutput has store {
-  vault_update: String,
-}
-
-public struct DepositCollateralIntentInput has store {
-  vault_map_root: String,
-  collateral_ratio: u8,
-  liquidation_bonus_ratio: u8,
-}
-
-public struct MintZkusdIntentOutput has store {
-  vault_update: String,
-  output_note_commitment: String,
-}
-
-public struct MintZkusdIntentInput has store {
-  zkusd_map_root: String,
-  vault_map_root: String,
-  collateral_ratio: u8,
-  liquidation_bonus_ratio: u8,
-}
-
-public struct RedeemCollateralIntentOutput has store {
-  vault_update: String,
-}
-
-public struct RedeemCollateralIntentInput has store {
-  vault_map_root: String,
-  collateral_ratio: u8,
-  liquidation_bonus_ratio: u8,
-}
-
-public struct BurnZkusdIntentOutput has store {
-  nullifiers: vector<String>,
-  output_note_commitment: String,
-  vault_update: String,
-}
-
-public struct BurnZkusdIntentInput has store {
-  zkusd_map_root: String,
-  vault_map_root: String,
-  collateral_ratio: u8,
-  liquidation_bonus_ratio: u8,
-}
-
-public struct LiquidateVaultIntentOutput has store {
-  nullifiers: vector<String>,
-  output_note_commitment: String,
-  vault_update: String,
-}
-
-public struct LiquidateVaultIntentInput has store {
-  zkusd_map_root: String,
-  vault_map_root: String,
-  collateral_ratio: u8,
-  liquidation_bonus_ratio: u8,
-}
-
-public struct TransferZkusdIntentOutput has store {
-  nullifiers: vector<String>,
-  output_note_commitments: vector<String>,
-  vault_update: String,
-}
-
-public struct TransferZkusdIntentInput has store {
-  zkusd_map_root: String,
-}
-
-public struct IntentOutput has store {
-  burn_output: Option<BurnZkusdIntentOutput>,
-  create_vault_output: Option<CreateVaultIntentOutput>,
-  deposit_collateral_output: Option<DepositCollateralIntentOutput>,
-  mint_zkusd_output: Option<MintZkusdIntentOutput>,
-  redeem_collateral_output: Option<RedeemCollateralIntentOutput>,
-  liquidate_vault_output: Option<LiquidateVaultIntentOutput>,
-  transfer_zkusd_output: Option<TransferZkusdIntentOutput>,
-}
-
-public struct IntentInput has store {
-  create_vault_input: Option<CreateVaultIntentInput>,
-  deposit_collateral_input: Option<DepositCollateralIntentInput>,
-  mint_zkusd_input: Option<MintZkusdIntentInput>,
-  redeem_collateral_input: Option<RedeemCollateralIntentInput>,
-  burn_zkusd_input: Option<BurnZkusdIntentInput>,
-  liquidate_vault_input: Option<LiquidateVaultIntentInput>,
-  transfer_zkusd_input: Option<TransferZkusdIntentInput>,
-}
 
 /// Intent submitted by users
 public struct Intent has key {
   id: UID,
   intent_type: u8,
-  proof_da_hash: String,
+  intent_blog_id: String,
   created_at: u64,
-  user: address,
-  output: IntentOutput,
-  input: IntentInput,
 }
 
 /// Main sequencer for ordered intent processing
@@ -163,8 +60,7 @@ public struct ValidatorRegistry has key {
 public struct IntentCreatedEvent has copy, drop {
   intent_id: ID,
   intent_type: u8,
-  proof_da_hash: String,
-  user: address,
+  intent_blog_id: String,
   sequence: u64,
   created_at: u64,
 }
@@ -211,9 +107,7 @@ fun init(ctx: &mut TxContext) {
 public fun create_intent(
   sequencer: &mut IntentSequencer,
   intent_type: u8,
-  proof_da_hash: String,
-  input: IntentInput,
-  output: IntentOutput,
+  intent_blog_id: String,
   clock: &Clock,
   ctx: &mut TxContext,
 ) {
@@ -241,11 +135,8 @@ public fun create_intent(
   let intent = Intent {
     id: intent_id,
     intent_type,
-    proof_da_hash,
-    output,
-    input,
+    intent_blog_id,
     created_at: current_time,
-    user: tx_context::sender(ctx),
   };
 
   // Add intent to sequencer
@@ -256,8 +147,7 @@ public fun create_intent(
   event::emit(IntentCreatedEvent {
     intent_id: intent_id_copy,
     intent_type,
-    proof_da_hash,
-    user: tx_context::sender(ctx),
+    intent_blog_id,
     sequence: sequencer.current_sequence,
     created_at: clock::timestamp_ms(clock),
   });

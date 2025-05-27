@@ -27,8 +27,8 @@ import {
 } from '../programs/intents/liquidate.js';
 import { RedeemIntentProof, RedeemIntent } from '../programs/intents/redeem.js';
 import { ZkUsdState } from '../data/state.js';
-import { VaultMap } from '../data/vault-map.js';
-import { ZkUsdMap } from '../data/zkusd-map.js';
+import { VaultMap } from '../data/maps/vault-map.js';
+import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import { AggregateOraclePrices } from '../../../proofs/oracle-price-aggregation/prove.js';
 
 describe('ZkUsd Payment Address Test Suite', () => {

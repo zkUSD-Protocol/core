@@ -9,7 +9,7 @@ import {
   UInt8,
   ZkProgram,
 } from 'o1js';
-import { ZkUsdMap } from '../../data/zkusd-map.js';
+import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import {
   InputNotes,
   MAX_INPUT_NOTE_COUNT,
@@ -18,7 +18,7 @@ import {
   OutputNoteCommitment,
   Nullifier,
 } from '../../data/note.js';
-import { VaultMap } from '../../data/vault-map.js';
+import { VaultMap } from '../../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../../proofs/oracle-price-aggregation/prove.js';
 import { Vault, VaultUpdate } from '../../data/vault.js';
 
@@ -43,7 +43,6 @@ export class LiquidateIntentPrivateInput extends Struct({
   outputNote: Note,
   spendingSignature: Signature,
   spendingPublicKey: PublicKey,
-  nullifierKey: Field,
   vaultAddress: Field,
 }) {}
 
@@ -67,7 +66,6 @@ export const LiquidateIntent = ZkProgram({
           outputNote,
           spendingSignature,
           spendingPublicKey,
-          nullifierKey,
           vaultAddress,
         } = intent;
 
@@ -94,7 +92,7 @@ export const LiquidateIntent = ZkProgram({
         for (let i = 0; i < MAX_INPUT_NOTE_COUNT; i++) {
           const inN = inputNotes.notes[i];
           const inNHash = inN.hash();
-          const inNNullifier = inN.nullifier(nullifierKey);
+          const inNNullifier = inN.nullifier(spendingSignature.r);
 
           //We only want to make sure its part of the zkusd map if its not a dummy note
           const inNToCheck = Provable.if(inN.isDummy.not(), inNHash, Field(0));

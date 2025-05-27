@@ -10,9 +10,9 @@ import {
   ZkProgram,
   Encryption,
 } from 'o1js';
-import { ZkUsdMap } from '../../data/zkusd-map.js';
+import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import { Note, OutputNoteCommitment } from '../../data/note.js';
-import { VaultMap } from '../../data/vault-map.js';
+import { VaultMap } from '../../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../../proofs/oracle-price-aggregation/prove.js';
 import { Vault, VaultUpdate } from '../../data/vault.js';
 

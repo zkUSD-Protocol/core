@@ -1,6 +1,6 @@
 import { Bool, Field, Struct, UInt32, UInt64, UInt8 } from 'o1js';
-import { VaultMap } from './vault-map.js';
-import { ZkUsdMap } from './zkusd-map.js';
+import { VaultMap } from './maps/vault-map.js';
+import { ZkUsdMap } from './maps/zkusd-map.js';
 import { Vault } from '../../../system/vault.js';
 
 /**

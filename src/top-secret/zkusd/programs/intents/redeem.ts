@@ -9,7 +9,7 @@ import {
   UInt8,
   ZkProgram,
 } from 'o1js';
-import { ZkUsdMap } from '../../data/zkusd-map.js';
+import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import {
   InputNotes,
   MAX_INPUT_NOTE_COUNT,
@@ -18,7 +18,7 @@ import {
   Nullifiers,
   OutputNoteCommitment,
 } from '../../data/note.js';
-import { VaultMap } from '../../data/vault-map.js';
+import { VaultMap } from '../../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../../proofs/oracle-price-aggregation/prove.js';
 import { Vault, VaultState, VaultUpdate } from '../../data/vault.js';
 

@@ -1,6 +1,6 @@
 import { Field, Poseidon, SelfProof, UInt32, ZkProgram } from 'o1js';
 import { ZkUsdState } from '../data/state.js';
-import { ZkUsdMap } from '../data/zkusd-map.js';
+import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import {
   TransferIntentOutput,
   TransferIntentProof,
@@ -13,7 +13,7 @@ import {
 } from '../data/note.js';
 import { Vault } from '../data/vault.js';
 import { MintIntentProof } from './intents/mint.js';
-import { VaultMap } from '../data/vault-map.js';
+import { VaultMap } from '../data/maps/vault-map.js';
 import { BurnIntentProof } from './intents/burn.js';
 import { RedeemIntentProof } from './intents/redeem.js';
 import { LiquidateIntentProof } from './intents/liquidate.js';

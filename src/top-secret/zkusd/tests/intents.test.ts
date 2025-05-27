@@ -2,12 +2,17 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
 import { Keys } from '../types/keys.js';
 import { PrivateKey, UInt8, initializeBindings } from 'o1js';
-import { VaultMap } from '../data/vault-map.js';
+import { VaultMap } from '../data/maps/vault-map.js';
 import {
   CreateVaultIntent,
   generateCreateVaultIntentInputs,
 } from '../programs/intents/create-vault.js';
 import { SuiClient } from '@mysten/sui/client';
+import {
+  getWalrusUrl,
+  readFromWalrus,
+  saveToWalrus,
+} from '../data-availability/walrus.js';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 import { getFaucetHost, requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
@@ -18,8 +23,8 @@ describe('ZkUsd Payment Address Test Suite', () => {
   let vaultMap: VaultMap;
   let alice: Keys;
 
-  // Sui client
-  let client: SuiClient;
+  // clients
+  let suiClient: SuiClient;
 
   // Sui keys
   let adminSuiKey: Ed25519Keypair = Ed25519Keypair.generate();
@@ -39,7 +44,7 @@ describe('ZkUsd Payment Address Test Suite', () => {
       });
 
       // Verify the balance
-      const balance = await client.getBalance({
+      const balance = await suiClient.getBalance({
         owner: address,
       });
 
@@ -78,7 +83,7 @@ describe('ZkUsd Payment Address Test Suite', () => {
     );
 
     // Execute the publish transaction
-    const publishResult = await client.signAndExecuteTransaction({
+    const publishResult = await suiClient.signAndExecuteTransaction({
       transaction: tx,
       signer: adminSuiKey,
       options: {
@@ -113,7 +118,7 @@ describe('ZkUsd Payment Address Test Suite', () => {
     alice = Keys.fromPrivateKey(PrivateKey.random());
     vaultMap = new VaultMap();
 
-    client = new SuiClient({
+    suiClient = new SuiClient({
       url: 'http://localhost:9000',
     });
 

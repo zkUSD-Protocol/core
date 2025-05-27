@@ -27,9 +27,7 @@ export class Keys extends Struct({
   paymentAddress: PaymentAddress,
   spendingKey: PrivateKey,
   viewingKey: PrivateKey,
-  nullifierKey: Field,
 }) {
-  static NULLIFIER_KEY_TAG = '1';
   static VIEWING_KEY_TAG = '2';
 
   static fromPrivateKey(sk: PrivateKey): Keys {
@@ -40,14 +38,7 @@ export class Keys extends Struct({
       }),
       spendingKey: sk,
       viewingKey: this.deriveViewingKey(sk),
-      nullifierKey: this.deriveNullifierKey(sk),
     });
-  }
-
-  static deriveNullifierKey(sk: PrivateKey): Field {
-    const skField = Field.from(sk.toBigInt());
-    const tag = Poseidon.hash([Field.from(Keys.NULLIFIER_KEY_TAG)]);
-    return Poseidon.hash([tag, skField]);
   }
 
   static deriveViewingKey(sk: PrivateKey): PrivateKey {

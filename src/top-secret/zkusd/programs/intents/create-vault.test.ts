@@ -15,10 +15,9 @@ import {
   CreateVaultPrivateInput,
   VaultKey,
 } from './create-vault.js';
-import { VaultMap } from '../../data/vault-map.js';
+import { VaultMap } from '../../data/maps/vault-map.js';
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-
 
 export interface VaultIntentTestInput {
   publicInput: CreateVaultIntentInput;
@@ -90,7 +89,6 @@ describe('Create Vault Intent Suite', () => {
     });
     assert.deepEqual(vaultKey, expectedKey);
     assert.deepEqual(vaultType, type);
-
   });
 
   it('should fail if the vaultMap root does not match the public input', async () => {
@@ -103,9 +101,8 @@ describe('Create Vault Intent Suite', () => {
 
     // expect to throw
     await assert.rejects(async () => {
-  await CreateVaultIntent.rawMethods.createVault(publicInput, privateInput);
-});
-
+      await CreateVaultIntent.rawMethods.createVault(publicInput, privateInput);
+    });
   });
 
   it('should fail if the ownerSignature is invalid', async () => {
