@@ -81,8 +81,11 @@ export const RedeemIntent = ZkProgram({
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
         }).unpack(intentVaultMap.get(vaultKey));
 
+        // TODO compute signature fields
+        const message: Field[] =  [];
+
         //Verify the owner signature
-        ownerSignature.verify(ownerPublicKey, vault.toFields());
+        ownerSignature.verify(ownerPublicKey, message);
 
         //Redeem the zkusd
         vault.redeemCollateral(amount, minaPrice);

@@ -23,13 +23,6 @@ import { ZkUsdState } from '../data/state.js';
 import { VaultMap } from '../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../proofs/oracle-price-aggregation/prove.js';
 
-export class CreateVaultInput extends Struct({
-  vaultMap: VaultMap,
-  type: UInt8,
-  ownerSignature: Signature,
-  ownerPublicKey: PublicKey,
-}) {}
-
 export class DepositCollateralInput extends Struct({
   vaultMap: VaultMap,
   type: UInt8,
