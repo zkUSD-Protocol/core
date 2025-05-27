@@ -1,5 +1,5 @@
 import { SystemStateEvent } from "./optimistic-types.js";
-import { AnyIntentProof, extractIntentStateCommitment, hashAnyIntentProof } from "./types/intent-proof.js";
+import { IntentProof, extractIntentStateCommitment, hashAnyIntentProof } from "./types/intent-proof.js";
 import { IntentCommitment, IntentStateRoots } from "./optimistic-types.js";
 
 
@@ -36,7 +36,7 @@ export class MockStateEventQueue implements StateEventQueue {
     this.queue.push(commitment);
   }
 
-  pushIntentViaProof(proof: AnyIntentProof): void {
+  pushIntentViaProof(proof: IntentProof): void {
     // prepare intentstate roots
     let intentStateRoots: IntentStateRoots;
     intentStateRoots = extractIntentStateCommitment(proof);

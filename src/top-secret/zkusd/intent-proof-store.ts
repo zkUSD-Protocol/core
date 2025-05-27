@@ -17,7 +17,7 @@ import path from 'path';
 import fs from 'fs';
 
 import {
-  AnyIntentProof,
+  IntentProof,
   IntentProofKind,
   hashAnyIntentProof,
 } from './types/intent-proof.js';
@@ -40,12 +40,12 @@ export interface IntentProofStore {
   /**
    * Persist a proof (idempotent). Returns its Field hash.
    */
-  storeProof(proof: AnyIntentProof): string;
+  storeProof(proof: IntentProof): string;
 
   /**
    * Retrieve a proof (or null) by its Field hash.
    */
-  getProof(hash: string): Promise<AnyIntentProof | null>;
+  getProof(hash: string): Promise<IntentProof | null>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -82,7 +82,7 @@ export class SqliteIntentProofStore implements IntentProofStore {
 
   /* ---------------- IntentProofStore implementation -------------------- */
 
-  storeProof(proof: AnyIntentProof): string {
+  storeProof(proof: IntentProof): string {
     const key  = hashAnyIntentProof(proof);
     const json = JSON.stringify(proof.proof.toJSON());
 
@@ -93,7 +93,7 @@ export class SqliteIntentProofStore implements IntentProofStore {
     return key;
   }
 
-  async getProof(hash: string): Promise<AnyIntentProof | null> {
+  async getProof(hash: string): Promise<IntentProof | null> {
     const row = this.db
       .prepare(this.selectStmt)
       .get(hash) as { kind: IntentProofKind; proof_json: string } | undefined;
