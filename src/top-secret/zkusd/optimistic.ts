@@ -62,6 +62,7 @@ export interface StateEventProcessor {
 
   liveVaultMap(): Promise<VaultMap>;
   liveZkUsdMap(): Promise<ZkUsdMap>;
+  zkusdState(): Promise<ZkUsdState>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +91,7 @@ export class OptimisticStateComputer {
 
   public get intentVaultMap(): VaultMap { return this._intentVaultMap; }
   public get intentZkUsdMap(): ZkUsdMap { return this._intentZkUsdMap; }
+  public get zkusdState(): Promise<ZkUsdState> { return this.processor.zkusdState(); }
 
   private async loop({steps}: {steps?: number} = {}): Promise<void> {
     let i = 0;
@@ -161,6 +163,7 @@ export class OptimisticStateProcessor implements StateEventProcessor {
 
   liveVaultMap(): Promise<VaultMap> { return Promise.resolve(this._liveVaultMap); }
   liveZkUsdMap(): Promise<ZkUsdMap> { return Promise.resolve(this._liveZkUsdMap); }
+  zkusdState(): Promise<ZkUsdState> { return this.localState.getState(); }
 
   resetState(args: { zkusdState: ZkUsdState; }): Promise<void> {
     this.log.push(`Resetting state. Sequence: ${args.zkusdState.sequence}`);

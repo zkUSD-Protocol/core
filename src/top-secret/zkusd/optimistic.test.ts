@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { MapProviderImpl, StateComputeSimulator } from './state-compute-simulator.js';
 import { InitialState } from './state-compute-simulator.js';
 import { Scenario } from './state-compute-simulator.js';
-import { Circuit, Field, Provable } from 'o1js';
+import { Circuit, Field, Provable, UInt64 } from 'o1js';
 import { VaultMap } from './data/vault-map.js';
 import { ZkUsdMap } from './data/zkusd-map.js';
 
@@ -17,8 +17,11 @@ describe('Optimistic Provisional Tests', () => {
     const scenario = new Scenario(new MapProviderImpl(
         async () => simulator.intentVaultMap(),
         async () => simulator.intentZkUsdMap()
-    ));
+    ),
+    await simulator.zkusdState
+    );
     await scenario.addCreateVaultIntent(0);
+    await scenario.addDepositCollateralIntent(0, UInt64.from(500));
     await scenario.addEpochEnd();
     
     const stateBefore = await simulator.intentVaultMap();
