@@ -1,4 +1,4 @@
-import { Field } from "o1js";
+import { EpochStateRoots, IncrementalEpochStateCommitment } from "./epoch-state.js";
 
 /**
  * Represents an intent event from the sequencer queue.
@@ -39,13 +39,6 @@ export interface EpochEndEvent {
  */
 export type SequencerEvent = IntentEvent | EpochStartEvent | EpochEndEvent;
 
-/**
- * Identifies the state of an epoch using its state root.
- */
-export type EpochStateRoots = {
-  zkUsdMapRoot: Field;
-  vaultMapRoot: Field;
-};
 
 /**
  * Allows a validator to await events from the sequencer.
@@ -82,5 +75,5 @@ export interface SequencerInterface {
    * Commits the given epoch state root to the sequencer's consensus.
    * Should be called by the validator after successfully processing an epoch.
    */
-  commitToEpochState(args: EpochStateRoots): Promise<void>;
+  commitToEpochState(epochStateCommitment: IncrementalEpochStateCommitment): Promise<void>;
 }

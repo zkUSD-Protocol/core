@@ -1,17 +1,21 @@
-import { EpochStateRoots } from "./sequencer-interface";
-import { FullEpochState } from "./epoch-state";
+import { EpochStateRoots, FullEpochState } from "./epoch-state.js";
+import { IntentMapOperation } from "./map-operation.js";
 
-export interface LocalEpochState {
+export interface FinalizedEpochState {
 
     setState(state: FullEpochState): Promise<void>;
 
     getState(): Promise<FullEpochState>;
 
     checkStoredRoots(epochStateRoots: EpochStateRoots): Promise<boolean>;
+    
+    updateEpochState(finalizedEpochOperations: IntentMapOperation[]): Promise<void>;
+    
+    rootsEqual(epochStateRoots: EpochStateRoots): Promise<boolean>;
 
 }
 
-export class InMemoryLocalEpochState implements LocalEpochState {
+export class InMemoryFinalizedEpochState implements FinalizedEpochState {
     
     private _state: FullEpochState;
     private _epochStateRoot: EpochStateRoots;
@@ -33,6 +37,15 @@ export class InMemoryLocalEpochState implements LocalEpochState {
 
     async getState(): Promise<FullEpochState> {
         return this._state;
+    }
+
+    async updateEpochState(finalizedEpochOperations: IntentMapOperation[]): Promise<void> {
+        this._state.applyMapOperations(...finalizedEpochOperations);
+        this._epochStateRoot = this._state.roots();
+    }
+
+    async rootsEqual(epochStateRoots: EpochStateRoots): Promise<boolean> {
+        return this._epochStateRoot.vaultMapRoot.equals(epochStateRoots.vaultMapRoot).toBoolean() && this._epochStateRoot.zkUsdMapRoot.equals(epochStateRoots.zkUsdMapRoot).toBoolean();
     }
 }
     
