@@ -5,8 +5,9 @@ import { RedeemIntentProof } from '../programs/intents/redeem.js';
 import { CreateVaultIntentProof } from '../programs/intents/create-vault.js';
 import { DepositIntentProof } from '../programs/intents/deposit.js';
 import { LiquidateIntentProof } from '../programs/intents/liquidate.js';
-import { IntentStateRoots } from '../optimistic-types.js';
 import { createHash } from 'crypto';
+import { Field, Poseidon } from 'o1js';
+import { EpochStateRoots } from '../validator/sequencer-interface.js';
 
 export type IntentProofKind =
   | 'burn'
@@ -17,7 +18,7 @@ export type IntentProofKind =
   | 'deposit'
   | 'liquidate';
 
-export type AnyIntentProof =
+export type IntentProof =
   | { kind: 'burn'; proof: BurnIntentProof }
   | { kind: 'mint'; proof: MintIntentProof }
   | { kind: 'transfer'; proof: TransferIntentProof }
@@ -26,7 +27,24 @@ export type AnyIntentProof =
   | { kind: 'deposit'; proof: DepositIntentProof }
   | { kind: 'liquidate'; proof: LiquidateIntentProof };
 
-export function extractIntentStateCommitment(proof: AnyIntentProof): IntentStateRoots {
+type IntentStateRoots = {
+    vaultMapRoot: Field | undefined;
+    zkUsdMapRoot: Field | undefined;
+};
+
+export function intentStateRootsMatchEpoch(intentStateRoots: IntentStateRoots, epochStateRoots: EpochStateRoots): boolean {
+  // if an intent root is present then it must be equal if not then it doesnt matter
+  if (intentStateRoots.vaultMapRoot !== undefined) {
+    return intentStateRoots.vaultMapRoot.equals(epochStateRoots.vaultMapRoot).toBoolean();
+  }
+  if (intentStateRoots.zkUsdMapRoot !== undefined) {
+    return intentStateRoots.zkUsdMapRoot.equals(epochStateRoots.zkUsdMapRoot).toBoolean();
+  }
+  return true;
+}
+
+
+export function extractIntentStateCommitment(proof: IntentProof): IntentStateRoots {
   if (isMintIntentProof(proof)) {
     return {
       vaultMapRoot: proof.proof.publicInput.intentVaultMapRoot,
@@ -66,7 +84,7 @@ export function extractIntentStateCommitment(proof: AnyIntentProof): IntentState
   else throw new Error('Unknown intent proof kind');
 }
 
-export function hashAnyIntentProof(proof: AnyIntentProof): string {
+export function hashAnyIntentProof(proof: IntentProof): string {
 
   const stringified = JSON.stringify(proof.proof.toJSON());
 
@@ -78,30 +96,30 @@ const hash = createHash('sha3-256')
 }
 
 // Example: type guard
-export function isBurnIntentProof(obj: AnyIntentProof): obj is { kind: 'burn'; proof: BurnIntentProof } {
+export function isBurnIntentProof(obj: IntentProof): obj is { kind: 'burn'; proof: BurnIntentProof } {
   return obj.kind === 'burn';
 }
 
-export function isMintIntentProof(obj: AnyIntentProof): obj is { kind: 'mint'; proof: MintIntentProof } {
+export function isMintIntentProof(obj: IntentProof): obj is { kind: 'mint'; proof: MintIntentProof } {
   return obj.kind === 'mint';
 }
 
-export function isTransferIntentProof(obj: AnyIntentProof): obj is { kind: 'transfer'; proof: TransferIntentProof } {
+export function isTransferIntentProof(obj: IntentProof): obj is { kind: 'transfer'; proof: TransferIntentProof } {
   return obj.kind === 'transfer';
 }
 
-export function isRedeemIntentProof(obj: AnyIntentProof): obj is { kind: 'redeem'; proof: RedeemIntentProof } {
+export function isRedeemIntentProof(obj: IntentProof): obj is { kind: 'redeem'; proof: RedeemIntentProof } {
   return obj.kind === 'redeem';
 }
 
-export function isCreateVaultIntentProof(obj: AnyIntentProof): obj is { kind: 'create-vault'; proof: CreateVaultIntentProof } {
+export function isCreateVaultIntentProof(obj: IntentProof): obj is { kind: 'create-vault'; proof: CreateVaultIntentProof } {
   return obj.kind === 'create-vault';
 }
 
-export function isDepositIntentProof(obj: AnyIntentProof): obj is { kind: 'deposit'; proof: DepositIntentProof } {
+export function isDepositIntentProof(obj: IntentProof): obj is { kind: 'deposit'; proof: DepositIntentProof } {
   return obj.kind === 'deposit';
 }
 
-export function isLiquidateIntentProof(obj: AnyIntentProof): obj is { kind: 'liquidate'; proof: LiquidateIntentProof } {
+export function isLiquidateIntentProof(obj: IntentProof): obj is { kind: 'liquidate'; proof: LiquidateIntentProof } {
   return obj.kind === 'liquidate';
 }

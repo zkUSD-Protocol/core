@@ -5,7 +5,7 @@ import {
   StateProcessorLog,
 } from './optimistic-types.js';
 
-import { AnyIntentProof, IntentProofKind } from './types/intent-proof.js';
+import { IntentProof, IntentProofKind } from './types/intent-proof.js';
 import * as Rollup from './programs/rollup.js';                 // alias for brevity
 
 import { ZkUsdState } from './data/state.js';
@@ -147,7 +147,7 @@ export function cloneZkUsdMap(zkUsdMap: ZkUsdMap): ZkUsdMap {
 /*  state-event processor                                              */
 /* ------------------------------------------------------------------ */
 
-type ProofHandler<P extends AnyIntentProof> = (proof: P) => Promise<void>;
+type ProofHandler<P extends IntentProof> = (proof: P) => Promise<void>;
 
 export class OptimisticStateProcessor implements StateEventProcessor {
   private readonly missing: IntentCommitment[] = [];
@@ -173,7 +173,7 @@ export class OptimisticStateProcessor implements StateEventProcessor {
   /* ---------------- generic helper ---------------- */
 
   private runProof = async <
-    P extends AnyIntentProof,
+    P extends IntentProof,
     Fn extends (...a: any[]) => Promise<{ publicOutput: ZkUsdState }>
   >(proof: P, rollupFn: Fn, needsZkUsd = false) => {
     const prev = await this.localState.getState();

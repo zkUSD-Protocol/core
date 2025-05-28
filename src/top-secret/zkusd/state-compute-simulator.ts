@@ -11,7 +11,7 @@ import { KeyPair } from "../../types/utility.js";
 import { PrivateKey, Signature, UInt64, UInt8 } from "o1js";
 import { CreateVaultIntent, CreateVaultIntentInput, CreateVaultIntentKey, CreateVaultIntentProof, CreateVaultPrivateInput } from "./programs/intents/create-vault.js";
 import { Field } from "o1js";
-import { AnyIntentProof } from "./types/intent-proof.js";
+import { IntentProof } from "./types/intent-proof.js";
 import { Proof } from "o1js/dist/node/lib/proof-system/circuit.js";
 import { DepositIntent, DepositIntentInput, DepositIntentKey, DepositIntentProof, DepositPrivateInput } from "./programs/intents/deposit.js";
 import { MintIntent, MintIntentInput, MintIntentPrivateInput, MintIntentProof } from "./programs/intents/mint.js";
@@ -122,7 +122,7 @@ export class Scenario {
             0,
         );
 
-        const intentProof: AnyIntentProof = {
+        const intentProof: IntentProof = {
             kind: 'deposit',
             proof: dummyProof,
         };
@@ -166,7 +166,7 @@ export class Scenario {
 
         const proof = await MintIntentProof.dummy(publicInput, output.publicOutput, 0);
 
-        const intentProof: AnyIntentProof = {
+        const intentProof: IntentProof = {
             kind: 'mint',
             proof,
         };
@@ -203,7 +203,7 @@ const privateInput = new TransferIntentPrivateInput({
         const output = await TransferIntent.rawMethods.transfer(publicInput, privateInput);
         const proof = await TransferIntentProof.dummy(publicInput, output.publicOutput, 0);
         
-        const intentProof: AnyIntentProof = {
+        const intentProof: IntentProof = {
             kind: 'transfer',
             proof,
         };
@@ -235,7 +235,7 @@ const privateInput = new TransferIntentPrivateInput({
         const output = await RedeemIntent.rawMethods.redeem(publicInput, privateInput);
         const proof = await RedeemIntentProof.dummy(publicInput, output.publicOutput, 0);
         
-        const intentProof: AnyIntentProof = {
+        const intentProof: IntentProof = {
             kind: 'redeem',
             proof,
         };
@@ -277,7 +277,7 @@ const privateInput = new TransferIntentPrivateInput({
             0,
         );
 
-        const intentProof: AnyIntentProof = {
+        const intentProof: IntentProof = {
             kind: 'create-vault',
             proof: dummyProof,
         };
