@@ -1,13 +1,16 @@
 import { BurnIntentProof } from '../programs/intents/burn.js';
-import { MintIntentProof } from '../programs/intents/mint.js';
-import { TransferIntentProof } from '../programs/intents/transfer.js';
-import { RedeemIntentProof } from '../programs/intents/redeem.js';
-import { CreateVaultIntentProof } from '../programs/intents/create-vault.js';
-import { DepositIntentProof } from '../programs/intents/deposit.js';
-import { LiquidateIntentProof } from '../programs/intents/liquidate.js';
+import { MintIntentOutput, MintIntentProof } from '../programs/intents/mint.js';
+import { TransferIntentOutput, TransferIntentProof } from '../programs/intents/transfer.js';
+import { RedeemIntentOutput, RedeemIntentProof } from '../programs/intents/redeem.js';
+import { CreateVaultIntentOutput, CreateVaultIntentProof } from '../programs/intents/create-vault.js';
+import { DepositIntentOutput, DepositIntentProof } from '../programs/intents/deposit.js';
+import { LiquidateIntentOutput, LiquidateIntentProof } from '../programs/intents/liquidate.js';
 import { createHash } from 'crypto';
 import { Field, Poseidon } from 'o1js';
-import { EpochStateRoots } from '../validator/sequencer-interface.js';
+import { EpochStateRoots, SystemParams } from '../validator/epoch-state.js';
+import { IntentMapOperation } from '../validator/map-operation.js';
+import { Vault } from '../data/vault.js';
+import { Note } from '../data/note.js';
 
 export type IntentProofKind =
   | 'burn'
@@ -43,6 +46,105 @@ export function intentStateRootsMatchEpoch(intentStateRoots: IntentStateRoots, e
   return true;
 }
 
+export function extractIntentMapOperations(intentProof: IntentProof, systemParams: SystemParams): IntentMapOperation[] {
+    
+    if(isMintIntentProof(intentProof)){
+      const proof = intentProof.proof as MintIntentProof;
+      const publicOutput: MintIntentOutput = proof.publicOutput;
+      const liquidationBonusRatio = systemParams.liquidationBonusRatio;
+      const intentMapOperations = IntentMapOperation.updateVaultMap(
+        publicOutput.vaultUpdate.vaultAddress,
+        Vault({
+          collateralRatio: systemParams.collateralRatio,
+          liquidationBonusRatio,
+        }).fromState(publicOutput.vaultUpdate.vaultState).pack()
+      );
+
+      return [intentMapOperations];
+    }
+    if(isTransferIntentProof(intentProof)){
+      const proof = intentProof.proof as TransferIntentProof;
+      const publicOutput: TransferIntentOutput = proof.publicOutput;
+      const nullifiers = publicOutput.nullifiers;
+      const outputNoteCommitments = publicOutput.outputNoteCommitments;
+       
+      const operations: IntentMapOperation[] = [];
+      nullifiers.nullifiers.forEach((nullifier) => {
+        if(nullifier.isDummy.not().toBoolean()){
+          operations.push(IntentMapOperation.setVaultMap(nullifier.nullifier, Note.included()));
+        }
+      });
+      outputNoteCommitments.commitments.forEach((outputNoteCommitment) => {
+        if(outputNoteCommitment.isDummy.not().toBoolean()){
+          operations.push(
+            IntentMapOperation.setZkusdMap(
+              outputNoteCommitment.commitment,
+              Note.included()
+            )
+          );
+        }
+      });
+      
+      return operations;
+    }
+    
+    if(isRedeemIntentProof(intentProof)){
+      const proof = intentProof.proof as RedeemIntentProof;
+      const publicOutput: RedeemIntentOutput = proof.publicOutput;
+      const liquidationBonusRatio = systemParams.liquidationBonusRatio;
+      const updateVault = IntentMapOperation.updateVaultMap(
+        publicOutput.vaultUpdate.vaultAddress,
+        Vault({
+          collateralRatio: systemParams.collateralRatio,
+          liquidationBonusRatio,
+        }).fromState(publicOutput.vaultUpdate.vaultState).pack()
+      );
+      
+      return [updateVault];
+    }
+    if(isCreateVaultIntentProof(intentProof)){
+      const proof = intentProof.proof as CreateVaultIntentProof;
+      const publicOutput: CreateVaultIntentOutput = proof.publicOutput;
+      const insertVault = IntentMapOperation.insertVaultMap(
+        publicOutput.vaultKey.key,
+        Vault({
+          collateralRatio: systemParams.collateralRatio,
+          liquidationBonusRatio: systemParams.liquidationBonusRatio,
+        }).new(publicOutput.vaultType).pack()
+      );
+      
+      return [insertVault];
+    }
+    if(isDepositIntentProof(intentProof)){
+      const proof = intentProof.proof as DepositIntentProof;
+      const publicOutput: DepositIntentOutput = proof.publicOutput;
+      const updateVault = IntentMapOperation.updateVaultMap(
+        publicOutput.vaultKey.key,
+        publicOutput.vaultPack,
+      );
+      
+      return [updateVault];
+    }
+    if(isLiquidateIntentProof(intentProof)){
+      const proof = intentProof.proof as LiquidateIntentProof;
+      const publicOutput: LiquidateIntentOutput = proof.publicOutput;
+      const vaultUpdate = IntentMapOperation.updateVaultMap(
+        publicOutput.vaultUpdate.vaultAddress,
+        Vault({
+          collateralRatio: systemParams.collateralRatio,
+          liquidationBonusRatio: systemParams.liquidationBonusRatio,
+        }).fromState(publicOutput.vaultUpdate.vaultState).pack()
+      );
+      const outputNoteCommitment = publicOutput.outputNoteCommitment;
+      const zkusdUpdate = IntentMapOperation.insertZkusdMap(
+        outputNoteCommitment.commitment,
+        Note.included()
+      );
+      
+      return [vaultUpdate, zkusdUpdate];
+    }
+    throw new Error('Unknown intent proof kind');
+}       
 
 export function extractIntentStateCommitment(proof: IntentProof): IntentStateRoots {
   if (isMintIntentProof(proof)) {

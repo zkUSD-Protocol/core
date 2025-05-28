@@ -48,7 +48,11 @@ export class IncrementalEpochState {
     }
 
     toCommitment(): IncrementalEpochStateCommitment {
-        throw new Error('Not implemented');
+        const mapOperationsHash = IntentMapOperation.rollingHash(this.mapOperations);
+        return {
+            nextEpochStateRoots: this.nextEpochStateRoots,
+            mapOperationsHash
+        };
     }
 
 }
