@@ -75,29 +75,29 @@ export class NextEpochStateCandidate {
 }
 
 export class IncrementalEpochState {
-  nextEpochStateRoots: EpochStateRoots;
+  nextEpochState: EpochStateCommitment;
   mapOperations: IntentMapOperation[];
 
   constructor(
-    epochStateRoots: EpochStateRoots,
+    nextEpochState: EpochStateCommitment,
     mapOperations: IntentMapOperation[]
   ) {
-    this.nextEpochStateRoots = epochStateRoots;
+    this.nextEpochState = nextEpochState;
     this.mapOperations = mapOperations;
   }
 
-  toCommitment(): IncrementalEpochStateCommitment {
+  toCommitment(): NextEpochStateCommitment {
     const mapOperationsHash = IntentMapOperation.rollingHash(
       this.mapOperations
     );
     return {
-      nextEpochStateRoots: this.nextEpochStateRoots,
+      nextEpochState: this.nextEpochState,
       mapOperationsHash,
     };
   }
 }
 
-export class FullEpochState {
+export class FullState {
   systemParams: SystemParams;
   vaultMap: VaultMap;
   zkUsdMap: ZkUsdMap;

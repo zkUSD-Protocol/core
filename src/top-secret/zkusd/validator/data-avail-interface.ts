@@ -26,10 +26,11 @@ export interface DataAvailInterface {
   fetchFullEpochState(epochBlobHandle: string): Promise<FullState>;
 
   /**
-   * Fetches the incremental epoch update from the data availability layer,
-   * and applies the map operations to the given epoch state.
+   * Updates the local finalized state.
+   * This function is called when the validator wants to update the local state with the state from DA.
+   *
    */
-  updateLocalFinalizedEpochState(
+  updateLocalFinalizedState(
     epochBlobHandle: string,
     finalizedState: FinalizedState
   ): Promise<void>;
