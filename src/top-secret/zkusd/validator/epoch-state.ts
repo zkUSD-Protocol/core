@@ -74,7 +74,30 @@ export class NextEpochStateCandidate {
   }
 }
 
-export class FullState {
+export class IncrementalEpochState {
+  nextEpochStateRoots: EpochStateRoots;
+  mapOperations: IntentMapOperation[];
+
+  constructor(
+    epochStateRoots: EpochStateRoots,
+    mapOperations: IntentMapOperation[]
+  ) {
+    this.nextEpochStateRoots = epochStateRoots;
+    this.mapOperations = mapOperations;
+  }
+
+  toCommitment(): IncrementalEpochStateCommitment {
+    const mapOperationsHash = IntentMapOperation.rollingHash(
+      this.mapOperations
+    );
+    return {
+      nextEpochStateRoots: this.nextEpochStateRoots,
+      mapOperationsHash,
+    };
+  }
+}
+
+export class FullEpochState {
   systemParams: SystemParams;
   vaultMap: VaultMap;
   zkUsdMap: ZkUsdMap;
