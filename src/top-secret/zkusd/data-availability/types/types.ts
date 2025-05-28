@@ -1,7 +1,7 @@
 enum WalrusFileType {
   INTENT = 'intent',
-  ZKUSD_EPOCH = 'zkusd_epoch',
-  METADATA_CHAIN = 'metadata_chain',
+  EPOCH = 'epoch',
+  METADATA = 'metadata',
 }
 
 interface WalrusFile {
@@ -31,13 +31,6 @@ enum OperationType {
   UPDATE = 'update',
 }
 
-interface ZkUsdMapOperation {
-  type: OperationType.INSERT;
-  sequence: number;
-  key: string;
-  value: '1';
-}
-
 interface IntentFile extends WalrusFile {
   fileType: WalrusFileType.INTENT;
   intentType: IntentType;
@@ -45,8 +38,8 @@ interface IntentFile extends WalrusFile {
   encryptedNotes: string[];
 }
 
-interface ZkUsdEpochFile extends WalrusFile {
-  fileType: WalrusFileType.ZKUSD_EPOCH;
+interface EpochFile extends WalrusFile {
+  fileType: WalrusFileType.EPOCH;
 
   // Epoch identification
   epoch: number;
@@ -77,8 +70,8 @@ interface ZkUsdEpochFile extends WalrusFile {
   };
 }
 
-interface MetadataChainFile extends WalrusFile {
-  fileType: WalrusFileType.METADATA_CHAIN;
+interface MetadataFile extends WalrusFile {
+  fileType: WalrusFileType.METADATA;
 
   // Current state
   latestEpoch: number;
@@ -123,6 +116,9 @@ interface EpochMetadata {
   zkUsdMapLength: string; // number of leaves after this epoch
   timestamp: number;
   operationCount: number;
+
+  // Blob IDs
+  epochBlobId: string;
 
   // For verification
   epochHash: string; // hash of the entire epoch content

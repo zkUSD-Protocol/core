@@ -28,7 +28,8 @@ public struct Intent has key {
   id: UID,
   intent_type: u8,
   intent_blob_id: String,
-  state_root: String,
+  vault_map_root: String,
+  zkusd_map_root: String,
   created_at: u64,
 }
 
@@ -52,12 +53,16 @@ public struct Epoch has key {
   epoch_number: u64,
   start_sequence: u64,
   end_sequence: Option<u64>,
-  start_state_root: String, //hash of the vault map and zkusd map at the moment of the epoch start
-  end_state_root: Option<String>, //hash of the vault map and zkusd map at the moment of the epoch end
+  start_vault_map_root: String, //hash of the vault map at the moment of the epoch start
+  start_zkusd_map_root: String, //hash of the zkusd map at the moment of the epoch start
+  end_vault_map_root: Option<String>, //hash of the vault map at the moment of the epoch end
+  end_zkusd_map_root: Option<String>, //hash of the zkusd map at the moment of the epoch end
   intents_hash: Option<vector<u8>>,
   created_at: u64,
   ended_at: Option<u64>,
   epoch_state: u8, // EPOCH_STATE_*
+  epoch_blob_id: Option<String>,
+  metadata_blob_id: Option<String>,
 }
 
 /// Registry of authorized validators
@@ -72,7 +77,8 @@ public struct IntentCreatedEvent has copy, drop {
   intent_id: ID,
   intent_type: u8,
   intent_blob_id: String,
-  state_root: String,
+  vault_map_root: String,
+  zkusd_map_root: String,
   sequence: u64,
   created_at: u64,
 }
@@ -90,14 +96,18 @@ public struct EpochStartedEvent has copy, drop {
   epoch_id: ID,
   epoch_number: u64,
   start_sequence: u64,
-  start_state_root: String,
+  start_vault_map_root: String,
+  start_zkusd_map_root: String,
   created_at: u64,
 }
 
 public struct EpochFinalizedEvent has copy, drop {
   epoch_id: ID,
   epoch_number: u64,
-  end_state_root: String,
+  end_vault_map_root: String,
+  end_zkusd_map_root: String,
+  epoch_blob_id: String,
+  metadata_blob_id: String,
   validator: address,
   finalized_at: u64,
 }
@@ -137,7 +147,8 @@ public fun create_intent(
   sequencer: &mut IntentSequencer,
   intent_type: u8,
   intent_blob_id: String,
-  state_root: String,
+  vault_map_root: String,
+  zkusd_map_root: String,
   clock: &Clock,
   ctx: &mut TxContext,
 ) {
@@ -153,7 +164,8 @@ public fun create_intent(
     id: intent_id,
     intent_type,
     intent_blob_id,
-    state_root,
+    vault_map_root,
+    zkusd_map_root,
     created_at: current_time,
   };
 
@@ -172,7 +184,8 @@ public fun create_intent(
   event::emit(IntentCreatedEvent {
     intent_id: intent_id_copy,
     intent_type,
-    state_root,
+    vault_map_root,
+    zkusd_map_root,
     intent_blob_id,
     sequence: sequencer.current_sequence,
     created_at: current_time,
@@ -187,7 +200,10 @@ public fun finalize_and_start_epoch(
   sequencer: &mut IntentSequencer,
   current_epoch: &mut Epoch,
   registry: &ValidatorRegistry,
-  consensus_state_root: String,
+  consensus_vault_map_root: String,
+  consensus_zkusd_map_root: String,
+  epoch_blob_id: String,
+  metadata_blob_id: String,
   clock: &Clock,
   ctx: &mut TxContext,
 ) {
@@ -204,15 +220,21 @@ public fun finalize_and_start_epoch(
   // Finalize current epoch
   current_epoch.end_sequence = option::some(end_sequence);
   current_epoch.intents_hash = option::some(intents_hash);
-  current_epoch.end_state_root = option::some(consensus_state_root);
+  current_epoch.end_vault_map_root = option::some(consensus_vault_map_root);
+  current_epoch.end_zkusd_map_root = option::some(consensus_zkusd_map_root);
   current_epoch.ended_at = option::some(current_time);
   current_epoch.epoch_state = EPOCH_STATE_WAITING_CONSENSUS;
+  current_epoch.epoch_blob_id = option::some(epoch_blob_id);
+  current_epoch.metadata_blob_id = option::some(metadata_blob_id);
 
   // Emit finalization event
   event::emit(EpochFinalizedEvent {
     epoch_id: object::id(current_epoch),
     epoch_number: current_epoch.epoch_number,
-    end_state_root: consensus_state_root,
+    end_vault_map_root: consensus_vault_map_root,
+    end_zkusd_map_root: consensus_zkusd_map_root,
+    epoch_blob_id: epoch_blob_id,
+    metadata_blob_id: metadata_blob_id,
     validator: sender,
     finalized_at: current_time,
   });
@@ -228,12 +250,16 @@ public fun finalize_and_start_epoch(
     epoch_number: sequencer.current_epoch_number,
     start_sequence: sequencer.current_sequence,
     end_sequence: option::none(),
-    start_state_root: consensus_state_root, // Previous epoch's end state becomes new start state
-    end_state_root: option::none(),
+    start_vault_map_root: consensus_vault_map_root, // Previous epoch's end state becomes new start state
+    start_zkusd_map_root: consensus_zkusd_map_root,
+    end_vault_map_root: option::none(),
+    end_zkusd_map_root: option::none(),
     intents_hash: option::none(),
     created_at: current_time,
     ended_at: option::none(),
     epoch_state: EPOCH_STATE_ACTIVE,
+    epoch_blob_id: option::none(),
+    metadata_blob_id: option::none(),
   };
 
   // Store new epoch
@@ -250,7 +276,8 @@ public fun finalize_and_start_epoch(
     epoch_id: new_epoch_id_copy,
     epoch_number: sequencer.current_epoch_number,
     start_sequence: sequencer.current_sequence,
-    start_state_root: consensus_state_root,
+    start_vault_map_root: consensus_vault_map_root,
+    start_zkusd_map_root: consensus_zkusd_map_root,
     created_at: current_time,
   });
 

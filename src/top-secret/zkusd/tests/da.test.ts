@@ -12,7 +12,7 @@ import {
   getWalrusUrl,
   readFromWalrus,
   saveToWalrus,
-} from '../data-availability/walrus.js';
+} from '../data-availability/utils/walrus.js';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 import { getFaucetHost, requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
