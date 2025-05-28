@@ -7,10 +7,10 @@ export interface OptimisticStateComputer {
   setState(state: FullState): Promise<void>;
   getState(): Promise<{
     previousEpochState: FullState;
-    nextEpochState: FullState;
+    nextStateCandidate: FullState;
     newEpochOperations: IntentMapOperation[];
   }>;
-  getIncrementalState(): Promise<NextEpochStateCandidate>;
+  getStateCandidate(): Promise<NextEpochStateCandidate>;
   step(intentProof: IntentProof): Promise<void>;
 }
 
@@ -37,7 +37,7 @@ export class NonProvingStateComputer implements OptimisticStateComputer {
       newEpochOperations: this._newEpochOperations,
     };
   }
-  async getIncrementalState(): Promise<NextEpochStateCandidate> {
+  async getStateCandidate(): Promise<NextEpochStateCandidate> {
     return new NextEpochStateCandidate(
       this._liveState.toCommitment(),
       this._newEpochOperations,

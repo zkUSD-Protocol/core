@@ -1,4 +1,13 @@
-import { StateRoots, NextEpochStateCommitment } from './epoch-state.js';
+import { StateRoots } from './epoch-state.js';
+
+export type SequencerStateMetadata = {
+  /** State root to match against the validator’s computed state. */
+  stateRoots: StateRoots;
+  /** Handle to retrieve the epoch state blob from DA. - This is actually the previous epoch file */
+  stateBlobHandle: string;
+  /** Handle to retrieve the metadata blob from DA. */
+  metadataBlobHandle: string;
+}
 
 /**
  * Represents an intent event from the sequencer queue.
@@ -9,6 +18,7 @@ export interface IntentEvent {
   /** Handle to retrieve the intent blob from the data availability (DA) layer. */
   intentBlobHandle: string;
   /** State root to verify before fetching the associated intent data. */
+  // TODO will intents with invalid state roots be even accepted by SUI contracts?
   intentEpochStateRoots: StateRoots;
   /** Sequence number of the intent. */
   intentSequence: number;
@@ -31,12 +41,8 @@ export interface EpochEndEvent {
  */
 export interface EpochFinalizedEvent {
   kind: 'epoch-finalized';
-  /** State root to match against the validator’s computed state. */
-  epochStateRoots: StateRoots;
-  /** Handle to retrieve the epoch state blob from DA. - This is actually the previous epoch file */
-  epochStateBlobHandle: string;
-  /** Handle to retrieve the metadata blob from DA. */
-  metadataBlobHandle: string;
+  /** Metadata of the state after the epoch */
+  finalizedStateMetadata: SequencerStateMetadata;
 }
 
 /**
@@ -62,24 +68,26 @@ export interface SequencerEventQueue {
 export interface SequencerInterface {
   /**
    * Returns a queue of sequencer events.
-   * If `epochStateRoots` is provided, returns events from that epoch onward.
+   * If `epochStateMetadata` is provided, returns events from that epoch onward.
    * Otherwise, starts from the last known epoch.
    */
-  getSequencerEventQueue(args?: StateRoots): Promise<SequencerEventQueue>;
+  getSequencerEventQueue(epochStateMetadata?: SequencerStateMetadata): Promise<SequencerEventQueue>;
 
   /**
    * Returns the most recent 'epoch-start' event.
    */
-  fetchLastEpochStart(): Promise<{
-    epochStateRoots: StateRoots;
-    epochStateBlobHandle: string;
-  }>;
+  fetchFinalizedStateEpochMetadata(): Promise<SequencerStateMetadata>;
 
   /**
    * Commits the given epoch state root to the sequencer's consensus.
    * Should be called by the validator after successfully processing an epoch.
    */
   commitToEpochState(
-    epochStateCommitment: NextEpochStateCommitment // include blobids
+    /** Metadata of the finalized (previous) epoch state */
+    finalizedStateMetadata: SequencerStateMetadata,
+   
+    /** Metadata of the candidate (next) epoch state */
+    stateCandidateMetadata: SequencerStateMetadata,
+
   ): Promise<void>;
 }

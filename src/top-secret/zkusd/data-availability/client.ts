@@ -5,7 +5,7 @@ import {
 import { WalrusProvider } from './providers/walrus-provider.js';
 import { IntentProof } from '../types/intent-proof.js';
 import { FullState, IncrementalEpochState } from '../validator/epoch-state.js';
-import { FinalizedState } from '../validator/local-epoch-state.js';
+import { LocalStateProxy } from '../validator/local-epoch-state.js';
 import { EpochFile, MetadataFile } from './types/types.js';
 import { EpochFileBuilder } from './services/epoch-file-builder.js';
 import { MetadataFileBuilder } from './services/metadata-file-builder.js';
@@ -44,7 +44,7 @@ export class DataAvailClient implements DataAvailInterface {
 
   updateFinalizedEpochState(
     epochBlobHandle: string,
-    finalizedEpochState: FinalizedState
+    finalizedEpochState: LocalStateProxy
   ): Promise<void> {
     throw new Error('Not implemented');
   }
