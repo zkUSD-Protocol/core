@@ -1,17 +1,15 @@
-enum WalrusFileType {
+export enum WalrusFileType {
   INTENT = 'intent',
   EPOCH = 'epoch',
   METADATA = 'metadata',
 }
 
-interface WalrusFile {
+export interface WalrusFile {
   version: string;
   fileType: WalrusFileType;
-  timestamp: number;
-  checksum: string; // SHA-256 hash for integrity
 }
 
-enum IntentType {
+export enum IntentType {
   CREATE_VAULT = 'create_vault',
   DEPOSIT_COLLATERAL = 'deposit_collateral',
   MINT_ZKUSD = 'mint_zkusd',
@@ -21,30 +19,37 @@ enum IntentType {
   TRANSFER_ZKUSD = 'transfer_zkusd',
 }
 
-enum MapType {
+export enum MapType {
   VAULT = 'vault',
   ZKUSD = 'zkusd',
 }
 
-enum OperationType {
+export enum OperationType {
   INSERT = 'insert',
   UPDATE = 'update',
 }
 
-interface IntentFile extends WalrusFile {
+export interface IntentFile extends WalrusFile {
   fileType: WalrusFileType.INTENT;
   intentType: IntentType;
   proof: string;
   encryptedNotes: string[];
 }
 
-interface EpochFile extends WalrusFile {
+export interface EpochFile extends WalrusFile {
   fileType: WalrusFileType.EPOCH;
+
+  // Timestamp of the epoch end -> from the sequencer
+  timestamp: number;
+
+  // Previous epoch information
+  previousEpoch: number;
+  previousEpochBlobId: string;
 
   // Epoch identification
   epoch: number;
-  startSequence: number;
-  endSequence: number;
+  startIntentSequence: number; //50
+  endIntentSequence: number; //150
 
   //Vault map information
   previousVaultMapRoot: string;
@@ -60,42 +65,60 @@ interface EpochFile extends WalrusFile {
   newZkUsdMapRoot: string;
   newZkUsdMapLength: string;
 
+  // System parameters
+  previousValidPriceBlockCount: number;
+  previousEmergencyStop: boolean;
+  previousCollateralRatio: number;
+  previousLiquidationBonusRatio: number;
+  previousVaultDebtCeiling: bigint;
+  previousOraclesHash: string;
+
+  newValidPriceBlockCount: number;
+  newEmergencyStop: boolean;
+  newCollateralRatio: number;
+  newLiquidationBonusRatio: number;
+  newVaultDebtCeiling: bigint;
+  newOraclesHash: string;
+
   // Operations in this epoch
-  operations: Operation[];
+  operations: Operation[]; // 78 operations
 
   // Metadata
-  operationCounts: {
-    inserts: number;
-    updates: number;
-  };
+  operationCount: number;
 }
 
-interface MetadataFile extends WalrusFile {
+export interface MetadataFile extends WalrusFile {
   fileType: WalrusFileType.METADATA;
+
+  // Latest epoch file
+  latestEpochFileBlobId: string;
 
   // Current state
   latestEpoch: number;
   latestVaultMapRoot: string; // hex string
+  latestVaultMapLength: string; // number of leaves after this epoch
   latestZkUsdMapRoot: string; // hex string
+  latestZkUsdMapLength: string; // number of leaves after this epoch
   totalOperations: number;
+
+  // System parameters
+  validPriceBlockCount: number;
+  emergencyStop: boolean;
+  collateralRatio: number;
+  liquidationBonusRatio: number;
+  vaultDebtCeiling: number;
+  oraclesHash: string;
 
   // Epoch history (most recent first)
   epochs: EpochMetadata[];
 
-  // Network information
-  networkInfo: {
-    chainId: string;
-    genesisRoot: string;
-    genesisTimestamp: number;
-  };
-
   // Integrity information
   continuityProof: {
-    epochRootChain: string[]; // roots of last 100 epoches for verification
+    epochRootChain: string[]; // hashed roots of last 100 epoches for verification
   };
 }
 
-interface Operation {
+export interface Operation {
   // Operation identificationx
   sequence: number; // unique within epoch
   mapType: MapType;
@@ -104,11 +127,9 @@ interface Operation {
   // Key-value data
   key: string; // hex string (32 bytes)
   value?: string; // hex string (32 bytes) - for inserts
-  oldValue?: string; // hex string (32 bytes) - for updates
-  newValue?: string; // hex string (32 bytes) - for updates
 }
 
-interface EpochMetadata {
+export interface EpochMetadata {
   epoch: number;
   vaultMapRoot: string; // hex string
   zkUsdMapRoot: string; // hex string

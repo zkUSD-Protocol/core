@@ -37,7 +37,7 @@ public struct Intent has key {
 public struct IntentSequencer has key {
   id: UID,
   sequenced_intents: vector<ID>,
-  current_sequence: u64,
+  current_intent_sequence: u64,
   last_epoch_time: u64,
   last_epoch_end_sequence: u64,
   current_epoch_number: u64,
@@ -51,8 +51,8 @@ public struct IntentSequencer has key {
 public struct Epoch has key {
   id: UID,
   epoch_number: u64,
-  start_sequence: u64,
-  end_sequence: Option<u64>,
+  start_intent_sequence: u64,
+  end_intent_sequence: Option<u64>,
   start_vault_map_root: String, //hash of the vault map at the moment of the epoch start
   start_zkusd_map_root: String, //hash of the zkusd map at the moment of the epoch start
   end_vault_map_root: Option<String>, //hash of the vault map at the moment of the epoch end
@@ -86,8 +86,8 @@ public struct IntentCreatedEvent has copy, drop {
 public struct EpochEndedEvent has copy, drop {
   epoch_id: ID,
   epoch_number: u64,
-  start_sequence: u64,
-  end_sequence: u64,
+  start_intent_sequence: u64,
+  end_intent_sequence: u64,
   intents_hash: vector<u8>,
   ended_at: u64,
 }
@@ -95,7 +95,7 @@ public struct EpochEndedEvent has copy, drop {
 public struct EpochStartedEvent has copy, drop {
   epoch_id: ID,
   epoch_number: u64,
-  start_sequence: u64,
+  start_intent_sequence: u64,
   start_vault_map_root: String,
   start_zkusd_map_root: String,
   created_at: u64,
@@ -127,7 +127,7 @@ fun init(ctx: &mut TxContext) {
   let sequencer = IntentSequencer {
     id: object::new(ctx),
     sequenced_intents: vector[],
-    current_sequence: 0,
+    current_intent_sequence: 0,
     last_epoch_time: 0,
     last_epoch_end_sequence: 0,
     current_epoch_number: 0,
@@ -171,7 +171,7 @@ public fun create_intent(
 
   // Add intent to sequencer
   vector::push_back(&mut sequencer.sequenced_intents, intent_id_copy);
-  sequencer.current_sequence = sequencer.current_sequence + 1;
+  sequencer.current_intent_sequence = sequencer.current_intent_sequence + 1;
 
   // Check if we need to end the epoch (duration has passed)
   let should_end_epoch = current_time >= sequencer.last_epoch_time + EPOCH_DURATION_MS;
@@ -187,7 +187,7 @@ public fun create_intent(
     vault_map_root,
     zkusd_map_root,
     intent_blob_id,
-    sequence: sequencer.current_sequence,
+    sequence: sequencer.current_intent_sequence,
     created_at: current_time,
   });
 
@@ -213,12 +213,12 @@ public fun finalize_and_start_epoch(
   assert!(sequencer.current_epoch_state == EPOCH_STATE_ENDED, E_EPOCH_STILL_ACTIVE);
 
   let current_time = clock::timestamp_ms(clock);
-  let start_sequence = current_epoch.start_sequence;
-  let end_sequence = sequencer.current_sequence - 1;
+  let start_sequence = current_epoch.start_intent_sequence;
+  let end_sequence = sequencer.current_intent_sequence - 1;
   let intents_hash = compute_epoch_intents_hash(sequencer, start_sequence, end_sequence);
 
   // Finalize current epoch
-  current_epoch.end_sequence = option::some(end_sequence);
+  current_epoch.end_intent_sequence = option::some(end_sequence);
   current_epoch.intents_hash = option::some(intents_hash);
   current_epoch.end_vault_map_root = option::some(consensus_vault_map_root);
   current_epoch.end_zkusd_map_root = option::some(consensus_zkusd_map_root);
@@ -248,8 +248,8 @@ public fun finalize_and_start_epoch(
   let new_epoch = Epoch {
     id: new_epoch_id,
     epoch_number: sequencer.current_epoch_number,
-    start_sequence: sequencer.current_sequence,
-    end_sequence: option::none(),
+    start_intent_sequence: sequencer.current_intent_sequence,
+    end_intent_sequence: option::none(),
     start_vault_map_root: consensus_vault_map_root, // Previous epoch's end state becomes new start state
     start_zkusd_map_root: consensus_zkusd_map_root,
     end_vault_map_root: option::none(),
@@ -275,7 +275,7 @@ public fun finalize_and_start_epoch(
   event::emit(EpochStartedEvent {
     epoch_id: new_epoch_id_copy,
     epoch_number: sequencer.current_epoch_number,
-    start_sequence: sequencer.current_sequence,
+    start_intent_sequence: sequencer.current_intent_sequence,
     start_vault_map_root: consensus_vault_map_root,
     start_zkusd_map_root: consensus_zkusd_map_root,
     created_at: current_time,
@@ -297,21 +297,21 @@ fun end_epoch_internal(sequencer: &mut IntentSequencer, current_time: u64) {
   // The epoch will be updated in the finalize_epoch function
 
   let start_sequence = sequencer.last_epoch_end_sequence;
-  let end_sequence = sequencer.current_sequence - 1;
+  let end_sequence = sequencer.current_intent_sequence - 1;
 
   let intents_hash = compute_epoch_intents_hash(sequencer, start_sequence, end_sequence);
 
   // Update sequencer state
   sequencer.current_epoch_state = EPOCH_STATE_ENDED;
   sequencer.accepting_intents = false; // Stop accepting intents
-  sequencer.last_epoch_end_sequence = sequencer.current_sequence;
+  sequencer.last_epoch_end_sequence = sequencer.current_intent_sequence;
 
   // Emit epoch ended event
   event::emit(EpochEndedEvent {
     epoch_id,
     epoch_number: sequencer.current_epoch_number,
-    start_sequence,
-    end_sequence,
+    start_intent_sequence: start_sequence,
+    end_intent_sequence: end_sequence,
     intents_hash,
     ended_at: current_time,
   });
@@ -345,17 +345,17 @@ fun compute_epoch_intents_hash(
 
 /// Verify that a given set of intents matches the epoch hash
 public fun verify_epoch_intents(epoch: &Epoch, intent_ids: vector<ID>): bool {
-  if (option::is_none(&epoch.end_sequence) || option::is_none(&epoch.intents_hash)) {
+  if (option::is_none(&epoch.end_intent_sequence) || option::is_none(&epoch.intents_hash)) {
     return false
   };
 
-  let end_sequence = *option::borrow(&epoch.end_sequence);
+  let end_sequence = *option::borrow(&epoch.end_intent_sequence);
   let expected_hash = *option::borrow(&epoch.intents_hash);
 
   let mut data_to_hash = vector::empty<u8>();
 
   // Add epoch boundaries
-  let start_bytes = bcs::to_bytes(&epoch.start_sequence);
+  let start_bytes = bcs::to_bytes(&epoch.start_intent_sequence);
   let end_bytes = bcs::to_bytes(&end_sequence);
   vector::append(&mut data_to_hash, start_bytes);
   vector::append(&mut data_to_hash, end_bytes);
@@ -404,6 +404,8 @@ public fun get_current_epoch_number(sequencer: &IntentSequencer): u64 {
 }
 
 /// Get current sequence number
-public fun get_current_sequence(sequencer: &IntentSequencer): u64 {
-  sequencer.current_sequence
+public fun get_current_intent_sequence(sequencer: &IntentSequencer): u64 {
+  sequencer.current_intent_sequence
 }
+
+/// Function to get the lastest epoch and metadata blob ids

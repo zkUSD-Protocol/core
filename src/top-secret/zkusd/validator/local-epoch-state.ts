@@ -1,46 +1,46 @@
-import { EpochStateRoots, FullEpochState } from './epoch-state.js';
+import { StateRoots, FullState } from './epoch-state.js';
 import { IntentMapOperation } from './map-operation.js';
 
-export interface FinalizedEpochState {
-  setState(state: FullEpochState): Promise<void>;
+export interface FinalizedState {
+  setState(state: FullState): Promise<void>;
 
-  getState(): Promise<FullEpochState>;
+  getState(): Promise<FullState>;
 
-  checkStoredRoots(epochStateRoots: EpochStateRoots): Promise<boolean>;
+  checkStoredRoots(StateRoots: StateRoots): Promise<boolean>;
 
   updateEpochState(
     finalizedEpochOperations: IntentMapOperation[]
   ): Promise<void>;
 
-  rootsEqual(epochStateRoots: EpochStateRoots): Promise<boolean>;
+  rootsEqual(StateRoots: StateRoots): Promise<boolean>;
 }
 
-export class InMemoryFinalizedEpochState implements FinalizedEpochState {
-  private _state: FullEpochState;
-  private _epochStateRoot: EpochStateRoots;
+export class InMemoryFinalizedEpochState implements FinalizedState {
+  private _state: FullState;
+  private _epochStateRoot: StateRoots;
 
-  constructor(initialState: FullEpochState) {
+  constructor(initialState: FullState) {
     this._state = initialState;
     this._epochStateRoot = initialState.roots();
   }
 
-  async checkStoredRoots(epochStateRoots: EpochStateRoots): Promise<boolean> {
+  async checkStoredRoots(StateRoots: StateRoots): Promise<boolean> {
     return (
       this._epochStateRoot.vaultMapRoot
-        .equals(epochStateRoots.vaultMapRoot)
+        .equals(StateRoots.vaultMapRoot)
         .toBoolean() &&
       this._epochStateRoot.zkUsdMapRoot
-        .equals(epochStateRoots.zkUsdMapRoot)
+        .equals(StateRoots.zkUsdMapRoot)
         .toBoolean()
     );
   }
 
-  async setState(state: FullEpochState): Promise<void> {
+  async setState(state: FullState): Promise<void> {
     this._state = state;
     this._epochStateRoot = state.roots();
   }
 
-  async getState(): Promise<FullEpochState> {
+  async getState(): Promise<FullState> {
     return this._state;
   }
 
@@ -51,13 +51,13 @@ export class InMemoryFinalizedEpochState implements FinalizedEpochState {
     this._epochStateRoot = this._state.roots();
   }
 
-  async rootsEqual(epochStateRoots: EpochStateRoots): Promise<boolean> {
+  async rootsEqual(StateRoots: StateRoots): Promise<boolean> {
     return (
       this._epochStateRoot.vaultMapRoot
-        .equals(epochStateRoots.vaultMapRoot)
+        .equals(StateRoots.vaultMapRoot)
         .toBoolean() &&
       this._epochStateRoot.zkUsdMapRoot
-        .equals(epochStateRoots.zkUsdMapRoot)
+        .equals(StateRoots.zkUsdMapRoot)
         .toBoolean()
     );
   }

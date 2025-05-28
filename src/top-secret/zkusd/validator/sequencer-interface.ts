@@ -1,4 +1,4 @@
-import { EpochStateRoots, IncrementalEpochStateCommitment } from "./epoch-state.js";
+import { StateRoots, NextEpochStateCommitment } from './epoch-state.js';
 
 /**
  * Represents an intent event from the sequencer queue.
@@ -9,19 +9,9 @@ export interface IntentEvent {
   /** Handle to retrieve the intent blob from the data availability (DA) layer. */
   intentBlobHandle: string;
   /** State root to verify before fetching the associated intent data. */
-  intentEpochStateRoots: EpochStateRoots;
-}
-
-/**
- * Represents an epoch-opened event from the sequencer queue.
- * Signals the start of a new epoch.
- */
-export interface EpochStartEvent {
-  kind: 'epoch-start';
-  /** State root to match against the validator’s computed state. */
-  epochStateRoots: EpochStateRoots;
-  /** Handle to retrieve the epoch state blob from DA. */
-  epochStateBlobHandle: string;
+  intentEpochStateRoots: StateRoots;
+  /** Sequence number of the intent. */
+  intentSequence: number;
 }
 
 /**
@@ -30,6 +20,23 @@ export interface EpochStartEvent {
  */
 export interface EpochEndEvent {
   kind: 'epoch-end';
+  /** Timestamp of the epoch end - required for DA file creation */
+  timestamp: number;
+  /** Intents hash of the epoch, sha256 */
+  intentsHash: string;
+}
+/**
+ * Represents the finalization of an epoch.
+ * Signals the end of an epoch and the start of a new one.
+ */
+export interface EpochFinalizedEvent {
+  kind: 'epoch-finalized';
+  /** State root to match against the validator’s computed state. */
+  epochStateRoots: StateRoots;
+  /** Handle to retrieve the epoch state blob from DA. - This is actually the previous epoch file */
+  epochStateBlobHandle: string;
+  /** Handle to retrieve the metadata blob from DA. */
+  metadataBlobHandle: string;
 }
 
 /**
@@ -37,8 +44,7 @@ export interface EpochEndEvent {
  * Does not need to match the sequencer's emitted events exactly —
  * only contains the information required by the validator to process epochs.
  */
-export type SequencerEvent = IntentEvent | EpochStartEvent | EpochEndEvent;
-
+export type SequencerEvent = IntentEvent | EpochEndEvent | EpochFinalizedEvent;
 
 /**
  * Allows a validator to await events from the sequencer.
@@ -59,15 +65,13 @@ export interface SequencerInterface {
    * If `epochStateRoots` is provided, returns events from that epoch onward.
    * Otherwise, starts from the last known epoch.
    */
-  getSequencerEventQueue(
-    args?: EpochStateRoots
-  ): Promise<SequencerEventQueue>;
+  getSequencerEventQueue(args?: StateRoots): Promise<SequencerEventQueue>;
 
   /**
    * Returns the most recent 'epoch-start' event.
    */
   fetchLastEpochStart(): Promise<{
-    epochStateRoots: EpochStateRoots;
+    epochStateRoots: StateRoots;
     epochStateBlobHandle: string;
   }>;
 
@@ -75,5 +79,7 @@ export interface SequencerInterface {
    * Commits the given epoch state root to the sequencer's consensus.
    * Should be called by the validator after successfully processing an epoch.
    */
-  commitToEpochState(epochStateCommitment: IncrementalEpochStateCommitment): Promise<void>;
+  commitToEpochState(
+    epochStateCommitment: NextEpochStateCommitment // include blobids
+  ): Promise<void>;
 }

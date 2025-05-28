@@ -1,39 +1,51 @@
-import { FullEpochState } from "./epoch-state.js";
-import { IntentProof } from "../types/intent-proof.js";
-import { IntentMapOperation } from "./map-operation.js";
-import { IncrementalEpochState } from "./epoch-state.js";
+import { FullState } from './epoch-state.js';
+import { IntentProof } from '../types/intent-proof.js';
+import { IntentMapOperation } from './map-operation.js';
+import { NextEpochStateCandidate } from './epoch-state.js';
 
 export interface OptimisticStateComputer {
-    setState(state: FullEpochState): Promise<void>;
-    getState(): Promise<{previousEpochState: FullEpochState, nextEpochState: FullEpochState, newEpochOperations: IntentMapOperation[]}>;
-    getIncrementalState(): Promise<IncrementalEpochState>;
-    step(intentProof: IntentProof): Promise<void>;
+  setState(state: FullState): Promise<void>;
+  getState(): Promise<{
+    previousEpochState: FullState;
+    nextEpochState: FullState;
+    newEpochOperations: IntentMapOperation[];
+  }>;
+  getIncrementalState(): Promise<NextEpochStateCandidate>;
+  step(intentProof: IntentProof): Promise<void>;
 }
 
-
 export class NonProvingStateComputer implements OptimisticStateComputer {
-    private _liveState: FullEpochState;
-    private _epochState: FullEpochState;
-    private _newEpochOperations: IntentMapOperation[];
-    
-    
-    
-    constructor() {
-        
-    }
+  private _liveState: FullState;
+  private _epochState: FullState;
+  private _newEpochOperations: IntentMapOperation[];
 
-    async setState(state: FullEpochState): Promise<void> {
-        this._liveState = state;
-        this._epochState = state;
-        this._newEpochOperations = [];
-    }
-    async getState(): Promise<{previousEpochState: FullEpochState, nextEpochState: FullEpochState, newEpochOperations: IntentMapOperation[]}> {
-        return {previousEpochState: this._epochState, nextEpochState: this._liveState, newEpochOperations: this._newEpochOperations};
-    }
-    async getIncrementalState(): Promise<IncrementalEpochState> {
-        return new IncrementalEpochState(this._liveState.roots(), this._newEpochOperations);
-    }
-    async step(intentProof: IntentProof): Promise<void> {
-        throw new Error('Not implemented');
-    }
+  constructor() {}
+
+  async setState(state: FullState): Promise<void> {
+    this._liveState = state;
+    this._epochState = state;
+    this._newEpochOperations = [];
+  }
+  async getState(): Promise<{
+    previousEpochState: FullState;
+    nextEpochState: FullState;
+    newEpochOperations: IntentMapOperation[];
+  }> {
+    return {
+      previousEpochState: this._epochState,
+      nextEpochState: this._liveState,
+      newEpochOperations: this._newEpochOperations,
+    };
+  }
+  async getIncrementalState(): Promise<NextEpochStateCandidate> {
+    return new NextEpochStateCandidate(
+      this._liveState.toCommitment(),
+      this._newEpochOperations,
+      this._liveState.systemParams,
+      Date.now()
+    );
+  }
+  async step(intentProof: IntentProof): Promise<void> {
+    throw new Error('Not implemented');
+  }
 }

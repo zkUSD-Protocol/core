@@ -1,24 +1,34 @@
-import { DataAvailabilityInterface } from './interfaces/data-availability.js';
+import {
+  DataAvailBlobIds,
+  DataAvailInterface,
+} from '../validator/data-avail-interface.js';
 import { WalrusProvider } from './providers/walrus-provider.js';
-import { AnyIntentProof } from '../types/intent-proof.js';
-import { EpochState } from '../data/epoch-state.js';
+import { IntentProof } from '../types/intent-proof.js';
+import { FullState, IncrementalEpochState } from '../validator/epoch-state.js';
+import { FinalizedState } from '../validator/local-epoch-state.js';
+import { EpochFile, MetadataFile } from './types/types.js';
+import { EpochFileBuilder } from './services/epoch-file-builder.js';
+import { MetadataFileBuilder } from './services/metadata-file-builder.js';
 
-export class DataAvailabilityClient implements DataAvailabilityInterface {
+export class DataAvailClient implements DataAvailInterface {
   private readonly storageProvider: WalrusProvider;
+  private readonly epochFileBuilder: EpochFileBuilder;
 
   constructor(walrusOptions?: {
     defaultEpochs?: number;
     defaultAddress?: string;
   }) {
     this.storageProvider = new WalrusProvider(walrusOptions);
+    this.epochFileBuilder = new EpochFileBuilder();
   }
 
-  async fetchIntentProof(intentBlobHandle: string): Promise<AnyIntentProof> {
+  async fetchIntentProof(intentBlobHandle: string): Promise<IntentProof> {
     try {
       const rawData = await this.storageProvider.retrieve(intentBlobHandle);
 
       // Parse and validate the intent proof
-      const intentProof = JSON.parse(rawData) as AnyIntentProof;
+      // Do we want to validate the intent proof here?
+      const intentProof = JSON.parse(rawData) as IntentProof;
 
       return intentProof;
     } catch (error) {
@@ -28,47 +38,64 @@ export class DataAvailabilityClient implements DataAvailabilityInterface {
     }
   }
 
-  async fetchFullEpochState(
-    metadataBlobHandle: string,
-    epochNumber: number
-  ): Promise<EpochState> {
-    try {
-      const rawData = await this.storageProvider.retrieve(metadataBlobHandle);
-
-      // Parse the metadata file
-      const metadata: MetadataFile = JSON.parse(rawData);
-
-      // Find the epoch in the metadata
-      const epoch = metadata.epochs.find((e) => e.epoch === epochNumber);
-
-      if (!epoch) {
-        throw new Error(`Epoch ${epochNumber} not found in metadata`);
-      }
-
-      return epochState;
-    } catch (error) {
-      throw new Error(
-        `Failed to fetch epoch state: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+  fetchFullEpochState(epochBlobHandle: string): Promise<FullState> {
+    throw new Error('Not implemented');
   }
 
-  async publishFinalEpochState(computedEpochState: EpochState): Promise<void> {
-    try {
-      const serializedState = JSON.stringify(computedEpochState);
+  updateFinalizedEpochState(
+    epochBlobHandle: string,
+    finalizedEpochState: FinalizedState
+  ): Promise<void> {
+    throw new Error('Not implemented');
+  }
 
-      // Store with higher durability for important epoch states
-      const blobId = await this.storageProvider.storeWithRetry(
-        serializedState,
-        { numEpochs: 10 }, // Keep epoch states longer
-        3 // Retry up to 3 times
-      );
+  async publishIncrementalEpochUpdate(
+    previousEpochBlobId: string,
+    metadataBlobId: string,
+    computedEpochState: IncrementalEpochState
+  ): Promise<DataAvailBlobIds> {
+    // 1. Retrieve the previous epoch file
+    const previousEpochRawData =
+      await this.storageProvider.retrieve(previousEpochBlobId);
 
-      console.log(`Published epoch state to Walrus with blob ID: ${blobId}`);
-    } catch (error) {
-      throw new Error(
-        `Failed to publish epoch state: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
+    const previousEpochFile = JSON.parse(previousEpochRawData) as EpochFile;
+
+    // 2. Build the new epoch file
+    const newEpochFile = EpochFileBuilder.buildEpochFile({
+      previousEpochFile,
+      epochState: computedEpochState,
+      previousEpochBlobId,
+    });
+
+    // 3. Store the new epoch file
+    const newEpochBlobId = await this.storageProvider.store(
+      JSON.stringify(newEpochFile)
+    );
+
+    // 4. Retrieve the metadata file
+    const metadataRawData = await this.storageProvider.retrieve(metadataBlobId);
+    const previousMetadataFile = JSON.parse(metadataRawData) as MetadataFile;
+
+    // 5. Build the metadata file
+    const newMetadataFile = MetadataFileBuilder.buildMetadataFile({
+      previousMetadataFile,
+      newEpochFile,
+      newEpochBlobId,
+      epochState: computedEpochState,
+    });
+
+    // 6. Store the metadata file - we s
+    const newMetadataBlobId = await this.storageProvider.store(
+      JSON.stringify(newMetadataFile)
+    );
+
+    console.log(`Published epoch ${newEpochFile.epoch}:`);
+    console.log(`  Epoch blob ID: ${newEpochBlobId}`);
+    console.log(`  Metadata blob ID: ${newMetadataBlobId}`);
+
+    return {
+      epochBlobId: newEpochBlobId,
+      metadataBlobId: newMetadataBlobId,
+    };
   }
 }
