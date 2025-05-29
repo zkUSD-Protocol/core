@@ -1,4 +1,4 @@
-import { IncrementalEpochState } from '../../validator/epoch-state.js';
+import { NextEpochStateCandidate } from '../../validator/epoch-state.js';
 import {
   EpochFile,
   MetadataFile,
@@ -13,7 +13,7 @@ interface BuildMetadataFileArgs {
   readonly previousMetadataFile: MetadataFile;
   readonly newEpochFile: EpochFile;
   readonly newEpochBlobId: string;
-  readonly epochState: IncrementalEpochState;
+  readonly epochState: NextEpochStateCandidate;
 }
 
 export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
@@ -104,8 +104,8 @@ export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
     // Create a deterministic hash of the epoch file content
     const hashContent: Field[] = [
       Field(epochFile.epoch),
-      Field(epochFile.startSequence),
-      Field(epochFile.endSequence),
+      Field(epochFile.startIntentSequence),
+      Field(epochFile.endIntentSequence),
       Field(epochFile.newVaultMapRoot),
       Field(epochFile.newZkUsdMapRoot),
       Field(epochFile.operationCount),

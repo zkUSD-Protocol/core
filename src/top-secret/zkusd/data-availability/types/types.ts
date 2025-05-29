@@ -119,8 +119,6 @@ export interface MetadataFile extends WalrusFile {
 }
 
 export interface Operation {
-  // Operation identificationx
-  sequence: number; // unique within epoch
   mapType: MapType;
   type: OperationType;
 

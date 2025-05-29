@@ -1,30 +1,17 @@
-import { Bool, Experimental, Field } from 'o1js';
+import { Bool, Field } from 'o1js';
 import { IndexedMerkleMapBase } from 'o1js/dist/node/lib/provable/merkle-tree-indexed';
-
-export interface PrunedMapData {
-  root: string;
-  length: string;
-  nodes: (bigint | undefined)[][];
-  sortedLeaves: StoredLeaf[];
-}
-
-export interface StoredLeaf {
-  readonly value: bigint;
-  readonly key: bigint;
-  readonly nextKey: bigint;
-  readonly index: number;
-}
+import { SerializableMapData } from './serializable-indexed-map.js';
 
 export class PrunedMapBase {
   protected constructor(
     protected baseMap: IndexedMerkleMapBase,
-    prunedData: PrunedMapData
+    data: SerializableMapData
   ) {
-    this.baseMap.root = Field(prunedData.root);
-    this.baseMap.length = Field(prunedData.length);
+    this.baseMap.root = Field(data.root);
+    this.baseMap.length = Field(data.length);
     this.baseMap.data.updateAsProver(() => ({
-      nodes: prunedData.nodes,
-      sortedLeaves: prunedData.sortedLeaves,
+      nodes: data.nodes,
+      sortedLeaves: data.sortedLeaves,
     }));
   }
 
@@ -59,6 +46,19 @@ export class PrunedMapBase {
 
   getOption(key: Field | bigint) {
     return this.baseMap.getOption(key);
+  }
+
+  /**
+   * Serialize the pruned map
+   */
+  serialize(): SerializableMapData {
+    const data = this.data.get();
+    return {
+      root: this.root.toString(),
+      length: this.length.toString(),
+      nodes: data.nodes,
+      sortedLeaves: data.sortedLeaves,
+    };
   }
 
   // Disable mutation methods

@@ -1,9 +1,9 @@
 import {
   EpochStateCommitment,
-  IncrementalEpochState,
-  IntentOperation,
+  NextEpochStateCandidate,
   SystemParams,
 } from '../../validator/epoch-state.js';
+import { IntentMapOperation } from '../../validator/map-operation.js';
 import {
   EpochFile,
   MapType,
@@ -15,7 +15,7 @@ import { BaseFileBuilder } from './base-file-builder.js';
 
 interface BuildEpochFileArgs {
   readonly previousEpochFile: EpochFile;
-  readonly epochState: IncrementalEpochState;
+  readonly epochState: NextEpochStateCandidate;
   readonly previousEpochBlobId: string;
 }
 
@@ -51,25 +51,20 @@ export class EpochFileBuilder extends BaseFileBuilder<EpochFile> {
     return this;
   }
 
-  withEpochState(epochState: IncrementalEpochState): this {
-    if (
-      !epochState.intentOperations ||
-      epochState.intentOperations.length === 0
-    ) {
+  withEpochState(epochState: NextEpochStateCandidate): this {
+    if (!epochState.mapOperations || epochState.mapOperations.length === 0) {
       throw new Error('Epoch state must contain at least one operation');
     }
 
-    this.validateSequencedOperations(epochState.intentOperations);
-
-    const operations = this.mapOperations(epochState.intentOperations);
+    const operations = this.mapOperations(epochState.mapOperations);
     const newState = this.mapStateCommitment(epochState.nextEpochState);
     const newParams = this.mapSystemParams(epochState.systemParams);
 
     this.file = {
       ...this.file,
       timestamp: epochState.timestamp,
-      startSequence: operations[0].sequence,
-      endSequence: operations[operations.length - 1].sequence,
+      startIntentSequence: epochState.startIntentSequence,
+      endIntentSequence: epochState.endIntentSequence,
 
       newVaultMapRoot: newState.vaultMapRoot,
       newVaultMapLength: newState.vaultMapLength,
@@ -93,33 +88,6 @@ export class EpochFileBuilder extends BaseFileBuilder<EpochFile> {
     return ['version', 'fileType', 'timestamp', 'epoch', 'operations'];
   }
 
-  private validateSequencedOperations(
-    intentOperations: IntentOperation[]
-  ): void {
-    if (intentOperations.length === 0) {
-      throw new Error('Cannot validate empty operations array');
-    }
-
-    // Validate that operations are already sorted by sequence
-    for (let i = 1; i < intentOperations.length; i++) {
-      if (intentOperations[i].sequence <= intentOperations[i - 1].sequence) {
-        throw new Error(
-          `Operations are not properly sorted: sequence ${intentOperations[i].sequence} should be greater than ${intentOperations[i - 1].sequence} at index ${i}`
-        );
-      }
-    }
-
-    // Validate consecutive sequences (no gaps)
-    for (let i = 1; i < intentOperations.length; i++) {
-      const expectedSequence = intentOperations[i - 1].sequence + 1;
-      if (intentOperations[i].sequence !== expectedSequence) {
-        throw new Error(
-          `Gap in sequence: expected ${expectedSequence}, got ${intentOperations[i].sequence}`
-        );
-      }
-    }
-  }
-
   private mapSystemParams(params: SystemParams) {
     return {
       validPriceBlockCount: params.validPriceBlockCount.toNumber(),
@@ -131,13 +99,12 @@ export class EpochFileBuilder extends BaseFileBuilder<EpochFile> {
     };
   }
 
-  private mapOperations(intentOperations: IntentOperation[]): Operation[] {
-    return intentOperations.map((op) => ({
-      sequence: op.sequence,
-      mapType: op.mapOperation.mapType as MapType,
-      type: op.mapOperation.type as OperationType,
-      key: op.mapOperation.key.toString(),
-      value: op.mapOperation.value?.toString(),
+  private mapOperations(mapOperations: IntentMapOperation[]): Operation[] {
+    return mapOperations.map((op) => ({
+      mapType: op.mapType as MapType,
+      type: op.type as OperationType,
+      key: op.key.toString(),
+      value: op.value?.toString(),
     }));
   }
 

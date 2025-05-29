@@ -4,7 +4,10 @@ import {
 } from '../validator/data-avail-interface.js';
 import { WalrusProvider } from './providers/walrus-provider.js';
 import { IntentProof } from '../types/intent-proof.js';
-import { FullState, IncrementalEpochState } from '../validator/epoch-state.js';
+import {
+  FullState,
+  NextEpochStateCandidate,
+} from '../validator/epoch-state.js';
 import { FinalizedState } from '../validator/local-epoch-state.js';
 import { EpochFile, MetadataFile } from './types/types.js';
 import { EpochFileBuilder } from './services/epoch-file-builder.js';
@@ -42,17 +45,18 @@ export class DataAvailClient implements DataAvailInterface {
     throw new Error('Not implemented');
   }
 
-  updateFinalizedEpochState(
+  updateLocalFinalizedState(
     epochBlobHandle: string,
-    finalizedEpochState: FinalizedState
+    finalizedState: FinalizedState
   ): Promise<void> {
     throw new Error('Not implemented');
   }
 
-  async publishIncrementalEpochUpdate(
+  async publishEpochUpdate(
     previousEpochBlobId: string,
     metadataBlobId: string,
-    computedEpochState: IncrementalEpochState
+    computedEpochState: NextEpochStateCandidate,
+    finalizedState: FinalizedState
   ): Promise<DataAvailBlobIds> {
     // 1. Retrieve the previous epoch file
     const previousEpochRawData =
