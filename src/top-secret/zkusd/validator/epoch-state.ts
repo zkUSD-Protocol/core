@@ -48,7 +48,7 @@ export type NextEpochStateCommitment = {
   // resulting state roots and lengths
   nextEpochState: EpochStateCommitment;
   // commitment to a sequence of operations that have occurred since the last epoch
-  mapOperationsHash: Field;
+  intentOperationsHash: Field;
 };
 
 export class NextEpochStateCandidate {
@@ -68,31 +68,13 @@ export class NextEpochStateCandidate {
     this.systemParams = systemParams;
     this.timestamp = timestamp;
   }
-
   toCommitment(): NextEpochStateCommitment {
-    throw new Error('Not implemented');
-  }
-}
-
-export class IncrementalEpochState {
-  nextEpochState: EpochStateCommitment;
-  mapOperations: IntentMapOperation[];
-
-  constructor(
-    nextEpochState: EpochStateCommitment,
-    mapOperations: IntentMapOperation[]
-  ) {
-    this.nextEpochState = nextEpochState;
-    this.mapOperations = mapOperations;
-  }
-
-  toCommitment(): NextEpochStateCommitment {
-    const mapOperationsHash = IntentMapOperation.rollingHash(
-      this.mapOperations
+    const intentOperationsHash = IntentMapOperation.rollingHash(
+      this.intentOperations
     );
     return {
       nextEpochState: this.nextEpochState,
-      mapOperationsHash,
+      intentOperationsHash,
     };
   }
 }

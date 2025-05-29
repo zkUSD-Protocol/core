@@ -1,6 +1,8 @@
-import { FullState, NextEpochStateCandidate } from './epoch-state.js';
+import { FullState, NextEpochStateCandidate, StateRoots } from './epoch-state.js';
 import { IntentProof } from '../types/intent-proof.js';
-import { FinalizedState } from './local-epoch-state.js';
+import { LocalStateProxy } from './local-epoch-state.js';
+import { SequencerStateMetadata } from './sequencer-interface.js';
+import { IntentMapOperation } from './map-operation.js';
 
 export type DataAvailBlobIds = {
   epochBlobId: string;
@@ -20,20 +22,23 @@ export interface DataAvailInterface {
 
   /**
    * Fetches the full epoch state from the data availability layer.
-   * It may do that by fetching the last state checkpoints and applies the map operations to get the final state.
-   *
+   * It may do that by fetching the last state checkpoints 
+   * and applying the map operations to get the final state.
    */
   fetchFullEpochState(epochBlobHandle: string): Promise<FullState>;
 
   /**
-   * Updates the local finalized state.
-   * This function is called when the validator wants to update the local state with the state from DA.
-   *
+   * Given the last finalized state and the current finalized state,
+   * this function returns the map operations that need to be applied to the last finalized state
+   * to get the current finalized state.
    */
-  updateLocalFinalizedState(
-    epochBlobHandle: string,
-    finalizedState: FinalizedState
-  ): Promise<void>;
+  updateLocalStateToFinalizedState(
+    args: {
+      epochFinalizedEventStateMetadata: SequencerStateMetadata,
+      localFinalizedStateMetadata: SequencerStateMetadata,
+    }
+    // TODO errors
+  ): Promise<{operationsToApply: IntentMapOperation[]}>;
 
   /**
    * Publishes the incremental epoch update to the data availability layer.
@@ -44,9 +49,8 @@ export interface DataAvailInterface {
    *
    */
   publishEpochUpdate(
-    previousEpochBlobId: string,
-    metadataBlobId: string,
-    nextEpochStateCandidate: NextEpochStateCandidate,
-    finalizedState: FinalizedState
+    finalizedStateMetadata: SequencerStateMetadata,
+    nextStateValidatedIntentOperations: IntentMapOperation[],
+    nextStateRoots: StateRoots,
   ): Promise<DataAvailBlobIds>;
 }

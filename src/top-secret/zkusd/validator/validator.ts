@@ -1,9 +1,9 @@
 import {
-  EpochStartEvent,
+  EpochFinalizedEvent,
   IntentEvent,
   SequencerInterface,
 } from './sequencer-interface.js';
-import { FinalizedState } from './local-epoch-state.js';
+import { LocalStateProxy } from './local-epoch-state.js';
 import { DataAvailInterface } from './data-avail-interface.js';
 import { stateRootsEqual } from './epoch-state.js';
 import { intentStateRootsMatchEpoch } from '../types/intent-proof.js';
@@ -17,7 +17,8 @@ export interface ValidatorFailureManager {
 
 export class Validator {
   private readonly _sequencer: SequencerInterface;
-  private readonly _finalizedEpochState: FinalizedState;
+  private _finalizedEvent: EpochFinalizedEvent;
+  private readonly _finalizedStateProxy: LocalStateProxy;
   private readonly _dataAvail: DataAvailInterface;
   private readonly _optimisticStateComputer: OptimisticStateComputer;
   private readonly _errorManager: ValidatorFailureManager;
@@ -29,13 +30,13 @@ export class Validator {
 
   constructor(
     sequencerClient: SequencerInterface,
-    localEpochState: FinalizedState,
+    localEpochState: LocalStateProxy,
     dataAvailClient: DataAvailInterface,
     optimisticStateComputer: OptimisticStateComputer,
     errorManager: ValidatorFailureManager
   ) {
     this._sequencer = sequencerClient;
-    this._finalizedEpochState = localEpochState;
+    this._finalizedStateProxy = localEpochState;
     this._dataAvail = dataAvailClient;
     this._optimisticStateComputer = optimisticStateComputer;
     this._errorManager = errorManager;
@@ -47,7 +48,7 @@ export class Validator {
       epochBlobHandle ??
         (await this._sequencer.fetchLastEpochStart()).epochStateBlobHandle
     );
-    await this._finalizedEpochState.setState(epochState);
+    await this._finalizedStateProxy.setState(epochState);
     await this._optimisticStateComputer.setState(epochState);
   }
 
@@ -58,9 +59,8 @@ export class Validator {
   async start(): Promise<void> {
     this._isRunning = true;
     try {
-      const finalizedState = await this._finalizedEpochState.getState();
       const eventQueue = await this._sequencer.getSequencerEventQueue(
-        finalizedState.roots()
+        await this._finalizedStateProxy.stateRoots()
       );
       while (this._isRunning) {
         const event = await eventQueue.fetchNextEvent();
@@ -68,8 +68,9 @@ export class Validator {
           case 'epoch-end':
             await this.processEpochEnd();
             break;
-          case 'epoch-start':
-            await this.processEpochStart(event);
+          case 'epoch-finalized':
+            this._finalizedEvent = event;
+            await this.processEpochFinalized(event);
             break;
           case 'intent':
             await this.processIntent(event);
@@ -82,55 +83,64 @@ export class Validator {
   }
 
   async processEpochEnd(): Promise<void> {
+    // get the computed state
+    const computedState = await this._optimisticStateComputer.getState();
+    // this state should be published to DA
+    await this._dataAvail.publishEpochUpdate(
+      computedState.previousEpochState.roots().epochBlobId,
+      computedState.previousEpochState.roots().metadataBlobId,
+      computedState.nextStateCandidate,
+      this._finalizedStateProxy
+    );
     // get the currently computed state and commit to it
     const nextEpochIncrementalState =
-      await this._optimisticStateComputer.getIncrementalState();
+      await this._optimisticStateComputer.getStateCandidate();
     // commit the state roots
     await this._sequencer.commitToEpochState(
       nextEpochIncrementalState.toCommitment()
     );
   }
 
-  async processEpochStart(epochStartEvent: EpochStartEvent): Promise<void> {
+  async processEpochFinalized(epochFinalizedEvent: EpochFinalizedEvent): Promise<void> {
     // check the current state of the computed state
     // if it is not equal then fetch the new state and reset the computer state
     try {
       const computedState = await this._optimisticStateComputer.getState();
       // sanity check finalized state equals to the optimistic computer previous epoch state
       if (
-        !this._finalizedEpochState.rootsEqual(
+        !this._finalizedStateProxy.rootsEqual(
           computedState.previousEpochState.roots()
         )
       ) {
         // fetch full state
         const newState = await this._dataAvail.fetchFullEpochState(
-          epochStartEvent.epochStateBlobHandle
+          epochFinalizedEvent.epochStateBlobHandle
         );
         await this._optimisticStateComputer.setState(newState);
-        await this._finalizedEpochState.setState(newState);
+        await this._finalizedStateProxy.setState(newState);
       }
-      // the computed next epoch does not match the consensus epoch state
       else if (
         !stateRootsEqual(
-          computedState.nextEpochState.roots(),
-          epochStartEvent.epochStateRoots
+          computedState.nextStateCandidate.roots(),
+          epochFinalizedEvent.epochStateRoots
         )
       ) {
-        await this._dataAvail.updateFinalizedEpochState(
-          epochStartEvent.epochStateBlobHandle,
-          this._finalizedEpochState
+        // the computed state candidate does not match the finalized state
+        // - fetch the state and update the local finalized state
+        await this._dataAvail.updateLocalFinalizedState(
+          epochFinalizedEvent.epochStateBlobHandle,
+          this._finalizedStateProxy
         );
         await this._optimisticStateComputer.setState(
-          await this._finalizedEpochState.getState()
+          await this._finalizedStateProxy.useState()
         );
       } else {
-        // if it is matching then the local state should be commited to DA
-        // and the finalized state should be updated
-        const incrementalState =
-          await this._optimisticStateComputer.getIncrementalState();
-        await this._dataAvail.publishIncrementalEpochUpdate(incrementalState);
-        await this._finalizedEpochState.updateEpochState(
-          incrementalState.mapOperations
+        // if it is matching then the finalized state should be updated
+        // with the computed state
+        const stateCandidate =
+          await this._optimisticStateComputer.getStateCandidate();
+        await this._finalizedStateProxy.applyIntentOperations(
+          stateCandidate.intentOperations
         );
       }
     } catch (error) {
@@ -143,7 +153,7 @@ export class Validator {
     try {
       const validPreconditions = intentStateRootsMatchEpoch(
         intentEvent.intentEpochStateRoots,
-        (await this._finalizedEpochState.getState()).roots()
+        (await this._finalizedStateProxy.useState()).roots()
       );
 
       if (validPreconditions) {

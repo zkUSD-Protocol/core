@@ -1,27 +1,34 @@
 import { StateRoots, FullState } from './epoch-state.js';
 import { IntentMapOperation } from './map-operation.js';
 
-export interface FinalizedState {
+export interface LocalStateProxy {
+  
   setState(state: FullState): Promise<void>;
 
-  getState(): Promise<FullState>;
+  useState(): Promise<FullState>;
+  
+  stateRoots(): Promise<StateRoots>;
 
   checkStoredRoots(StateRoots: StateRoots): Promise<boolean>;
 
-  updateEpochState(
+  applyIntentOperations(
     finalizedEpochOperations: IntentMapOperation[]
   ): Promise<void>;
 
   rootsEqual(StateRoots: StateRoots): Promise<boolean>;
 }
 
-export class InMemoryFinalizedEpochState implements FinalizedState {
+export class InMemoryStateProxy implements LocalStateProxy {
   private _state: FullState;
   private _epochStateRoot: StateRoots;
 
   constructor(initialState: FullState) {
     this._state = initialState;
     this._epochStateRoot = initialState.roots();
+  }
+
+  async stateRoots(): Promise<StateRoots> {
+    return this._epochStateRoot;
   }
 
   async checkStoredRoots(StateRoots: StateRoots): Promise<boolean> {
@@ -40,11 +47,11 @@ export class InMemoryFinalizedEpochState implements FinalizedState {
     this._epochStateRoot = state.roots();
   }
 
-  async getState(): Promise<FullState> {
+  async useState(): Promise<FullState> {
     return this._state;
   }
 
-  async updateEpochState(
+  async applyIntentOperations(
     finalizedEpochOperations: IntentMapOperation[]
   ): Promise<void> {
     this._state.applyMapOperations(...finalizedEpochOperations);

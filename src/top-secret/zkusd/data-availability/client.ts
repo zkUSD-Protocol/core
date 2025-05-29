@@ -7,11 +7,14 @@ import { IntentProof } from '../types/intent-proof.js';
 import {
   FullState,
   NextEpochStateCandidate,
+  StateRoots,
 } from '../validator/epoch-state.js';
-import { FinalizedState } from '../validator/local-epoch-state.js';
+import { LocalStateProxy } from '../validator/local-epoch-state.js';
 import { EpochFile, MetadataFile } from './types/types.js';
 import { EpochFileBuilder } from './services/epoch-file-builder.js';
 import { MetadataFileBuilder } from './services/metadata-file-builder.js';
+import { SequencerStateMetadata } from '../validator/sequencer-interface.js';
+import { IntentMapOperation } from '../validator/map-operation.js';
 
 export class DataAvailClient implements DataAvailInterface {
   private readonly storageProvider: WalrusProvider;
@@ -45,30 +48,32 @@ export class DataAvailClient implements DataAvailInterface {
     throw new Error('Not implemented');
   }
 
-  updateLocalFinalizedState(
-    epochBlobHandle: string,
-    finalizedState: FinalizedState
-  ): Promise<void> {
+  updateLocalStateToFinalizedState(args: {
+    epochFinalizedEventStateMetadata: SequencerStateMetadata;
+    localFinalizedStateMetadata: SequencerStateMetadata;
+  }): Promise<{ operationsToApply: IntentMapOperation[] }> {
     throw new Error('Not implemented');
   }
 
   async publishEpochUpdate(
-    previousEpochBlobId: string,
-    metadataBlobId: string,
-    computedEpochState: NextEpochStateCandidate,
-    finalizedState: FinalizedState
+    finalizedStateMetadata: SequencerStateMetadata,
+    nextStateValidatedIntentOperations: IntentMapOperation[],
+    nextStateRoots: StateRoots
   ): Promise<DataAvailBlobIds> {
     // 1. Retrieve the previous epoch file
-    const previousEpochRawData =
-      await this.storageProvider.retrieve(previousEpochBlobId);
+    const previousEpochRawData = await this.storageProvider.retrieve(
+      finalizedStateMetadata.stateBlobHandle
+    );
 
     const previousEpochFile = JSON.parse(previousEpochRawData) as EpochFile;
 
     // 2. Build the new epoch file
     const newEpochFile = EpochFileBuilder.buildEpochFile({
       previousEpochFile,
-      epochState: computedEpochState,
-      previousEpochBlobId,
+      previousStateRoots: finalizedStateMetadata.stateRoots,
+      previousEpochBlobId: finalizedStateMetadata.stateBlobHandle,
+      nextStateValidatedIntentOperations,
+      nextStateRoots,
     });
 
     // 3. Store the new epoch file
@@ -77,7 +82,9 @@ export class DataAvailClient implements DataAvailInterface {
     );
 
     // 4. Retrieve the metadata file
-    const metadataRawData = await this.storageProvider.retrieve(metadataBlobId);
+    const metadataRawData = await this.storageProvider.retrieve(
+      finalizedStateMetadata.metadataBlobHandle
+    );
     const previousMetadataFile = JSON.parse(metadataRawData) as MetadataFile;
 
     // 5. Build the metadata file
@@ -85,7 +92,6 @@ export class DataAvailClient implements DataAvailInterface {
       previousMetadataFile,
       newEpochFile,
       newEpochBlobId,
-      epochState: computedEpochState,
     });
 
     // 6. Store the metadata file - we s
