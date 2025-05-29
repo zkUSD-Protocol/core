@@ -1,4 +1,4 @@
-import { NextEpochStateCandidate } from '../../validator/epoch-state.js';
+import { StateRoots } from '../../validator/epoch-state.js';
 import {
   EpochFile,
   MetadataFile,
@@ -6,14 +6,12 @@ import {
   EpochMetadata,
 } from '../types/types.js';
 import { BaseFileBuilder } from './base-file-builder.js';
-import { createHash } from 'crypto';
 import { Field, Poseidon } from 'o1js';
 
 interface BuildMetadataFileArgs {
   readonly previousMetadataFile: MetadataFile;
   readonly newEpochFile: EpochFile;
   readonly newEpochBlobId: string;
-  readonly epochState: NextEpochStateCandidate;
 }
 
 export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
@@ -44,8 +42,6 @@ export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
       epoch: newEpochFile.epoch,
       vaultMapRoot: newEpochFile.newVaultMapRoot,
       zkUsdMapRoot: newEpochFile.newZkUsdMapRoot,
-      vaultMapLength: newEpochFile.newVaultMapLength,
-      zkUsdMapLength: newEpochFile.newZkUsdMapLength,
       timestamp: newEpochFile.timestamp,
       operationCount: newEpochFile.operationCount,
       epochBlobId: newEpochBlobId,
@@ -67,20 +63,9 @@ export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
       latestEpochFileBlobId: newEpochBlobId,
       latestEpoch: newEpochFile.epoch,
       latestVaultMapRoot: newEpochFile.newVaultMapRoot,
-      latestVaultMapLength: newEpochFile.newVaultMapLength,
       latestZkUsdMapRoot: newEpochFile.newZkUsdMapRoot,
-      latestZkUsdMapLength: newEpochFile.newZkUsdMapLength,
       totalOperations:
         (this.file.totalOperations || 0) + newEpochFile.operationCount,
-
-      // Update system parameters
-      validPriceBlockCount: newEpochFile.newValidPriceBlockCount,
-      emergencyStop: newEpochFile.newEmergencyStop,
-      collateralRatio: newEpochFile.newCollateralRatio,
-      liquidationBonusRatio: newEpochFile.newLiquidationBonusRatio,
-      vaultDebtCeiling: Number(newEpochFile.newVaultDebtCeiling),
-      oraclesHash: newEpochFile.newOraclesHash,
-
       epochs: updatedEpochs,
       continuityProof: {
         epochRootChain: updatedRootChain,
@@ -104,8 +89,6 @@ export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
     // Create a deterministic hash of the epoch file content
     const hashContent: Field[] = [
       Field(epochFile.epoch),
-      Field(epochFile.startIntentSequence),
-      Field(epochFile.endIntentSequence),
       Field(epochFile.newVaultMapRoot),
       Field(epochFile.newZkUsdMapRoot),
       Field(epochFile.operationCount),

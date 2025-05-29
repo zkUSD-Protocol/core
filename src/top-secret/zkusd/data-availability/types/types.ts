@@ -48,37 +48,14 @@ export interface EpochFile extends WalrusFile {
 
   // Epoch identification
   epoch: number;
-  startIntentSequence: number; //50
-  endIntentSequence: number; //150
 
   //Vault map information
   previousVaultMapRoot: string;
-  previousVaultMapLength: string;
-
   newVaultMapRoot: string;
-  newVaultMapLength: string;
 
   //ZkUsd map information
   previousZkUsdMapRoot: string;
-  previousZkUsdMapLength: string;
-
   newZkUsdMapRoot: string;
-  newZkUsdMapLength: string;
-
-  // System parameters
-  previousValidPriceBlockCount: number;
-  previousEmergencyStop: boolean;
-  previousCollateralRatio: number;
-  previousLiquidationBonusRatio: number;
-  previousVaultDebtCeiling: bigint;
-  previousOraclesHash: string;
-
-  newValidPriceBlockCount: number;
-  newEmergencyStop: boolean;
-  newCollateralRatio: number;
-  newLiquidationBonusRatio: number;
-  newVaultDebtCeiling: bigint;
-  newOraclesHash: string;
 
   // Operations in this epoch
   operations: Operation[]; // 78 operations
@@ -96,18 +73,8 @@ export interface MetadataFile extends WalrusFile {
   // Current state
   latestEpoch: number;
   latestVaultMapRoot: string; // hex string
-  latestVaultMapLength: string; // number of leaves after this epoch
   latestZkUsdMapRoot: string; // hex string
-  latestZkUsdMapLength: string; // number of leaves after this epoch
   totalOperations: number;
-
-  // System parameters
-  validPriceBlockCount: number;
-  emergencyStop: boolean;
-  collateralRatio: number;
-  liquidationBonusRatio: number;
-  vaultDebtCeiling: number;
-  oraclesHash: string;
 
   // Epoch history (most recent first)
   epochs: EpochMetadata[];
@@ -131,8 +98,6 @@ export interface EpochMetadata {
   epoch: number;
   vaultMapRoot: string; // hex string
   zkUsdMapRoot: string; // hex string
-  vaultMapLength: string; // number of leaves after this epoch
-  zkUsdMapLength: string; // number of leaves after this epoch
   timestamp: number;
   operationCount: number;
 
