@@ -1,18 +1,10 @@
 import {
-  FullState,
-  NextBlockStateCandidate,
+  NextStateCandidate,
   StateRoots,
 } from './block-state.js';
 import { IntentProof } from '../types/intent-proof.js';
 import { LocalStateProxy } from './local-block-state.js';
-import { SequencerStateMetadata } from './sequencer-interface.js';
-import { IntentMapOperation } from './map-operation.js';
-
-export type DataAvailBlobIds = {
-  blockBlobId: string;
-  metadataBlobId: string;
-  checkpointBlobId?: string;
-};
+import { StateCommitment, StateStoreMetadata } from './sequencer-interface.js';
 
 /**
  * The validator's interface to the interactions with
@@ -23,7 +15,7 @@ export interface DataAvailInterface {
    * Initializes the data availability chain.
    * It will create the first block blob and metadata blob.
    */
-  initDA(localStateProxy: LocalStateProxy): Promise<DataAvailBlobIds>;
+  initDA(genesisStateRoots: StateRoots): Promise<StateStoreMetadata>;
 
   /**
    * Fetches an intent proof from the data availability layer.
@@ -35,9 +27,10 @@ export interface DataAvailInterface {
    * This function handles all the complexity of determining what needs to be synced
    * and applies the necessary operations to bring the local state up to date.
    */
-  syncLocalState(
+  syncToFinalizedState(args:{
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string
+    metadataBlobHandle: string,
+  }
   ): Promise<void>;
 
   /**
@@ -49,9 +42,7 @@ export interface DataAvailInterface {
    *
    */
   publishBlockUpdate(
-    finalizedStateMetadata: SequencerStateMetadata,
-    nextStateValidatedIntentOperations: IntentMapOperation[],
-    nextStateRoots: StateRoots,
-    localStateProxy: LocalStateProxy
-  ): Promise<DataAvailBlobIds>;
+    finalizedState: LocalStateProxy,
+    nextBlockStateCandidate: NextStateCandidate,
+  ): Promise<StateStoreMetadata>;
 }

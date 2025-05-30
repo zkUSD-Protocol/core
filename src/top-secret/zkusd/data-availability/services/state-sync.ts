@@ -16,6 +16,7 @@ import { IntentMapOperation } from '../../validator/map-operation.js';
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import { Bool, Field, UInt64, UInt8 } from 'o1js';
+import { StateCommitment } from '../../validator/sequencer-interface.js';
 
 export class StateSyncService {
   constructor(private storageProvider: StorageProvider) {}
@@ -23,12 +24,14 @@ export class StateSyncService {
   /**
    * Syncs local state to match the target metadata state
    */
-  async syncLocalState(
+  async syncToMetadataFileState(
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string
+    metadataBlobHandle: string,
   ): Promise<void> {
     // 1. Fetch target metadata
-    const metadata = await this.fetchMetadata(metadataBlobHandle);
+    const metadata = await this.fetchMetadata(
+      metadataBlobHandle
+    );
 
     // 2. Get current local state
     const currentLocalRoots = await localStateProxy.stateRoots();
@@ -46,7 +49,8 @@ export class StateSyncService {
     // 4. Determine sync strategy
     const syncStrategy = await this.determineSyncStrategy(
       currentLocalRoots,
-      metadata
+      metadata,
+      metadataBlobHandle
     );
 
     // 5. Execute sync strategy
@@ -70,7 +74,8 @@ export class StateSyncService {
    */
   private async determineSyncStrategy(
     currentLocalRoots: StateRoots,
-    metadata: MetadataFile
+    metadata: MetadataFile,
+    metadataBlobId: string,
   ): Promise<SyncStrategy> {
     //Check which block our local state is at
     const localStateBlock = this.identifyLocalStateBlock(
@@ -89,12 +94,14 @@ export class StateSyncService {
             metadata.latestCheckpointBlock,
             metadata
           ),
+          metadataBlobId: metadataBlobId,
         };
       } else {
         //We don't have a checkpoint, so we need to do a full sync
         return {
           type: 'full-incremental',
           blockBlobIds: this.getAllBlockIds(metadata),
+          metadataBlobId: metadataBlobId,
         };
       }
     }
@@ -105,6 +112,7 @@ export class StateSyncService {
       type: 'partial-incremental',
       fromBlock: localStateBlock,
       blockBlobIds: this.getIncrementalBlockIds(localStateBlock, metadata),
+      metadataBlobId: metadataBlobId,
     };
   }
 
@@ -187,39 +195,27 @@ export class StateSyncService {
         await this.executeCheckpointIncrementalSync(localStateProxy, strategy);
         break;
       case 'partial-incremental':
-        await this.executePartialIncrementalSync(localStateProxy, strategy);
-        break;
       case 'full-incremental':
-        await this.executeFullIncrementalSync(localStateProxy, strategy);
+        await this.executeIncrementalSync(localStateProxy, strategy);
         break;
     }
   }
 
-  private async executePartialIncrementalSync(
+  private async executeIncrementalSync(
     localStateProxy: LocalStateProxy,
-    strategy: PartialIncrementalStrategy
+    strategy: PartialIncrementalStrategy | FullIncrementalStrategy
   ): Promise<void> {
     // Apply operations from the specified block files sequentially
     for (const blockBlobId of strategy.blockBlobIds) {
       const blockFile = await this.fetchBlockFile(blockBlobId);
       if (blockFile.operations.length > 0) {
-        await localStateProxy.applyIntentOperations(
-          this.fileToIntentOperations(blockFile.operations)
-        );
+        await localStateProxy.applyIntentOperations({
+      finalizedBlockOperations: this.fileToIntentOperations(blockFile.operations),
+      finalizedStateStoreMetadata: {
+        metadataBlobHandle: strategy.metadataBlobId,
+        blockBlobHandle: blockBlobId,
       }
-    }
-  }
-
-  private async executeFullIncrementalSync(
-    localStateProxy: LocalStateProxy,
-    strategy: FullIncrementalStrategy
-  ): Promise<void> {
-    // Apply operations from all block files sequentially
-    for (const blockBlobId of strategy.blockBlobIds) {
-      const blockFile = await this.fetchBlockFile(blockBlobId);
-      if (blockFile.operations.length > 0) {
-        await localStateProxy.applyIntentOperations(
-          this.fileToIntentOperations(blockFile.operations)
+        }
         );
       }
     }
@@ -229,20 +225,41 @@ export class StateSyncService {
     localStateProxy: LocalStateProxy,
     strategy: CheckpointIncrementalStrategy
   ): Promise<void> {
+    // assert that there are incremental blob ids
+    // otherwise localStateProxy does not have a correct one set.
+    if(strategy.incrementalBlockBlobIds.length === 0) {
+      throw new Error('No incremental block blob IDs found');
+    }
+
     // 1. Load state from checkpoint
     const checkpointData = await this.fetchCheckpoint(
       strategy.checkpointBlobId
     );
     const restoredState = this.restoreStateFromCheckpoint(checkpointData);
-    await localStateProxy.setState(restoredState);
+
+    const lastBlockBlobId = strategy.incrementalBlockBlobIds.at(-1);
+    if (!lastBlockBlobId) {
+      throw new Error('No incremental block blob IDs found');
+    }
+    await localStateProxy.setState({
+      finalizedState: restoredState,
+      finalizedStateStoreMetadata: {
+        metadataBlobHandle: strategy.metadataBlobId,
+        blockBlobHandle: 'checkpoint',
+      },
+    });
 
     // 2. Apply incremental operations
     for (const blockBlobId of strategy.incrementalBlockBlobIds) {
       const blockFile = await this.fetchBlockFile(blockBlobId);
       if (blockFile.operations.length > 0) {
-        await localStateProxy.applyIntentOperations(
-          this.fileToIntentOperations(blockFile.operations)
-        );
+        await localStateProxy.applyIntentOperations({
+          finalizedBlockOperations: this.fileToIntentOperations(blockFile.operations),
+          finalizedStateStoreMetadata: {
+            metadataBlobHandle: strategy.metadataBlobId,
+            blockBlobHandle: blockBlobId,
+          },
+        });
       }
     }
   }
@@ -293,15 +310,18 @@ interface CheckpointIncrementalStrategy {
   type: 'checkpoint-incremental';
   checkpointBlobId: string;
   incrementalBlockBlobIds: string[];
+  metadataBlobId: string;
 }
 
 interface PartialIncrementalStrategy {
   type: 'partial-incremental';
   fromBlock: number;
   blockBlobIds: string[];
+  metadataBlobId: string;
 }
 
 interface FullIncrementalStrategy {
   type: 'full-incremental';
   blockBlobIds: string[];
+  metadataBlobId: string;
 }

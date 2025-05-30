@@ -1,13 +1,19 @@
-import { StateRoots } from './block-state.js';
+import { StateRoots } from "./block-state";
 
-export type SequencerStateMetadata = {
-  /** State root to match against the validator’s computed state. */
-  stateRoots: StateRoots;
-  /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */
-  stateBlobHandle: string;
+export type StateStoreMetadata = {
   /** Handle to retrieve the metadata blob from DA. */
   metadataBlobHandle: string;
+  /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */
+  blockBlobHandle: string;
+}
+
+export type StateCommitment = {
+  /** State root to match against the validator’s computed state. */
+  stateRoots: StateRoots;
+  /** Metadata describing the data availability of the state */
+  stateStoreMetadata: StateStoreMetadata;
 };
+
 
 /**
  * Represents an intent event from the sequencer queue.
@@ -42,7 +48,7 @@ export interface BlockEndEvent {
 export interface BlockFinalizedEvent {
   kind: 'block-finalized';
   /** Metadata of the state after the block */
-  finalizedStateMetadata: SequencerStateMetadata;
+  finalizedStateMetadata: StateCommitment;
 }
 
 /**
@@ -68,27 +74,27 @@ export interface SequencerEventQueue {
 export interface SequencerInterface {
   /**
    * Returns a queue of sequencer events.
-   * If `blockStateMetadata` is provided, returns events from that block onward.
+   * If `finalizedStateMetadata` is provided, returns events from that block onward.
    * Otherwise, starts from the last known block.
    */
   getSequencerEventQueue(
-    blockStateMetadata?: SequencerStateMetadata
+    finalizedStateMetadata?: StateCommitment
   ): Promise<SequencerEventQueue>;
 
   /**
    * Returns the most recent 'block-start' event.
    */
-  fetchFinalizedStateBlockMetadata(): Promise<SequencerStateMetadata>;
+  fetchFinalizedStateCommitment(): Promise<StateCommitment>;
 
   /**
    * Commits the given block state root to the sequencer's consensus.
    * Should be called by the validator after successfully processing an block.
    */
-  commitToBlockState(
+  commitToBlockState(args:{
     /** Metadata of the finalized (previous) block state */
-    finalizedStateMetadata: SequencerStateMetadata,
+    finalizedStateMetadata: StateCommitment,
 
     /** Metadata of the candidate (next) block state */
-    stateCandidateMetadata: SequencerStateMetadata
-  ): Promise<void>;
+    stateCandidateMetadata: StateCommitment
+  }): Promise<void>;
 }

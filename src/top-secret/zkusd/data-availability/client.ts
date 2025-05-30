@@ -1,19 +1,16 @@
-import {
-  DataAvailBlobIds,
-  DataAvailInterface,
-} from '../validator/data-avail-interface.js';
+import { DataAvailInterface } from '../validator/data-avail-interface.js';
 import { IntentProof } from '../types/intent-proof.js';
 import {
-  FullState,
-  NextBlockStateCandidate,
+  NextStateCandidate,
   StateRoots,
+  stateRootsEqual,
 } from '../validator/block-state.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
 import { BlockFile, FileType, MetadataFile } from './types/types.js';
 import { BlockFileBuilder } from './services/block-file-builder.js';
 import { MetadataFileBuilder } from './services/metadata-file-builder.js';
 import { CheckpointFileBuilder } from './services/checkpoint-file-builder.js';
-import { SequencerStateMetadata } from '../validator/sequencer-interface.js';
+import { StateCommitment, StateStoreMetadata } from '../validator/sequencer-interface.js';
 import { IntentMapOperation } from '../validator/map-operation.js';
 import { StorageProvider } from './providers/storage-provider.js';
 import {
@@ -22,6 +19,7 @@ import {
   ProviderType,
 } from './providers/provider-factory.js';
 import { StateSyncService } from './services/state-sync.js';
+import { Field } from 'o1js';
 
 export interface DataAvailClientConfig {
   provider: ProviderConfig;
@@ -74,14 +72,12 @@ export class DataAvailClient implements DataAvailInterface {
     });
   }
 
-  async initDA(localStateProxy: LocalStateProxy): Promise<DataAvailBlobIds> {
+  async initDA(genesisStateRoots: StateRoots): Promise<StateStoreMetadata> {
     // 1. Get the initial state from the local proxy
-    const initialState = await localStateProxy.useState();
-    const initialStateRoots = await localStateProxy.stateRoots();
 
     // 2. Create the genesis block file
     const genesisBlockFile = BlockFileBuilder.buildGenesisBlockFile({
-      initialStateRoots,
+      genesisStateRoots,
     });
 
     // 3. Store the genesis block file
@@ -108,8 +104,8 @@ export class DataAvailClient implements DataAvailInterface {
 
     // 6. Return the blob IDs
     return {
-      blockBlobId: genesisBlockBlobId,
-      metadataBlobId: genesisMetadataBlobId,
+        blockBlobHandle: genesisBlockBlobId,
+        metadataBlobHandle: genesisMetadataBlobId,
     };
   }
 
@@ -125,40 +121,52 @@ export class DataAvailClient implements DataAvailInterface {
     }
   }
 
-  async syncLocalState(
+  async syncToFinalizedState(args:{
     localStateProxy: LocalStateProxy,
-    targetMetadataBlobHandle: string
+    metadataBlobHandle: string
+  }
   ): Promise<void> {
-    return this.syncService.syncLocalState(
-      localStateProxy,
-      targetMetadataBlobHandle
+    return this.syncService.syncToMetadataFileState(
+      args.localStateProxy,
+      args.metadataBlobHandle
     );
   }
 
   async publishBlockUpdate(
-    finalizedStateMetadata: SequencerStateMetadata,
-    nextStateValidatedIntentOperations: IntentMapOperation[],
-    nextStateRoots: StateRoots,
-    localStateProxy: LocalStateProxy
-  ): Promise<DataAvailBlobIds> {
+    localStateProxy: LocalStateProxy,
+    nextStateCandidate: NextStateCandidate,
+  ): Promise<StateStoreMetadata> {
+    const previousBlockStateCommitment = await localStateProxy.getStateCommitment()
+    
     // 1. Retrieve the previous block file
     const previousBlockRawData = await this.storageProvider.retrieve(
-      finalizedStateMetadata.stateBlobHandle,
+      previousBlockStateCommitment.stateStoreMetadata.blockBlobHandle,
       {
         fileType: FileType.EPOCH,
       }
     );
 
     const previousBlockFile = JSON.parse(previousBlockRawData) as BlockFile;
+
+    const previousMapRoots: StateRoots = {
+      vaultMapRoot: Field.from(previousBlockFile.newVaultMapRoot),
+      zkUsdMapRoot: Field.from(previousBlockFile.newZkUsdMapRoot),
+    };
+
+    // check if the contents match the state commitment
+    if (!stateRootsEqual(previousMapRoots, previousBlockStateCommitment.stateRoots)) {
+      throw new Error('State roots do not match');
+    }
+
     const currentBlock = previousBlockFile.block + 1;
 
     // 2. Build the new block file
     const newBlockFile = BlockFileBuilder.buildBlockFile({
       previousBlockFile,
-      previousStateRoots: finalizedStateMetadata.stateRoots,
-      previousBlockBlobId: finalizedStateMetadata.stateBlobHandle,
-      nextStateValidatedIntentOperations,
-      nextStateRoots,
+      previousStateRoots: previousBlockStateCommitment.stateRoots,
+      previousBlockBlobId: previousBlockStateCommitment.stateStoreMetadata.blockBlobHandle,
+      nextStateValidatedIntentOperations: nextStateCandidate.intentOperations,
+      nextStateRoots: nextStateCandidate.stateRoots(),
     });
 
     // 3. Store the new block file
@@ -177,13 +185,13 @@ export class DataAvailClient implements DataAvailInterface {
       checkpointBlobId = await this.createCheckpoint(
         localStateProxy,
         previousBlockFile.block, // The checkpoint represents the state at the previous block
-        finalizedStateMetadata.stateBlobHandle
+        newBlockBlobId
       );
     }
 
     // 5. Retrieve the metadata file
     const metadataRawData = await this.storageProvider.retrieve(
-      finalizedStateMetadata.metadataBlobHandle,
+      previousBlockStateCommitment.stateStoreMetadata.metadataBlobHandle,
       {
         fileType: FileType.METADATA,
       }
@@ -212,10 +220,10 @@ export class DataAvailClient implements DataAvailInterface {
     );
 
     return {
-      blockBlobId: newBlockBlobId,
-      metadataBlobId: newMetadataBlobId,
-      checkpointBlobId,
+      metadataBlobHandle: newMetadataBlobId,
+      blockBlobHandle: newBlockBlobId,
     };
+
   }
 
   /**

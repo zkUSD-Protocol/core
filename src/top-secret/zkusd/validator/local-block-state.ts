@@ -1,49 +1,72 @@
-import { StateRoots, FullState } from './block-state.js';
+import { StateRoots, FullState, stateRootsEqual } from './block-state.js';
 import { IntentMapOperation } from './map-operation.js';
+import { StateCommitment, StateStoreMetadata } from './sequencer-interface.js';
+
+
+export interface LocalStateProxyInitializer{
+
+  create(): LocalStateProxy;
+
+}
+
 
 export interface LocalStateProxy {
-  setState(state: FullState): Promise<void>;
+  cloneState(): Promise<FullState>;
+  setState(args: {finalizedState: FullState, finalizedStateStoreMetadata: StateStoreMetadata}): Promise<void>;
+
+  getStateCommitment(): Promise<StateCommitment>;
 
   useState(): Promise<FullState>;
 
   stateRoots(): Promise<StateRoots>;
 
-  checkStoredRoots(StateRoots: StateRoots): Promise<boolean>;
+  stateRootsEqual(stateRoots: StateRoots): Promise<boolean>;
 
   applyIntentOperations(
-    finalizedBlockOperations: IntentMapOperation[]
+    args: {
+      finalizedBlockOperations: IntentMapOperation[],
+      finalizedStateStoreMetadata: StateStoreMetadata,
+    }
   ): Promise<void>;
-
-  rootsEqual(StateRoots: StateRoots): Promise<boolean>;
 }
 
 export class InMemoryStateProxy implements LocalStateProxy {
   private _state: FullState;
-  private _blockStateRoot: StateRoots;
+  private _stateStoreMetadata: StateStoreMetadata;
 
-  constructor(initialState: FullState) {
+  constructor(initialState: FullState, private initialStateStoreMetadata: StateStoreMetadata) {
     this._state = initialState;
-    this._blockStateRoot = initialState.roots();
+    this._stateStoreMetadata = initialStateStoreMetadata;
+  }
+
+  async cloneState(): Promise<FullState> {
+    return this._state.clone();
+  }
+
+  async getStateCommitment(): Promise<StateCommitment> {
+    return {
+      stateRoots: this._state.roots(),
+      stateStoreMetadata: this._stateStoreMetadata,
+    };
   }
 
   async stateRoots(): Promise<StateRoots> {
-    return this._blockStateRoot;
+    return this._state.roots();
   }
 
-  async checkStoredRoots(StateRoots: StateRoots): Promise<boolean> {
-    return (
-      this._blockStateRoot.vaultMapRoot
-        .equals(StateRoots.vaultMapRoot)
-        .toBoolean() &&
-      this._blockStateRoot.zkUsdMapRoot
-        .equals(StateRoots.zkUsdMapRoot)
-        .toBoolean()
+  async stateRootsEqual(stateRoots: StateRoots): Promise<boolean> {
+    return stateRootsEqual(
+      await this.stateRoots(),
+      stateRoots
     );
   }
 
-  async setState(state: FullState): Promise<void> {
-    this._state = state;
-    this._blockStateRoot = state.roots();
+  async setState(args: {
+    finalizedState: FullState;
+    finalizedStateStoreMetadata: StateStoreMetadata;
+  }): Promise<void> {
+    this._state = args.finalizedState;
+    this._stateStoreMetadata = args.finalizedStateStoreMetadata;
   }
 
   async useState(): Promise<FullState> {
@@ -51,20 +74,13 @@ export class InMemoryStateProxy implements LocalStateProxy {
   }
 
   async applyIntentOperations(
-    finalizedBlockOperations: IntentMapOperation[]
+    args: {
+      finalizedBlockOperations: IntentMapOperation[];
+      finalizedStateStoreMetadata: StateStoreMetadata;
+    }
   ): Promise<void> {
-    this._state.applyMapOperations(...finalizedBlockOperations);
-    this._blockStateRoot = this._state.roots();
+    this._state.applyMapOperations(...args.finalizedBlockOperations);
+    this._stateStoreMetadata = args.finalizedStateStoreMetadata;
   }
 
-  async rootsEqual(StateRoots: StateRoots): Promise<boolean> {
-    return (
-      this._blockStateRoot.vaultMapRoot
-        .equals(StateRoots.vaultMapRoot)
-        .toBoolean() &&
-      this._blockStateRoot.zkUsdMapRoot
-        .equals(StateRoots.zkUsdMapRoot)
-        .toBoolean()
-    );
-  }
 }

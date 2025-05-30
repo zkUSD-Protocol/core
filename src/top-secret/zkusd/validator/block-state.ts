@@ -51,10 +51,10 @@ export type NextBlockStateCommitment = {
   intentOperationsHash: Field;
 };
 
-export class NextBlockStateCandidate {
+export class NextStateCandidate {
   nextBlockState: BlockStateCommitment;
   intentOperations: IntentMapOperation[];
-  systemParams: SystemParams;
+  systemParams: SystemParams; // not used for now?
   timestamp: number; // we get this from the sequencer block end event
 
   constructor(
@@ -76,6 +76,10 @@ export class NextBlockStateCandidate {
       nextBlockState: this.nextBlockState,
       intentOperationsHash,
     };
+  }
+
+  stateRoots(): StateRoots {
+    throw new Error("not implemented");
   }
 }
 

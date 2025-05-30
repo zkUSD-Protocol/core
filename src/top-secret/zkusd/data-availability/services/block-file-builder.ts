@@ -1,6 +1,6 @@
 import {
   BlockStateCommitment,
-  NextBlockStateCandidate,
+  NextStateCandidate,
   StateRoots,
   SystemParams,
 } from '../../validator/block-state.js';
@@ -23,7 +23,7 @@ interface BuildBlockFileArgs {
 }
 
 interface BuildGenesisBlockFileArgs {
-  readonly initialStateRoots: StateRoots;
+  readonly genesisStateRoots: StateRoots;
 }
 
 export class BlockFileBuilder extends BaseFileBuilder<BlockFile> {
@@ -39,7 +39,7 @@ export class BlockFileBuilder extends BaseFileBuilder<BlockFile> {
 
   static buildGenesisBlockFile(args: BuildGenesisBlockFileArgs): BlockFile {
     return new BlockFileBuilder()
-      .withGenesisBlock(args.initialStateRoots)
+      .withGenesisBlock(args.genesisStateRoots)
       .build();
   }
 
