@@ -6,14 +6,14 @@ const { IndexedMerkleMap } = Experimental;
 export interface SerializableMapData {
   root: string;
   length: string;
-  nodes: (bigint | undefined)[][];
+  nodes: (string | null)[][]; // Changed from bigint to string
   sortedLeaves: StoredLeaf[];
 }
 
 export interface StoredLeaf {
-  readonly value: bigint;
-  readonly key: bigint;
-  readonly nextKey: bigint;
+  readonly value: string; // Changed from bigint to string
+  readonly key: string; // Changed from bigint to string
+  readonly nextKey: string; // Changed from bigint to string
   readonly index: number;
 }
 
@@ -29,8 +29,15 @@ export function createSerializableIndexedMap(height: number) {
       return {
         root: this.root.toString(),
         length: this.length.toString(),
-        nodes: data.nodes,
-        sortedLeaves: data.sortedLeaves,
+        nodes: data.nodes.map((level) =>
+          level.map((node) => (node !== undefined ? node.toString() : null))
+        ),
+        sortedLeaves: data.sortedLeaves.map((leaf) => ({
+          key: leaf.key.toString(),
+          value: leaf.value.toString(),
+          nextKey: leaf.nextKey.toString(),
+          index: leaf.index,
+        })),
       };
     }
 
@@ -46,8 +53,15 @@ export function createSerializableIndexedMap(height: number) {
       map.root = Field(data.root);
       map.length = Field(data.length);
       map.data.updateAsProver(() => ({
-        nodes: data.nodes,
-        sortedLeaves: data.sortedLeaves,
+        nodes: data.nodes.map((level) =>
+          level.map((node) => (node !== null ? BigInt(node) : undefined))
+        ),
+        sortedLeaves: data.sortedLeaves.map((leaf) => ({
+          key: BigInt(leaf.key),
+          value: BigInt(leaf.value),
+          nextKey: BigInt(leaf.nextKey),
+          index: leaf.index,
+        })),
       }));
 
       return map;
@@ -65,7 +79,7 @@ export function createSerializableIndexedMap(height: number) {
         // Validate sorted leaves are properly ordered
         const leaves = data.sortedLeaves;
         for (let i = 1; i < leaves.length; i++) {
-          if (leaves[i].key <= leaves[i - 1].key) {
+          if (BigInt(leaves[i].key) <= BigInt(leaves[i - 1].key)) {
             return false;
           }
         }

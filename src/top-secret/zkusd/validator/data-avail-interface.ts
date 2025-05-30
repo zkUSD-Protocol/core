@@ -1,11 +1,15 @@
-import { FullState, NextEpochStateCandidate, StateRoots } from './epoch-state.js';
+import {
+  FullState,
+  NextBlockStateCandidate,
+  StateRoots,
+} from './block-state.js';
 import { IntentProof } from '../types/intent-proof.js';
-import { LocalStateProxy } from './local-epoch-state.js';
+import { LocalStateProxy } from './local-block-state.js';
 import { SequencerStateMetadata } from './sequencer-interface.js';
 import { IntentMapOperation } from './map-operation.js';
 
 export type DataAvailBlobIds = {
-  epochBlobId: string;
+  blockBlobId: string;
   metadataBlobId: string;
   checkpointBlobId?: string;
 };
@@ -16,41 +20,38 @@ export type DataAvailBlobIds = {
  */
 export interface DataAvailInterface {
   /**
+   * Initializes the data availability chain.
+   * It will create the first block blob and metadata blob.
+   */
+  initDA(localStateProxy: LocalStateProxy): Promise<DataAvailBlobIds>;
+
+  /**
    * Fetches an intent proof from the data availability layer.
    */
   fetchIntentProof(intentBlobHandle: string): Promise<IntentProof>;
 
   /**
-   * Fetches the full epoch state from the data availability layer.
-   * It may do that by fetching the last state checkpoints 
-   * and applying the map operations to get the final state.
+   * Syncs the local state to match the state referenced by the metadata blob.
+   * This function handles all the complexity of determining what needs to be synced
+   * and applies the necessary operations to bring the local state up to date.
    */
-  fetchFullEpochState(epochBlobHandle: string): Promise<FullState>;
+  syncLocalState(
+    localStateProxy: LocalStateProxy,
+    metadataBlobHandle: string
+  ): Promise<void>;
 
   /**
-   * Given the last finalized state and the current finalized state,
-   * this function returns the map operations that need to be applied to the last finalized state
-   * to get the current finalized state.
-   */
-  updateLocalStateToFinalizedState(
-    args: {
-      epochFinalizedEventStateMetadata: SequencerStateMetadata,
-      localFinalizedStateMetadata: SequencerStateMetadata,
-    }
-    // TODO errors
-  ): Promise<{operationsToApply: IntentMapOperation[]}>;
-
-  /**
-   * Publishes the incremental epoch update to the data availability layer.
+   * Publishes the incremental block update to the data availability layer.
    *
    * This function is creating a candidate for the finalised state
-   * lets say we are submitting epoch 100
-   * our checkpoint is epoch 99
+   * lets say we are submitting block 100
+   * our checkpoint is block 99
    *
    */
-  publishEpochUpdate(
+  publishBlockUpdate(
     finalizedStateMetadata: SequencerStateMetadata,
     nextStateValidatedIntentOperations: IntentMapOperation[],
     nextStateRoots: StateRoots,
+    localStateProxy: LocalStateProxy
   ): Promise<DataAvailBlobIds>;
 }

@@ -10,8 +10,17 @@ export class PrunedMapBase {
     this.baseMap.root = Field(data.root);
     this.baseMap.length = Field(data.length);
     this.baseMap.data.updateAsProver(() => ({
-      nodes: data.nodes,
-      sortedLeaves: data.sortedLeaves,
+      // Convert string nodes back to bigint | undefined
+      nodes: data.nodes.map((level) =>
+        level.map((node) => (node !== null ? BigInt(node) : undefined))
+      ),
+      // Convert string sortedLeaves back to bigint format
+      sortedLeaves: data.sortedLeaves.map((leaf) => ({
+        key: BigInt(leaf.key),
+        value: BigInt(leaf.value),
+        nextKey: BigInt(leaf.nextKey),
+        index: leaf.index,
+      })),
     }));
   }
 
@@ -56,8 +65,17 @@ export class PrunedMapBase {
     return {
       root: this.root.toString(),
       length: this.length.toString(),
-      nodes: data.nodes,
-      sortedLeaves: data.sortedLeaves,
+      // Convert bigint nodes to string format
+      nodes: data.nodes.map((level) =>
+        level.map((node) => (node !== undefined ? node.toString() : null))
+      ),
+      // Convert bigint sortedLeaves to string format
+      sortedLeaves: data.sortedLeaves.map((leaf) => ({
+        key: leaf.key.toString(),
+        value: leaf.value.toString(),
+        nextKey: leaf.nextKey.toString(),
+        index: leaf.index,
+      })),
     };
   }
 

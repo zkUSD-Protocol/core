@@ -63,10 +63,7 @@ export class MapPruner {
     );
 
     const prunedData = this.createPrunedData(fullMap, request);
-    const prunedSize = this.estimateMapSize(
-      prunedData.nodes,
-      prunedData.sortedLeaves
-    );
+    const prunedSize = this.estimateMapSizeFromSerialized(prunedData);
 
     return {
       originalSize,
@@ -95,14 +92,16 @@ export class MapPruner {
   private static pruneNodes(
     fullNodes: (bigint | undefined)[][],
     requiredIndices: Set<number>
-  ): (bigint | undefined)[][] {
-    const prunedNodes: (bigint | undefined)[][] = [];
+  ): (string | null)[][] {
+    const prunedNodes: (string | null)[][] = [];
 
     for (let level = 0; level < fullNodes.length; level++) {
       prunedNodes[level] = [];
       for (let i = 0; i < fullNodes[level].length; i++) {
-        if (requiredIndices.has(i)) {
-          prunedNodes[level][i] = fullNodes[level][i];
+        if (requiredIndices.has(i) && fullNodes[level][i] !== undefined) {
+          prunedNodes[level][i] = fullNodes[level][i]!.toString();
+        } else {
+          prunedNodes[level][i] = null;
         }
       }
     }
@@ -111,17 +110,22 @@ export class MapPruner {
   }
 
   private static pruneSortedLeaves(
-    fullSortedLeaves: StoredLeaf[],
+    fullSortedLeaves: any[],
     requiredSortedIndices: Set<number>
   ): StoredLeaf[] {
-    return fullSortedLeaves.filter((_, index) =>
-      requiredSortedIndices.has(index)
-    );
+    return fullSortedLeaves
+      .filter((_, index) => requiredSortedIndices.has(index))
+      .map((leaf) => ({
+        key: leaf.key.toString(),
+        value: leaf.value.toString(),
+        nextKey: leaf.nextKey.toString(),
+        index: leaf.index,
+      }));
   }
 
   private static estimateMapSize(
     nodes: (bigint | undefined)[][],
-    sortedLeaves: StoredLeaf[]
+    sortedLeaves: any[]
   ): number {
     let size = 0;
     for (const level of nodes) {
@@ -132,6 +136,21 @@ export class MapPruner {
       }
     }
     size += sortedLeaves.length * (32 * 4);
+    return size;
+  }
+
+  private static estimateMapSizeFromSerialized(
+    data: SerializableMapData
+  ): number {
+    let size = 0;
+    for (const level of data.nodes) {
+      for (const node of level) {
+        if (node !== null) {
+          size += 32;
+        }
+      }
+    }
+    size += data.sortedLeaves.length * (32 * 4);
     return size;
   }
 }

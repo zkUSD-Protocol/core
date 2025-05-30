@@ -1,12 +1,16 @@
-export enum WalrusFileType {
+import { SerializableMapData } from '../../data/maps/serializable-indexed-map';
+import { StateRoots } from '../../validator/block-state';
+
+export enum FileType {
   INTENT = 'intent',
-  EPOCH = 'epoch',
+  EPOCH = 'block',
   METADATA = 'metadata',
+  CHECKPOINT = 'checkpoint',
 }
 
-export interface WalrusFile {
+export interface File {
   version: string;
-  fileType: WalrusFileType;
+  fileType: FileType;
 }
 
 export enum IntentType {
@@ -27,27 +31,28 @@ export enum MapType {
 export enum OperationType {
   INSERT = 'insert',
   UPDATE = 'update',
+  SET = 'set',
 }
 
-export interface IntentFile extends WalrusFile {
-  fileType: WalrusFileType.INTENT;
+export interface IntentFile extends File {
+  fileType: FileType.INTENT;
   intentType: IntentType;
   proof: string;
   encryptedNotes: string[];
 }
 
-export interface EpochFile extends WalrusFile {
-  fileType: WalrusFileType.EPOCH;
+export interface BlockFile extends File {
+  fileType: FileType.EPOCH;
 
-  // Timestamp of the epoch end -> from the sequencer
-  timestamp: number;
+  // Timestamp of the block end -> from the sequencer
+  // timestamp: number;
 
-  // Previous epoch information
-  previousEpoch: number;
-  previousEpochBlobId: string;
+  // Previous block information
+  previousBlock: number;
+  previousBlockBlobId: string;
 
-  // Epoch identification
-  epoch: number;
+  // Block identification
+  block: number;
 
   //Vault map information
   previousVaultMapRoot: string;
@@ -57,32 +62,53 @@ export interface EpochFile extends WalrusFile {
   previousZkUsdMapRoot: string;
   newZkUsdMapRoot: string;
 
-  // Operations in this epoch
+  // Operations in this block
   operations: Operation[]; // 78 operations
 
   // Metadata
   operationCount: number;
 }
 
-export interface MetadataFile extends WalrusFile {
-  fileType: WalrusFileType.METADATA;
+export interface MetadataFile extends File {
+  fileType: FileType.METADATA;
 
-  // Latest epoch file
-  latestEpochFileBlobId: string;
+  // Latest block file
+  latestBlockFileBlobId: string;
+
+  // Latest checkpoint file
+  latestCheckpointFileBlobId: string;
+  latestCheckpointBlock: number;
 
   // Current state
-  latestEpoch: number;
+  latestBlock: number;
   latestVaultMapRoot: string; // hex string
   latestZkUsdMapRoot: string; // hex string
   totalOperations: number;
 
-  // Epoch history (most recent first)
-  epochs: EpochMetadata[];
+  // Block history (most recent first)
+  blocks: BlockMetadata[];
 
   // Integrity information
   continuityProof: {
-    epochRootChain: string[]; // hashed roots of last 100 epoches for verification
+    blockRootChain: string[]; // hashed roots of last 100 blockes for verification
   };
+}
+
+export interface CheckpointFile extends File {
+  fileType: FileType.CHECKPOINT;
+
+  // Maps data
+  vaultMapData: SerializableMapData;
+  zkUsdMapData: SerializableMapData;
+
+  // Checkpoint metadata
+  block: number;
+  blockBlobId: string;
+  checkpointId: string;
+
+  // Roots
+  vaultMapRoot: string; // hex string
+  zkUsdMapRoot: string; // hex string
 }
 
 export interface Operation {
@@ -91,20 +117,20 @@ export interface Operation {
 
   // Key-value data
   key: string; // hex string (32 bytes)
-  value?: string; // hex string (32 bytes) - for inserts
+  value: string; // hex string (32 bytes) - for inserts
 }
 
-export interface EpochMetadata {
-  epoch: number;
+export interface BlockMetadata {
+  block: number;
   vaultMapRoot: string; // hex string
   zkUsdMapRoot: string; // hex string
-  timestamp: number;
+  // timestamp: number;
   operationCount: number;
 
   // Blob IDs
-  epochBlobId: string;
+  blockBlobId: string;
 
   // For verification
-  epochHash: string; // hash of the entire epoch content
-  previousEpochHash: string; // for chain integrity
+  blockHash: string; // hash of the entire block content
+  previousBlockHash: string; // for chain integrity
 }

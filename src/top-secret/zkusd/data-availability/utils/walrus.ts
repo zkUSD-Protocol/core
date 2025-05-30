@@ -14,23 +14,23 @@ const MAX_EPOCHS = 53;
 export async function saveToWalrus({
   data,
   address,
-  numEpochs = 2,
+  numBlocks = 2,
 }: {
   data: string;
   address?: string;
-  numEpochs?: number;
+  numBlocks?: number;
 }): Promise<string | undefined> {
   let sendToParam = address ? `&send_object_to=${address}` : '';
-  let epochs =
-    numEpochs < MIN_EPOCHS
+  let blocks =
+    numBlocks < MIN_EPOCHS
       ? MIN_EPOCHS
-      : numEpochs > MAX_EPOCHS
+      : numBlocks > MAX_EPOCHS
         ? MAX_EPOCHS
-        : numEpochs;
+        : numBlocks;
   console.log('Writing to Walrus');
   console.time('written');
   const response = await fetch(
-    `${basePublisherUrl}/v1/blobs?epochs=${epochs}${sendToParam}`,
+    `${basePublisherUrl}/v1/blobs?blocks=${blocks}${sendToParam}`,
     {
       method: 'PUT',
       body: data,

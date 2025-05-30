@@ -24,15 +24,15 @@ export type StateLengths = {
 };
 
 /**
- * Identifies the state of an epoch using its state root.
+ * Identifies the state of an block using its state root.
  */
-export type EpochStateCommitment = {
+export type BlockStateCommitment = {
   roots: StateRoots;
   lengths: StateLengths;
 };
 
 /**
- * Checks if two epoch state roots are equal.
+ * Checks if two block state roots are equal.
  */
 export function stateRootsEqual(
   roots1: StateRoots,
@@ -44,36 +44,36 @@ export function stateRootsEqual(
   );
 }
 
-export type NextEpochStateCommitment = {
+export type NextBlockStateCommitment = {
   // resulting state roots and lengths
-  nextEpochState: EpochStateCommitment;
-  // commitment to a sequence of operations that have occurred since the last epoch
+  nextBlockState: BlockStateCommitment;
+  // commitment to a sequence of operations that have occurred since the last block
   intentOperationsHash: Field;
 };
 
-export class NextEpochStateCandidate {
-  nextEpochState: EpochStateCommitment;
+export class NextBlockStateCandidate {
+  nextBlockState: BlockStateCommitment;
   intentOperations: IntentMapOperation[];
   systemParams: SystemParams;
-  timestamp: number; // we get this from the sequencer epoch end event
+  timestamp: number; // we get this from the sequencer block end event
 
   constructor(
-    epochState: EpochStateCommitment,
+    blockState: BlockStateCommitment,
     intentOperations: IntentMapOperation[],
     systemParams: SystemParams,
     timestamp: number
   ) {
-    this.nextEpochState = epochState;
+    this.nextBlockState = blockState;
     this.intentOperations = intentOperations;
     this.systemParams = systemParams;
     this.timestamp = timestamp;
   }
-  toCommitment(): NextEpochStateCommitment {
+  toCommitment(): NextBlockStateCommitment {
     const intentOperationsHash = IntentMapOperation.rollingHash(
       this.intentOperations
     );
     return {
-      nextEpochState: this.nextEpochState,
+      nextBlockState: this.nextBlockState,
       intentOperationsHash,
     };
   }
@@ -94,6 +94,12 @@ export class FullState {
     this.zkUsdMap = zkUsdMap;
   }
 
+  static newGenesisState(systemParams: SystemParams): FullState {
+    const vaultMap = new VaultMap();
+    const zkUsdMap = new ZkUsdMap();
+    return new FullState(systemParams, vaultMap, zkUsdMap);
+  }
+
   roots(): StateRoots {
     return {
       vaultMapRoot: this.vaultMap.root,
@@ -102,7 +108,7 @@ export class FullState {
   }
 
   // to commitment
-  toCommitment(): EpochStateCommitment {
+  toCommitment(): BlockStateCommitment {
     return {
       roots: {
         vaultMapRoot: this.vaultMap.root,
@@ -143,8 +149,8 @@ export class FullState {
   clone(): FullState {
     return new FullState(
       this.systemParams,
-      this.vaultMap.clone(),
-      this.zkUsdMap.clone()
+      this.vaultMap.clone() as VaultMap,
+      this.zkUsdMap.clone() as ZkUsdMap
     );
   }
 }

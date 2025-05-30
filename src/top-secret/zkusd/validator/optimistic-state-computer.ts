@@ -1,51 +1,51 @@
-import { FullState } from './epoch-state.js';
-import { IntentProof } from '../types/intent-proof.js';
-import { IntentMapOperation } from './map-operation.js';
-import { NextEpochStateCandidate } from './epoch-state.js';
+// import { FullState } from './block-state.js';
+// import { IntentProof } from '../types/intent-proof.js';
+// import { IntentMapOperation } from './map-operation.js';
+// import { NextBlockStateCandidate } from './block-state.js';
 
-export interface OptimisticStateComputer {
-  setState(state: FullState): Promise<void>;
-  getState(): Promise<{
-    previousEpochState: FullState;
-    nextStateCandidate: FullState;
-    newEpochOperations: IntentMapOperation[];
-  }>;
-  getStateCandidate(): Promise<NextEpochStateCandidate>;
-  step(intentProof: IntentProof): Promise<void>;
-}
+// export interface OptimisticStateComputer {
+//   setState(state: FullState): Promise<void>;
+//   getState(): Promise<{
+//     previousBlockState: FullState;
+//     nextStateCandidate: FullState;
+//     newBlockOperations: IntentMapOperation[];
+//   }>;
+//   getStateCandidate(): Promise<NextBlockStateCandidate>;
+//   step(intentProof: IntentProof): Promise<void>;
+// }
 
-export class NonProvingStateComputer implements OptimisticStateComputer {
-  private _liveState: FullState;
-  private _epochState: FullState;
-  private _newEpochOperations: IntentMapOperation[];
+// export class NonProvingStateComputer implements OptimisticStateComputer {
+//   private _liveState: FullState;
+//   private _blockState: FullState;
+//   private _newBlockOperations: IntentMapOperation[];
 
-  constructor() {}
+//   constructor() {}
 
-  async setState(state: FullState): Promise<void> {
-    this._liveState = state;
-    this._epochState = state;
-    this._newEpochOperations = [];
-  }
-  async getState(): Promise<{
-    previousEpochState: FullState;
-    nextEpochState: FullState;
-    newEpochOperations: IntentMapOperation[];
-  }> {
-    return {
-      previousEpochState: this._epochState,
-      nextEpochState: this._liveState,
-      newEpochOperations: this._newEpochOperations,
-    };
-  }
-  async getStateCandidate(): Promise<NextEpochStateCandidate> {
-    return new NextEpochStateCandidate(
-      this._liveState.toCommitment(),
-      this._newEpochOperations,
-      this._liveState.systemParams,
-      Date.now()
-    );
-  }
-  async step(intentProof: IntentProof): Promise<void> {
-    throw new Error('Not implemented');
-  }
-}
+//   async setState(state: FullState): Promise<void> {
+//     this._liveState = state;
+//     this._blockState = state;
+//     this._newBlockOperations = [];
+//   }
+//   async getState(): Promise<{
+//     previousBlockState: FullState;
+//     nextStateCandidate: FullState;
+//     newBlockOperations: IntentMapOperation[];
+//   }> {
+//     return {
+//       previousBlockState: this._blockState,
+//       nextStateCandidate: this._liveState,
+//       newBlockOperations: this._newBlockOperations,
+//     };
+//   }
+//   async getStateCandidate(): Promise<NextBlockStateCandidate> {
+//     return new NextBlockStateCandidate(
+//       this._liveState.toCommitment(),
+//       this._newBlockOperations,
+//       this._liveState.systemParams,
+//       Date.now()
+//     );
+//   }
+//   async step(intentProof: IntentProof): Promise<void> {
+//     throw new Error('Not implemented');
+//   }
+// }

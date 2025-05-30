@@ -1,76 +1,131 @@
-import { StateRoots } from '../../validator/epoch-state.js';
+import { StateRoots } from '../../validator/block-state.js';
 import {
-  EpochFile,
+  BlockFile,
   MetadataFile,
-  WalrusFileType,
-  EpochMetadata,
+  FileType,
+  BlockMetadata,
 } from '../types/types.js';
 import { BaseFileBuilder } from './base-file-builder.js';
 import { Field, Poseidon } from 'o1js';
 
 interface BuildMetadataFileArgs {
   readonly previousMetadataFile: MetadataFile;
-  readonly newEpochFile: EpochFile;
-  readonly newEpochBlobId: string;
+  readonly newBlockFile: BlockFile;
+  readonly newBlockBlobId: string;
+  readonly checkpointBlobId?: string;
+  readonly checkpointBlock?: number;
+}
+
+interface BuildGenesisMetadataFileArgs {
+  readonly genesisBlockFile: BlockFile;
+  readonly genesisBlockBlobId: string;
 }
 
 export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
   static buildMetadataFile(args: BuildMetadataFileArgs): MetadataFile {
     return new MetadataFileBuilder()
       .withPreviousMetadata(args.previousMetadataFile)
-      .withNewEpoch(args.newEpochFile, args.newEpochBlobId)
+      .withNewBlock(args.newBlockFile, args.newBlockBlobId)
+      .withCheckpoint(args.checkpointBlobId, args.checkpointBlock)
       .build();
   }
 
-  withPreviousMetadata(previousMetadata: MetadataFile): this {
-    this.initializeFile(WalrusFileType.METADATA, previousMetadata.version);
+  static buildGenesisMetadataFile(
+    args: BuildGenesisMetadataFileArgs
+  ): MetadataFile {
+    return new MetadataFileBuilder()
+      .withGenesisMetadata(args.genesisBlockFile, args.genesisBlockBlobId)
+      .build();
+  }
+
+  withGenesisMetadata(
+    genesisBlockFile: BlockFile,
+    genesisBlockBlobId: string
+  ): this {
+    this.initializeFile(FileType.METADATA, '1.0.0');
+
+    // Create genesis block metadata
+    const genesisBlockMetadata: BlockMetadata = {
+      block: genesisBlockFile.block,
+      vaultMapRoot: genesisBlockFile.newVaultMapRoot,
+      zkUsdMapRoot: genesisBlockFile.newZkUsdMapRoot,
+      operationCount: genesisBlockFile.operationCount,
+      blockBlobId: genesisBlockBlobId,
+      blockHash: this.computeBlockHash(genesisBlockFile),
+      previousBlockHash: '', // No previous block for genesis
+    };
 
     this.file = {
       ...this.file,
-      // Copy existing network info and continuity proof
-      epochs: [...previousMetadata.epochs], // Will be updated in withNewEpoch
+      latestBlockFileBlobId: genesisBlockBlobId,
+      latestBlock: genesisBlockFile.block,
+      latestVaultMapRoot: genesisBlockFile.newVaultMapRoot,
+      latestZkUsdMapRoot: genesisBlockFile.newZkUsdMapRoot,
+      totalOperations: genesisBlockFile.operationCount,
+      blocks: [genesisBlockMetadata],
       continuityProof: {
-        epochRootChain: [...previousMetadata.continuityProof.epochRootChain],
+        blockRootChain: [genesisBlockMetadata.blockHash],
       },
     };
     return this;
   }
 
-  withNewEpoch(newEpochFile: EpochFile, newEpochBlobId: string): this {
-    // Create epoch metadata for the new epoch
-    const epochMetadata: EpochMetadata = {
-      epoch: newEpochFile.epoch,
-      vaultMapRoot: newEpochFile.newVaultMapRoot,
-      zkUsdMapRoot: newEpochFile.newZkUsdMapRoot,
-      timestamp: newEpochFile.timestamp,
-      operationCount: newEpochFile.operationCount,
-      epochBlobId: newEpochBlobId,
-      epochHash: this.computeEpochHash(newEpochFile),
-      previousEpochHash: this.getPreviousEpochHash(),
+  withPreviousMetadata(previousMetadata: MetadataFile): this {
+    this.initializeFile(FileType.METADATA, previousMetadata.version);
+
+    this.file = {
+      ...this.file,
+      blocks: [...previousMetadata.blocks],
+      continuityProof: {
+        blockRootChain: [...previousMetadata.continuityProof.blockRootChain],
+      },
+      latestCheckpointFileBlobId: previousMetadata.latestCheckpointFileBlobId,
+      latestCheckpointBlock: previousMetadata.latestCheckpointBlock,
+    };
+    return this;
+  }
+
+  withNewBlock(newBlockFile: BlockFile, newBlockBlobId: string): this {
+    const blockMetadata: BlockMetadata = {
+      block: newBlockFile.block,
+      vaultMapRoot: newBlockFile.newVaultMapRoot,
+      zkUsdMapRoot: newBlockFile.newZkUsdMapRoot,
+      operationCount: newBlockFile.operationCount,
+      blockBlobId: newBlockBlobId,
+      blockHash: this.computeBlockHash(newBlockFile),
+      previousBlockHash: this.getPreviousBlockHash(),
     };
 
-    // Update epochs list (add new epoch at the beginning, keep most recent first)
-    const updatedEpochs = [epochMetadata, ...(this.file.epochs || [])];
-
-    // Update continuity proof with new epoch root
+    const updatedBlocks = [blockMetadata, ...(this.file.blocks || [])];
     const updatedRootChain = [
-      epochMetadata.epochHash,
-      ...(this.file.continuityProof?.epochRootChain || []),
+      blockMetadata.blockHash,
+      ...(this.file.continuityProof?.blockRootChain || []),
     ];
 
     this.file = {
       ...this.file,
-      latestEpochFileBlobId: newEpochBlobId,
-      latestEpoch: newEpochFile.epoch,
-      latestVaultMapRoot: newEpochFile.newVaultMapRoot,
-      latestZkUsdMapRoot: newEpochFile.newZkUsdMapRoot,
+      latestBlockFileBlobId: newBlockBlobId,
+      latestBlock: newBlockFile.block,
+      latestVaultMapRoot: newBlockFile.newVaultMapRoot,
+      latestZkUsdMapRoot: newBlockFile.newZkUsdMapRoot,
       totalOperations:
-        (this.file.totalOperations || 0) + newEpochFile.operationCount,
-      epochs: updatedEpochs,
+        (this.file.totalOperations || 0) + newBlockFile.operationCount,
+      blocks: updatedBlocks,
       continuityProof: {
-        epochRootChain: updatedRootChain,
+        blockRootChain: updatedRootChain,
       },
     };
+    return this;
+  }
+
+  withCheckpoint(checkpointBlobId?: string, checkpointBlock?: number): this {
+    if (checkpointBlobId) {
+      this.file = {
+        ...this.file,
+        latestCheckpointFileBlobId: checkpointBlobId,
+        latestCheckpointBlock: checkpointBlock,
+      };
+    }
     return this;
   }
 
@@ -78,29 +133,27 @@ export class MetadataFileBuilder extends BaseFileBuilder<MetadataFile> {
     return [
       'version',
       'fileType',
-      'timestamp',
-      'latestEpochFileBlobId',
-      'latestEpoch',
-      'epochs',
+      'latestBlockFileBlobId',
+      'latestBlock',
+      'blocks',
     ];
   }
 
-  private computeEpochHash(epochFile: EpochFile): string {
-    // Create a deterministic hash of the epoch file content
+  private computeBlockHash(blockFile: BlockFile): string {
     const hashContent: Field[] = [
-      Field(epochFile.epoch),
-      Field(epochFile.newVaultMapRoot),
-      Field(epochFile.newZkUsdMapRoot),
-      Field(epochFile.operationCount),
+      Field(blockFile.block),
+      Field(blockFile.newVaultMapRoot),
+      Field(blockFile.newZkUsdMapRoot),
+      Field(blockFile.operationCount),
     ];
 
     return Poseidon.hash(hashContent).toString();
   }
 
-  private getPreviousEpochHash(): string {
-    if (this.file.epochs && this.file.epochs.length > 0) {
-      return this.file.epochs[0].epochHash;
+  private getPreviousBlockHash(): string {
+    if (this.file.blocks && this.file.blocks.length > 0) {
+      return this.file.blocks[0].blockHash;
     }
-    return ''; // Genesis epoch
+    return '';
   }
 }

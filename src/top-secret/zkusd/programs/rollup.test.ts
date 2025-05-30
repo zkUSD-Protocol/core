@@ -11,8 +11,8 @@ import {
 
 import { ZkUsdRollup } from './rollup.js';
 import { ZkUsdState } from '../data/state.js';
-import { VaultMap } from '../data/vault-map.js';
-import { ZkUsdMap } from '../data/zkusd-map.js';
+import { VaultMap } from '../data/maps/vault-map.js';
+import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 
 import {
   CreateVaultIntent,
@@ -60,9 +60,9 @@ describe('ZkUsdRollup – happy‑path integration tests', () => {
   // Program compilation can be slow; build once for the whole file ----------
   before(async () => {
     await initializeBindings();
-    await CreateVaultIntent.compile()
-    await DepositIntent.compile()
-    await ZkUsdRollup.compile()
+    await CreateVaultIntent.compile();
+    await DepositIntent.compile();
+    await ZkUsdRollup.compile();
   });
 
   /**

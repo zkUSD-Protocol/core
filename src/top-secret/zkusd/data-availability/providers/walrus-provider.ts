@@ -1,23 +1,12 @@
 import { saveToWalrus, readFromWalrus } from '../utils/walrus.js';
-
-export interface StorageProvider {
-  store(data: string, metadata?: StorageMetadata): Promise<string>;
-  retrieve(blobId: string): Promise<string>;
-  getUrl(blobId: string): Promise<string>;
-}
-
-export interface StorageMetadata {
-  numEpochs?: number;
-  address?: string;
-  contentType?: string;
-}
+import { StorageMetadata, StorageProvider } from './storage-provider.js';
 
 export class WalrusProvider implements StorageProvider {
-  private readonly defaultEpochs: number;
+  private readonly defaultBlocks: number;
   private readonly defaultAddress?: string;
 
-  constructor(options?: { defaultEpochs?: number; defaultAddress?: string }) {
-    this.defaultEpochs = options?.defaultEpochs ?? 2;
+  constructor(options?: { defaultBlocks?: number; defaultAddress?: string }) {
+    this.defaultBlocks = options?.defaultBlocks ?? 2;
     this.defaultAddress = options?.defaultAddress;
   }
 
@@ -26,7 +15,7 @@ export class WalrusProvider implements StorageProvider {
       const blobId = await saveToWalrus({
         data,
         address: metadata?.address ?? this.defaultAddress,
-        numEpochs: metadata?.numEpochs ?? this.defaultEpochs,
+        numBlocks: metadata?.numBlocks ?? this.defaultBlocks,
       });
 
       if (!blobId) {
@@ -41,7 +30,7 @@ export class WalrusProvider implements StorageProvider {
     }
   }
 
-  async retrieve(blobId: string): Promise<string> {
+  async retrieve(blobId: string, metadata?: StorageMetadata): Promise<string> {
     try {
       const data = await readFromWalrus({ blobId });
 
@@ -59,7 +48,7 @@ export class WalrusProvider implements StorageProvider {
     }
   }
 
-  async getUrl(blobId: string): Promise<string> {
+  async getUrl(blobId: string, metadata?: StorageMetadata): Promise<string> {
     try {
       // Import your existing getWalrusUrl function
       const { getWalrusUrl } = await import('../utils/walrus.js');

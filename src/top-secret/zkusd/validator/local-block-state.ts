@@ -1,18 +1,17 @@
-import { StateRoots, FullState } from './epoch-state.js';
+import { StateRoots, FullState } from './block-state.js';
 import { IntentMapOperation } from './map-operation.js';
 
 export interface LocalStateProxy {
-  
   setState(state: FullState): Promise<void>;
 
   useState(): Promise<FullState>;
-  
+
   stateRoots(): Promise<StateRoots>;
 
   checkStoredRoots(StateRoots: StateRoots): Promise<boolean>;
 
   applyIntentOperations(
-    finalizedEpochOperations: IntentMapOperation[]
+    finalizedBlockOperations: IntentMapOperation[]
   ): Promise<void>;
 
   rootsEqual(StateRoots: StateRoots): Promise<boolean>;
@@ -20,23 +19,23 @@ export interface LocalStateProxy {
 
 export class InMemoryStateProxy implements LocalStateProxy {
   private _state: FullState;
-  private _epochStateRoot: StateRoots;
+  private _blockStateRoot: StateRoots;
 
   constructor(initialState: FullState) {
     this._state = initialState;
-    this._epochStateRoot = initialState.roots();
+    this._blockStateRoot = initialState.roots();
   }
 
   async stateRoots(): Promise<StateRoots> {
-    return this._epochStateRoot;
+    return this._blockStateRoot;
   }
 
   async checkStoredRoots(StateRoots: StateRoots): Promise<boolean> {
     return (
-      this._epochStateRoot.vaultMapRoot
+      this._blockStateRoot.vaultMapRoot
         .equals(StateRoots.vaultMapRoot)
         .toBoolean() &&
-      this._epochStateRoot.zkUsdMapRoot
+      this._blockStateRoot.zkUsdMapRoot
         .equals(StateRoots.zkUsdMapRoot)
         .toBoolean()
     );
@@ -44,7 +43,7 @@ export class InMemoryStateProxy implements LocalStateProxy {
 
   async setState(state: FullState): Promise<void> {
     this._state = state;
-    this._epochStateRoot = state.roots();
+    this._blockStateRoot = state.roots();
   }
 
   async useState(): Promise<FullState> {
@@ -52,18 +51,18 @@ export class InMemoryStateProxy implements LocalStateProxy {
   }
 
   async applyIntentOperations(
-    finalizedEpochOperations: IntentMapOperation[]
+    finalizedBlockOperations: IntentMapOperation[]
   ): Promise<void> {
-    this._state.applyMapOperations(...finalizedEpochOperations);
-    this._epochStateRoot = this._state.roots();
+    this._state.applyMapOperations(...finalizedBlockOperations);
+    this._blockStateRoot = this._state.roots();
   }
 
   async rootsEqual(StateRoots: StateRoots): Promise<boolean> {
     return (
-      this._epochStateRoot.vaultMapRoot
+      this._blockStateRoot.vaultMapRoot
         .equals(StateRoots.vaultMapRoot)
         .toBoolean() &&
-      this._epochStateRoot.zkUsdMapRoot
+      this._blockStateRoot.zkUsdMapRoot
         .equals(StateRoots.zkUsdMapRoot)
         .toBoolean()
     );

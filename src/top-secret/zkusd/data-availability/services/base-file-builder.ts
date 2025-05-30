@@ -1,9 +1,9 @@
-import { WalrusFile, WalrusFileType } from '../types/types.js';
+import { File, FileType } from '../types/types.js';
 
-export abstract class BaseFileBuilder<T extends WalrusFile> {
+export abstract class BaseFileBuilder<T extends File> {
   protected file: Partial<T> = {};
 
-  protected initializeFile(fileType: WalrusFileType, version: string): this {
+  protected initializeFile(fileType: FileType, version: string): this {
     this.file = {
       ...this.file,
       version,

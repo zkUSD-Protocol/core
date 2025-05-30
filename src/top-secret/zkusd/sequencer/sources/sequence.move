@@ -1,411 +1,379 @@
-#[allow(unused_field, unused_const)]
-module zkusd::sequence;
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
-use std::string::String;
-use sui::bcs;
-use sui::clock::{Self, Clock};
-use sui::event;
-use sui::hash;
-use sui::table::{Self, Table};
+#[allow(unused_use)]
+module bridge::committee;
 
-const EPOCH_DURATION_MS: u64 = 100000; // 100 seconds in milliseconds
+use bridge::crypto;
+use bridge::message::{Self, Blocklist, BridgeMessage};
+use sui::ecdsa_k1;
+use sui::event::emit;
+use sui::vec_map::{Self, VecMap};
+use sui::vec_set;
+use sui_system::sui_system::SuiSystemState;
 
-// Error codes
-const E_EPOCH_NOT_ACTIVE: u64 = 1;
-const E_EPOCH_NOT_ENDED: u64 = 2;
-const E_NOT_VALIDATOR: u64 = 3;
-const E_INVALID_STATE_ROOT: u64 = 4;
-const E_EPOCH_ALREADY_ENDED: u64 = 5;
-const E_EPOCH_STILL_ACTIVE: u64 = 6;
+const ESignatureBelowThreshold: u64 = 0;
+const EDuplicatedSignature: u64 = 1;
+const EInvalidSignature: u64 = 2;
+const ENotSystemAddress: u64 = 3;
+const EValidatorBlocklistContainsUnknownKey: u64 = 4;
+const ESenderNotActiveValidator: u64 = 5;
+const EInvalidPubkeyLength: u64 = 6;
+const ECommitteeAlreadyInitiated: u64 = 7;
+const EDuplicatePubkey: u64 = 8;
+const ESenderIsNotInBridgeCommittee: u64 = 9;
 
-/// Epoch states
-const EPOCH_STATE_ACTIVE: u8 = 0;
-const EPOCH_STATE_ENDED: u8 = 1;
-const EPOCH_STATE_WAITING_CONSENSUS: u8 = 2;
+const SUI_MESSAGE_PREFIX: vector<u8> = b"SUI_BRIDGE_MESSAGE";
 
-/// Intent submitted by users
-public struct Intent has key {
-  id: UID,
-  intent_type: u8,
-  intent_blob_id: String,
-  vault_map_root: String,
-  zkusd_map_root: String,
-  created_at: u64,
+const ECDSA_COMPRESSED_PUBKEY_LENGTH: u64 = 33;
+
+//////////////////////////////////////////////////////
+// Types
+//
+
+public struct BlocklistValidatorEvent has copy, drop {
+  blocklisted: bool,
+  public_keys: vector<vector<u8>>,
 }
 
-/// Main sequencer for ordered intent processing
-public struct IntentSequencer has key {
-  id: UID,
-  sequenced_intents: vector<ID>,
-  current_intent_sequence: u64,
-  last_epoch_time: u64,
-  last_epoch_end_sequence: u64,
-  current_epoch_number: u64,
-  epochs: Table<u64, ID>, // epoch_number -> Epoch object ID
-  epoch_ids: vector<ID>, // All epoch IDs in order
-  current_epoch_state: u8, // EPOCH_STATE_*
-  accepting_intents: bool, // Whether to accept new intents
+public struct BridgeCommittee has store {
+  // commitee pub key and weight
+  members: VecMap<vector<u8>, CommitteeMember>,
+  // Committee member registrations for the next committee creation.
+  member_registrations: VecMap<address, CommitteeMemberRegistration>,
+  // Epoch when the current committee was updated,
+  // the voting power for each of the committee members are snapshot from this block.
+  // This is mainly for verification/auditing purposes, it might not be useful for bridge operations.
+  last_committee_update_block: u64,
 }
 
-/// Epoch structure to track intent ranges
-public struct Epoch has key {
-  id: UID,
-  epoch_number: u64,
-  start_intent_sequence: u64,
-  end_intent_sequence: Option<u64>,
-  start_vault_map_root: String, //hash of the vault map at the moment of the epoch start
-  start_zkusd_map_root: String, //hash of the zkusd map at the moment of the epoch start
-  end_vault_map_root: Option<String>, //hash of the vault map at the moment of the epoch end
-  end_zkusd_map_root: Option<String>, //hash of the zkusd map at the moment of the epoch end
-  intents_hash: Option<vector<u8>>,
-  created_at: u64,
-  ended_at: Option<u64>,
-  epoch_state: u8, // EPOCH_STATE_*
-  epoch_blob_id: Option<String>,
-  metadata_blob_id: Option<String>,
+public struct CommitteeUpdateEvent has copy, drop {
+  // commitee pub key and weight
+  members: VecMap<vector<u8>, CommitteeMember>,
+  stake_participation_percentage: u64,
 }
 
-/// Registry of authorized validators
-public struct ValidatorRegistry has key {
-  id: UID,
-  validators: vector<address>,
-  admin: address,
+public struct CommitteeMemberUrlUpdateEvent has copy, drop {
+  member: vector<u8>,
+  new_url: vector<u8>,
 }
 
-/// Event emitted when new intent is created
-public struct IntentCreatedEvent has copy, drop {
-  intent_id: ID,
-  intent_type: u8,
-  intent_blob_id: String,
-  vault_map_root: String,
-  zkusd_map_root: String,
-  sequence: u64,
-  created_at: u64,
+public struct CommitteeMember has copy, drop, store {
+  /// The Sui Address of the validator
+  sui_address: address,
+  /// The public key bytes of the bridge key
+  bridge_pubkey_bytes: vector<u8>,
+  /// Voting power, values are voting power in the scale of 10000.
+  voting_power: u64,
+  /// The HTTP REST URL the member's node listens to
+  /// it looks like b'https://127.0.0.1:9191'
+  http_rest_url: vector<u8>,
+  /// If this member is blocklisted
+  blocklisted: bool,
 }
 
-public struct EpochEndedEvent has copy, drop {
-  epoch_id: ID,
-  epoch_number: u64,
-  start_intent_sequence: u64,
-  end_intent_sequence: u64,
-  intents_hash: vector<u8>,
-  ended_at: u64,
+public struct CommitteeMemberRegistration has copy, drop, store {
+  /// The Sui Address of the validator
+  sui_address: address,
+  /// The public key bytes of the bridge key
+  bridge_pubkey_bytes: vector<u8>,
+  /// The HTTP REST URL the member's node listens to
+  /// it looks like b'https://127.0.0.1:9191'
+  http_rest_url: vector<u8>,
 }
 
-public struct EpochStartedEvent has copy, drop {
-  epoch_id: ID,
-  epoch_number: u64,
-  start_intent_sequence: u64,
-  start_vault_map_root: String,
-  start_zkusd_map_root: String,
-  created_at: u64,
-}
+//////////////////////////////////////////////////////
+// Public functions
+//
 
-public struct EpochFinalizedEvent has copy, drop {
-  epoch_id: ID,
-  epoch_number: u64,
-  end_vault_map_root: String,
-  end_zkusd_map_root: String,
-  epoch_blob_id: String,
-  metadata_blob_id: String,
-  validator: address,
-  finalized_at: u64,
-}
-
-/// Initialize the intent queue system and validator registry (called once)
-fun init(ctx: &mut TxContext) {
-  let sender = tx_context::sender(ctx);
-
-  // Create validator registry with admin as first validator
-  let registry = ValidatorRegistry {
-    id: object::new(ctx),
-    validators: vector[sender], // Admin is the first validator
-    admin: sender,
-  };
-
-  // Create sequencer - starts without an active epoch
-  let sequencer = IntentSequencer {
-    id: object::new(ctx),
-    sequenced_intents: vector[],
-    current_intent_sequence: 0,
-    last_epoch_time: 0,
-    last_epoch_end_sequence: 0,
-    current_epoch_number: 0,
-    epochs: table::new(ctx),
-    epoch_ids: vector[],
-    current_epoch_state: EPOCH_STATE_ENDED, // Start in ended state
-    accepting_intents: false, // Don't accept intents until first epoch is started
-  };
-
-  // Share both objects
-  transfer::share_object(registry);
-  transfer::share_object(sequencer);
-}
-
-/// Create a new intent and add to queue
-public fun create_intent(
-  sequencer: &mut IntentSequencer,
-  intent_type: u8,
-  intent_blob_id: String,
-  vault_map_root: String,
-  zkusd_map_root: String,
-  clock: &Clock,
-  ctx: &mut TxContext,
+public fun verify_signatures(
+  self: &BridgeCommittee,
+  message: BridgeMessage,
+  signatures: vector<vector<u8>>,
 ) {
-  // Check if we're accepting intents
-  assert!(sequencer.accepting_intents, E_EPOCH_NOT_ACTIVE);
-  assert!(sequencer.current_epoch_state == EPOCH_STATE_ACTIVE, E_EPOCH_NOT_ACTIVE);
+  let (mut i, signature_counts) = (0, vector::length(&signatures));
+  let mut seen_pub_key = vec_set::empty<vector<u8>>();
+  let required_voting_power = message.required_voting_power();
+  // add prefix to the message bytes
+  let mut message_bytes = SUI_MESSAGE_PREFIX;
+  message_bytes.append(message.serialize_message());
 
-  let intent_id = object::new(ctx);
-  let intent_id_copy = object::uid_to_inner(&intent_id);
-  let current_time = clock::timestamp_ms(clock);
+  let mut threshold = 0;
+  while (i < signature_counts) {
+    let pubkey = ecdsa_k1::secp256k1_ecrecover(&signatures[i], &message_bytes, 0);
 
-  let intent = Intent {
-    id: intent_id,
-    intent_type,
-    intent_blob_id,
-    vault_map_root,
-    zkusd_map_root,
-    created_at: current_time,
-  };
+    // check duplicate
+    // and make sure pub key is part of the committee
+    assert!(!seen_pub_key.contains(&pubkey), EDuplicatedSignature);
+    assert!(self.members.contains(&pubkey), EInvalidSignature);
 
-  // Add intent to sequencer
-  vector::push_back(&mut sequencer.sequenced_intents, intent_id_copy);
-  sequencer.current_intent_sequence = sequencer.current_intent_sequence + 1;
-
-  // Check if we need to end the epoch (duration has passed)
-  let should_end_epoch = current_time >= sequencer.last_epoch_time + EPOCH_DURATION_MS;
-
-  if (should_end_epoch) {
-    end_epoch_internal(sequencer, current_time);
-  };
-
-  // Emit event for validators
-  event::emit(IntentCreatedEvent {
-    intent_id: intent_id_copy,
-    intent_type,
-    vault_map_root,
-    zkusd_map_root,
-    intent_blob_id,
-    sequence: sequencer.current_intent_sequence,
-    created_at: current_time,
-  });
-
-  // Store the intent in global storage
-  transfer::share_object(intent);
-}
-
-/// Finalize current epoch and start new epoch (validator only)
-public fun finalize_and_start_epoch(
-  sequencer: &mut IntentSequencer,
-  current_epoch: &mut Epoch,
-  registry: &ValidatorRegistry,
-  consensus_vault_map_root: String,
-  consensus_zkusd_map_root: String,
-  epoch_blob_id: String,
-  metadata_blob_id: String,
-  clock: &Clock,
-  ctx: &mut TxContext,
-) {
-  let sender = tx_context::sender(ctx);
-  assert!(vector::contains(&registry.validators, &sender), E_NOT_VALIDATOR);
-  assert!(current_epoch.epoch_state == EPOCH_STATE_ACTIVE, E_EPOCH_NOT_ENDED);
-  assert!(sequencer.current_epoch_state == EPOCH_STATE_ENDED, E_EPOCH_STILL_ACTIVE);
-
-  let current_time = clock::timestamp_ms(clock);
-  let start_sequence = current_epoch.start_intent_sequence;
-  let end_sequence = sequencer.current_intent_sequence - 1;
-  let intents_hash = compute_epoch_intents_hash(sequencer, start_sequence, end_sequence);
-
-  // Finalize current epoch
-  current_epoch.end_intent_sequence = option::some(end_sequence);
-  current_epoch.intents_hash = option::some(intents_hash);
-  current_epoch.end_vault_map_root = option::some(consensus_vault_map_root);
-  current_epoch.end_zkusd_map_root = option::some(consensus_zkusd_map_root);
-  current_epoch.ended_at = option::some(current_time);
-  current_epoch.epoch_state = EPOCH_STATE_WAITING_CONSENSUS;
-  current_epoch.epoch_blob_id = option::some(epoch_blob_id);
-  current_epoch.metadata_blob_id = option::some(metadata_blob_id);
-
-  // Emit finalization event
-  event::emit(EpochFinalizedEvent {
-    epoch_id: object::id(current_epoch),
-    epoch_number: current_epoch.epoch_number,
-    end_vault_map_root: consensus_vault_map_root,
-    end_zkusd_map_root: consensus_zkusd_map_root,
-    epoch_blob_id: epoch_blob_id,
-    metadata_blob_id: metadata_blob_id,
-    validator: sender,
-    finalized_at: current_time,
-  });
-
-  // Start new epoch immediately
-  sequencer.current_epoch_number = sequencer.current_epoch_number + 1;
-
-  let new_epoch_id = object::new(ctx);
-  let new_epoch_id_copy = object::uid_to_inner(&new_epoch_id);
-
-  let new_epoch = Epoch {
-    id: new_epoch_id,
-    epoch_number: sequencer.current_epoch_number,
-    start_intent_sequence: sequencer.current_intent_sequence,
-    end_intent_sequence: option::none(),
-    start_vault_map_root: consensus_vault_map_root, // Previous epoch's end state becomes new start state
-    start_zkusd_map_root: consensus_zkusd_map_root,
-    end_vault_map_root: option::none(),
-    end_zkusd_map_root: option::none(),
-    intents_hash: option::none(),
-    created_at: current_time,
-    ended_at: option::none(),
-    epoch_state: EPOCH_STATE_ACTIVE,
-    epoch_blob_id: option::none(),
-    metadata_blob_id: option::none(),
-  };
-
-  // Store new epoch
-  table::add(&mut sequencer.epochs, sequencer.current_epoch_number, new_epoch_id_copy);
-  vector::push_back(&mut sequencer.epoch_ids, new_epoch_id_copy);
-
-  // Update sequencer state for new epoch
-  sequencer.current_epoch_state = EPOCH_STATE_ACTIVE;
-  sequencer.accepting_intents = true;
-  sequencer.last_epoch_time = current_time;
-
-  // Emit new epoch started event
-  event::emit(EpochStartedEvent {
-    epoch_id: new_epoch_id_copy,
-    epoch_number: sequencer.current_epoch_number,
-    start_intent_sequence: sequencer.current_intent_sequence,
-    start_vault_map_root: consensus_vault_map_root,
-    start_zkusd_map_root: consensus_zkusd_map_root,
-    created_at: current_time,
-  });
-
-  // Store new epoch as shared object
-  transfer::share_object(new_epoch);
-}
-
-/// Internal function to end the current epoch
-fun end_epoch_internal(sequencer: &mut IntentSequencer, current_time: u64) {
-  assert!(sequencer.current_epoch_state == EPOCH_STATE_ACTIVE, E_EPOCH_ALREADY_ENDED);
-
-  // Get current epoch
-  let epoch_id = *table::borrow(&sequencer.epochs, sequencer.current_epoch_number);
-
-  // We need to get the epoch object to update it, but since it's shared we can't do that here
-  // Instead, we'll update the sequencer state and emit an event
-  // The epoch will be updated in the finalize_epoch function
-
-  let start_sequence = sequencer.last_epoch_end_sequence;
-  let end_sequence = sequencer.current_intent_sequence - 1;
-
-  let intents_hash = compute_epoch_intents_hash(sequencer, start_sequence, end_sequence);
-
-  // Update sequencer state
-  sequencer.current_epoch_state = EPOCH_STATE_ENDED;
-  sequencer.accepting_intents = false; // Stop accepting intents
-  sequencer.last_epoch_end_sequence = sequencer.current_intent_sequence;
-
-  // Emit epoch ended event
-  event::emit(EpochEndedEvent {
-    epoch_id,
-    epoch_number: sequencer.current_epoch_number,
-    start_intent_sequence: start_sequence,
-    end_intent_sequence: end_sequence,
-    intents_hash,
-    ended_at: current_time,
-  });
-}
-
-/// Compute deterministic hash of all intent IDs in an epoch
-fun compute_epoch_intents_hash(
-  sequencer: &IntentSequencer,
-  start_sequence: u64,
-  end_sequence: u64,
-): vector<u8> {
-  let mut data_to_hash = vector::empty<u8>();
-
-  // Add epoch boundaries to the hash for additional security
-  let start_bytes = bcs::to_bytes(&start_sequence);
-  let end_bytes = bcs::to_bytes(&end_sequence);
-  vector::append(&mut data_to_hash, start_bytes);
-  vector::append(&mut data_to_hash, end_bytes);
-
-  // Add each intent ID in sequence order
-  let mut i = start_sequence;
-  while (i <= end_sequence && i < vector::length(&sequencer.sequenced_intents)) {
-    let intent_id = *vector::borrow(&sequencer.sequenced_intents, i);
-    let intent_id_bytes = bcs::to_bytes(&intent_id);
-    vector::append(&mut data_to_hash, intent_id_bytes);
+    // get committee signature weight and check pubkey is part of the committee
+    let member = &self.members[&pubkey];
+    if (!member.blocklisted) {
+      threshold = threshold + member.voting_power;
+    };
+    seen_pub_key.insert(pubkey);
     i = i + 1;
   };
 
-  hash::keccak256(&data_to_hash)
+  assert!(threshold >= required_voting_power, ESignatureBelowThreshold);
 }
 
-/// Verify that a given set of intents matches the epoch hash
-public fun verify_epoch_intents(epoch: &Epoch, intent_ids: vector<ID>): bool {
-  if (option::is_none(&epoch.end_intent_sequence) || option::is_none(&epoch.intents_hash)) {
-    return false
+//////////////////////////////////////////////////////
+// Internal functions
+//
+
+public(package) fun create(ctx: &TxContext): BridgeCommittee {
+  assert!(tx_context::sender(ctx) == @0x0, ENotSystemAddress);
+  BridgeCommittee {
+    members: vec_map::empty(),
+    member_registrations: vec_map::empty(),
+    last_committee_update_block: 0,
+  }
+}
+
+public(package) fun register(
+  self: &mut BridgeCommittee,
+  system_state: &mut SuiSystemState,
+  bridge_pubkey_bytes: vector<u8>,
+  http_rest_url: vector<u8>,
+  ctx: &TxContext,
+) {
+  // We disallow registration after committee initiated in v1
+  assert!(self.members.is_empty(), ECommitteeAlreadyInitiated);
+  // Ensure pubkey is valid
+  assert!(bridge_pubkey_bytes.length() == ECDSA_COMPRESSED_PUBKEY_LENGTH, EInvalidPubkeyLength);
+  // sender must be the same sender that created the validator object, this is to prevent DDoS from non-validator actor.
+  let sender = ctx.sender();
+  let validators = system_state.active_validator_addresses();
+
+  assert!(validators.contains(&sender), ESenderNotActiveValidator);
+  // Sender is active validator, record the registration
+
+  // In case validator need to update the info
+  let registration = if (self.member_registrations.contains(&sender)) {
+    let registration = &mut self.member_registrations[&sender];
+    registration.http_rest_url = http_rest_url;
+    registration.bridge_pubkey_bytes = bridge_pubkey_bytes;
+    *registration
+  } else {
+    let registration = CommitteeMemberRegistration {
+      sui_address: sender,
+      bridge_pubkey_bytes,
+      http_rest_url,
+    };
+    self.member_registrations.insert(sender, registration);
+    registration
   };
 
-  let end_sequence = *option::borrow(&epoch.end_intent_sequence);
-  let expected_hash = *option::borrow(&epoch.intents_hash);
+  // check uniqueness of the bridge pubkey.
+  // `try_create_next_committee` will abort if bridge_pubkey_bytes are not unique and
+  // that will fail the end of block transaction (possibly "forever", well, we
+  // need to deploy proper validator changes to stop end of block from failing).
+  check_uniqueness_bridge_keys(self, bridge_pubkey_bytes);
 
-  let mut data_to_hash = vector::empty<u8>();
+  emit(registration)
+}
 
-  // Add epoch boundaries
-  let start_bytes = bcs::to_bytes(&epoch.start_intent_sequence);
-  let end_bytes = bcs::to_bytes(&end_sequence);
-  vector::append(&mut data_to_hash, start_bytes);
-  vector::append(&mut data_to_hash, end_bytes);
-
-  // Add intent IDs
+// This method will try to create the next committee using the registration and system state,
+// if the total stake fails to meet the minimum required percentage, it will skip the update.
+// This is to ensure we don't fail the end of block transaction.
+public(package) fun try_create_next_committee(
+  self: &mut BridgeCommittee,
+  active_validator_voting_power: VecMap<address, u64>,
+  min_stake_participation_percentage: u64,
+  ctx: &TxContext,
+) {
   let mut i = 0;
-  while (i < vector::length(&intent_ids)) {
-    let intent_id = *vector::borrow(&intent_ids, i);
-    let intent_id_bytes = bcs::to_bytes(&intent_id);
-    vector::append(&mut data_to_hash, intent_id_bytes);
+  let mut new_members = vec_map::empty();
+  let mut stake_participation_percentage = 0;
+
+  while (i < self.member_registrations.size()) {
+    // retrieve registration
+    let (_, registration) = self.member_registrations.get_entry_by_idx(i);
+    // Find validator stake amount from system state
+
+    // Process registration if it's active validator
+    let voting_power = active_validator_voting_power.try_get(&registration.sui_address);
+    if (voting_power.is_some()) {
+      let voting_power = voting_power.destroy_some();
+      stake_participation_percentage = stake_participation_percentage + voting_power;
+
+      let member = CommitteeMember {
+        sui_address: registration.sui_address,
+        bridge_pubkey_bytes: registration.bridge_pubkey_bytes,
+        voting_power: (voting_power as u64),
+        http_rest_url: registration.http_rest_url,
+        blocklisted: false,
+      };
+
+      new_members.insert(registration.bridge_pubkey_bytes, member)
+    };
+
     i = i + 1;
   };
 
-  let computed_hash = hash::keccak256(&data_to_hash);
-  computed_hash == expected_hash
+  // Make sure the new committee represent enough stakes, percentage are accurate to 2DP
+  if (stake_participation_percentage >= min_stake_participation_percentage) {
+    // Clear registrations
+    self.member_registrations = vec_map::empty();
+    // Store new committee info
+    self.members = new_members;
+    self.last_committee_update_block = ctx.block();
+
+    emit(CommitteeUpdateEvent {
+      members: new_members,
+      stake_participation_percentage,
+    })
+  }
 }
 
-/// Add validator to registry (admin only)
-public fun add_validator(registry: &mut ValidatorRegistry, validator: address, ctx: &TxContext) {
-  assert!(registry.admin == tx_context::sender(ctx), 0);
-  vector::push_back(&mut registry.validators, validator);
+// This function applys the blocklist to the committee members, we won't need to run this very often so this is not gas optimised.
+// TODO: add tests for this function
+public(package) fun execute_blocklist(self: &mut BridgeCommittee, blocklist: Blocklist) {
+  let blocklisted = blocklist.blocklist_type() != 1;
+  let eth_addresses = blocklist.blocklist_validator_addresses();
+  let list_len = eth_addresses.length();
+  let mut list_idx = 0;
+  let mut member_idx = 0;
+  let mut pub_keys = vector[];
+
+  while (list_idx < list_len) {
+    let target_address = &eth_addresses[list_idx];
+    let mut found = false;
+
+    while (member_idx < self.members.size()) {
+      let (pub_key, member) = self.members.get_entry_by_idx_mut(member_idx);
+      let eth_address = crypto::ecdsa_pub_key_to_eth_address(pub_key);
+
+      if (*target_address == eth_address) {
+        member.blocklisted = blocklisted;
+        pub_keys.push_back(*pub_key);
+        found = true;
+        member_idx = 0;
+        break
+      };
+
+      member_idx = member_idx + 1;
+    };
+
+    assert!(found, EValidatorBlocklistContainsUnknownKey);
+    list_idx = list_idx + 1;
+  };
+
+  emit(BlocklistValidatorEvent {
+    blocklisted,
+    public_keys: pub_keys,
+  })
 }
 
-/// Remove validator from registry (admin only)
-public fun remove_validator(registry: &mut ValidatorRegistry, validator: address, ctx: &TxContext) {
-  assert!(registry.admin == tx_context::sender(ctx), 0);
-  let (found, index) = vector::index_of(&registry.validators, &validator);
-  if (found) {
-    vector::remove(&mut registry.validators, index);
+public(package) fun committee_members(
+  self: &BridgeCommittee,
+): &VecMap<vector<u8>, CommitteeMember> {
+  &self.members
+}
+
+public(package) fun update_node_url(
+  self: &mut BridgeCommittee,
+  new_url: vector<u8>,
+  ctx: &TxContext,
+) {
+  let mut idx = 0;
+  while (idx < self.members.size()) {
+    let (_, member) = self.members.get_entry_by_idx_mut(idx);
+    if (member.sui_address == ctx.sender()) {
+      member.http_rest_url = new_url;
+      emit(CommitteeMemberUrlUpdateEvent {
+        member: member.bridge_pubkey_bytes,
+        new_url,
+      });
+      return
+    };
+    idx = idx + 1;
+  };
+  abort ESenderIsNotInBridgeCommittee
+}
+
+// Assert if `bridge_pubkey_bytes` is duplicated in `member_registrations`.
+// Dupicate keys would cause `try_create_next_committee` to fail and,
+// in consequence, an end of block transaction to fail (safe mode run).
+// This check will ensure the creation of the committee is correct.
+fun check_uniqueness_bridge_keys(self: &BridgeCommittee, bridge_pubkey_bytes: vector<u8>) {
+  let mut count = self.member_registrations.size();
+  // bridge_pubkey_bytes must be found once and once only
+  let mut bridge_key_found = false;
+  while (count > 0) {
+    count = count - 1;
+    let (_, registration) = self.member_registrations.get_entry_by_idx(count);
+    if (registration.bridge_pubkey_bytes == bridge_pubkey_bytes) {
+      assert!(!bridge_key_found, EDuplicatePubkey);
+      bridge_key_found = true; // bridge_pubkey_bytes found, we must not have another one
+    }
   };
 }
 
-/// Get current epoch state
-public fun get_epoch_state(sequencer: &IntentSequencer): u8 {
-  sequencer.current_epoch_state
+//////////////////////////////////////////////////////
+// Test functions
+//
+
+#[test_only]
+public(package) fun members(self: &BridgeCommittee): &VecMap<vector<u8>, CommitteeMember> {
+  &self.members
 }
 
-/// Check if sequencer is accepting intents
-public fun is_accepting_intents(sequencer: &IntentSequencer): bool {
-  sequencer.accepting_intents
+#[test_only]
+public(package) fun voting_power(member: &CommitteeMember): u64 {
+  member.voting_power
 }
 
-/// Get current epoch number
-public fun get_current_epoch_number(sequencer: &IntentSequencer): u64 {
-  sequencer.current_epoch_number
+#[test_only]
+public(package) fun http_rest_url(member: &CommitteeMember): vector<u8> {
+  member.http_rest_url
 }
 
-/// Get current sequence number
-public fun get_current_intent_sequence(sequencer: &IntentSequencer): u64 {
-  sequencer.current_intent_sequence
+#[test_only]
+public(package) fun member_registrations(
+  self: &BridgeCommittee,
+): &VecMap<address, CommitteeMemberRegistration> {
+  &self.member_registrations
 }
 
-/// Function to get the lastest epoch and metadata blob ids
+#[test_only]
+public(package) fun blocklisted(member: &CommitteeMember): bool {
+  member.blocklisted
+}
+
+#[test_only]
+public(package) fun bridge_pubkey_bytes(registration: &CommitteeMemberRegistration): &vector<u8> {
+  &registration.bridge_pubkey_bytes
+}
+
+#[test_only]
+public(package) fun make_bridge_committee(
+  members: VecMap<vector<u8>, CommitteeMember>,
+  member_registrations: VecMap<address, CommitteeMemberRegistration>,
+  last_committee_update_block: u64,
+): BridgeCommittee {
+  BridgeCommittee {
+    members,
+    member_registrations,
+    last_committee_update_block,
+  }
+}
+
+#[test_only]
+public(package) fun make_committee_member(
+  sui_address: address,
+  bridge_pubkey_bytes: vector<u8>,
+  voting_power: u64,
+  http_rest_url: vector<u8>,
+  blocklisted: bool,
+): CommitteeMember {
+  CommitteeMember {
+    sui_address,
+    bridge_pubkey_bytes,
+    voting_power,
+    http_rest_url,
+    blocklisted,
+  }
+}
