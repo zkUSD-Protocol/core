@@ -45,7 +45,7 @@ export class Validator {
   }
 
   async syncToBlockStart(finalizedStateMetadata?: StateCommitment): Promise<void> {
-    await this._dataAvail.syncToFinalizedState(
+    await this._dataAvail.syncViaMetadataBlob(
       {
         localStateProxy:this._finalizedStateProxy,
         metadataBlobId: finalizedStateMetadata ?
@@ -136,7 +136,7 @@ export class Validator {
       ) {
         // the computed state candidate does not match the finalized state
         // - fetch the state and update the local finalized state
-        await this._dataAvail.syncToFinalizedState({
+        await this._dataAvail.syncViaMetadataBlob({
           localStateProxy: this._finalizedStateProxy,
           metadataBlobId: blockFinalizedEvent.finalizedStateMetadata.stateStoreMetadata.metadataBlobId
         });

@@ -72,7 +72,7 @@ export class NonProvingStateComputer implements OptimisticStateComputer {
     // the proof is verified, double check the input state
     const intentProofHelper = new IntentProofHelper(this._blockState.systemParams);
     if (!intentProofHelper.rootsMatch(intentProof, this._blockState.roots())) {
-      console.warn(`Intent proof input state does not match block state: ${intentProofHelper.hash(intentProof)}`);
+      console.warn(`Intent proof input state does not match block state: ${IntentProofHelper.hash(intentProof)}`);
       return;
     }
 

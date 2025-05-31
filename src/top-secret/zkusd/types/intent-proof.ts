@@ -182,7 +182,7 @@ export class IntentProofHelper {
     return IntentProofHelper.intentStateRootsMatchBlock({intentStateRoots: r, blockStateRoots: block});
   }
 
-  hash(intent: IntentProof): string {
+  static hash(intent: IntentProof): string {
     return createHash('sha3-256')
       .update(JSON.stringify(intent.proof.toJSON()))
       .digest('hex');

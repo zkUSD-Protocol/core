@@ -140,7 +140,7 @@ describe('ZkUsd DA Tests', () => {
   });
 
   it('should sync the local state to the finalized state', async () => {
-    await client.syncToFinalizedState(
+    await client.syncViaMetadataBlob(
       {
         localStateProxy,
         metadataBlobId: finalizedState.stateStoreMetadata.metadataBlobId,
@@ -175,7 +175,7 @@ describe('ZkUsd DA Tests', () => {
         },
       };
 
-      await client.syncToFinalizedState(
+      await client.syncViaMetadataBlob(
         { localStateProxy,
           metadataBlobId: finalizedState.stateStoreMetadata.metadataBlobId
         }
@@ -204,7 +204,7 @@ describe('ZkUsd DA Tests', () => {
       metadataBlobId: 'mock-metadata-blob-id'
     };
 
-    await client.syncToFinalizedState(
+    await client.syncViaMetadataBlob(
       {localStateProxy,
         metadataBlobId: mockStoreMetadata.metadataBlobId
       }

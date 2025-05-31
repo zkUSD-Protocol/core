@@ -121,7 +121,7 @@ export class DataAvailClient implements DataAvailInterface {
     }
   }
 
-  async syncToFinalizedState(args:{
+  async syncViaMetadataBlob(args:{
     localStateProxy: LocalStateProxy,
     metadataBlobId: string
   }

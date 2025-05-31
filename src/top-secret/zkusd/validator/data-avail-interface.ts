@@ -27,7 +27,7 @@ export interface DataAvailInterface {
    * This function handles all the complexity of determining what needs to be synced
    * and applies the necessary operations to bring the local state up to date.
    */
-  syncToFinalizedState(args:{
+  syncViaMetadataBlob(args:{
     localStateProxy: LocalStateProxy,
     metadataBlobId: string,
   }
