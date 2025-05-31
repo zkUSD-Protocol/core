@@ -1,3 +1,4 @@
+import { IntentStateRoots } from "../types/intent-proof";
 import { StateRoots } from "./block-state";
 
 export type StateStoreMetadata = {
@@ -25,7 +26,7 @@ export interface IntentEvent {
   intentBlobId: string;
   /** State root to verify before fetching the associated intent data. */
   // TODO will intents with invalid state roots be even accepted by SUI contracts?
-  intentBlockStateRoots: StateRoots;
+  intentBlockStateRoots: IntentStateRoots;
   /** Sequence number of the intent. */
   intentSequence: number;
 }

@@ -3,6 +3,7 @@ import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import { Field } from 'o1js';
 import { UInt64, Bool, UInt8 } from 'o1js';
 import { IntentMapOperation } from './map-operation.js';
+import { ZkUsdState } from '../data/state.js';
 
 export type SystemParams = {
   validPriceBlockCount: UInt8;
@@ -115,5 +116,20 @@ export class FullState {
       this.vaultMap.clone() as VaultMap,
       this.zkUsdMap.clone() as ZkUsdMap
     );
+  }
+
+  toRollupProofState(): ZkUsdState {
+    return new ZkUsdState({
+      intentVaultMapRoot: this.vaultMap.root,
+      intentZkUsdMapRoot: this.zkUsdMap.root,
+      liveVaultMapRoot: this.vaultMap.root,
+      liveZkUsdMapRoot: this.zkUsdMap.root,
+      validPriceBlockCount: this.systemParams.validPriceBlockCount,
+      emergencyStop: this.systemParams.emergencyStop,
+      collateralRatio: this.systemParams.collateralRatio,
+      liquidationBonusRatio: this.systemParams.liquidationBonusRatio,
+      vaultDebtCeiling: this.systemParams.vaultDebtCeiling,
+      oraclesHash: this.systemParams.oraclesHash,
+    });
   }
 }

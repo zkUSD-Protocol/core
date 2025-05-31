@@ -7,8 +7,8 @@ import {
 import { LocalStateProxy } from './local-block-state.js';
 import { DataAvailInterface } from './data-avail-interface.js';
 import { stateRootsEqual } from './block-state.js';
-import { intentStateRootsMatchBlock } from '../types/intent-proof.js';
 import { OptimisticStateComputer } from './optimistic-state-computer.js';
+import { IntentProofHelper } from '../types/intent-proof.js';
 
 export interface ValidatorRecovery {}
 
@@ -160,12 +160,12 @@ export class Validator {
   }
 
   async processIntent(intentEvent: IntentEvent): Promise<void> {
-    // check if intent expected state is present
     try {
-      const validPreconditions = intentStateRootsMatchBlock(
-        intentEvent.intentBlockStateRoots,
-        (await this._finalizedStateProxy.getStateCommitment()).stateRoots
-      );
+      // check if intent expected state is present
+      const validPreconditions = IntentProofHelper.intentStateRootsMatchBlock({
+        intentStateRoots: intentEvent.intentBlockStateRoots,
+        blockStateRoots: await this._finalizedStateProxy.stateRoots()
+      });
 
       if (validPreconditions) {
         try {
