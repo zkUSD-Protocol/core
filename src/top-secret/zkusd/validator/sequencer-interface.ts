@@ -2,9 +2,9 @@ import { StateRoots } from "./block-state";
 
 export type StateStoreMetadata = {
   /** Handle to retrieve the metadata blob from DA. */
-  metadataBlobHandle: string;
+  metadataBlobId: string;
   /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */
-  blockBlobHandle: string;
+  blockBlobId: string;
 }
 
 export type StateCommitment = {
@@ -22,7 +22,7 @@ export type StateCommitment = {
 export interface IntentEvent {
   kind: 'intent';
   /** Handle to retrieve the intent blob from the data availability (DA) layer. */
-  intentBlobHandle: string;
+  intentBlobId: string;
   /** State root to verify before fetching the associated intent data. */
   // TODO will intents with invalid state roots be even accepted by SUI contracts?
   intentBlockStateRoots: StateRoots;
@@ -39,7 +39,7 @@ export interface BlockEndEvent {
   /** Timestamp of the block end - required for DA file creation */
   timestamp: number;
   /** Intents hash of the block, sha256 */
-  intentsHash: string;
+  intentsSHA256: string;
 }
 /**
  * Represents the finalization of an block.

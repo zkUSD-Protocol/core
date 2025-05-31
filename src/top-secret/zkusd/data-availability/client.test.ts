@@ -6,6 +6,7 @@ import { Bool, Field, UInt64, UInt8 } from 'o1js';
 import { DataAvailClient } from './client.js';
 import {
   FullState,
+  NextStateCandidate,
   stateRootsEqual,
   SystemParams,
 } from '../validator/block-state.js';
@@ -41,7 +42,7 @@ function generateRandomIntentMapOperation(): IntentMapOperation {
 }
 
 async function processLocalIntentsForNextBlock(
-  localStateProxy: InMemoryStateProxy,
+  localStateProxy: LocalStateProxy,
   numberOfIntents: number = 10
 ): Promise<{
   nextStateValidatedIntentOperations: IntentMapOperation[];
@@ -71,6 +72,7 @@ describe('ZkUsd DA Tests', () => {
     vaultDebtCeiling: UInt64.from(1_000_000e9),
     oraclesHash: Field.from(0),
   };
+  let genesisRoots: StateRoots;
   const genesisState = FullState.newGenesisState(systemParams);
   let localStateProxy: LocalStateProxy;
   let client: DataAvailClient;
@@ -85,105 +87,134 @@ describe('ZkUsd DA Tests', () => {
     });
 
     await client.storageProvider.cleanup!();
+
+    genesisRoots= {
+      vaultMapRoot: (new VaultMap()).root,
+      zkUsdMapRoot: (new ZkUsdMap()).root,
+    };
+
   });
 
-  // it('should initialize the data availability', async () => {
-  //   const blobIds = await client.initDA(localStateProxy);
+  it('should initialize the data availability', async () => {
+    const blobIds = await client.initDA(genesisRoots);
 
-  //   finalizedState = {
-  //     stateRoots: await localStateProxy.stateRoots(),
-  //     stateBlobHandle: blobIds.blockBlobId,
-  //     metadataBlobHandle: blobIds.metadataBlobId,
-  //   };
+    finalizedState = {
+      stateRoots: genesisRoots,
+      stateStoreMetadata: {
+        blockBlobId: blobIds.blockBlobId,
+        metadataBlobId: blobIds.metadataBlobId,
+      },
+    };
 
-  //   assert.ok(blobIds.blockBlobId);
-  //   assert.ok(blobIds.metadataBlobId);
-  // });
+    localStateProxy = new InMemoryStateProxy(genesisState, finalizedState.stateStoreMetadata);
 
-  // it('should publish an block update', async () => {
-  //   const { nextStateValidatedIntentOperations, nextStateRoots } =
-  //     await processLocalIntentsForNextBlock(localStateProxy);
+    assert.ok(blobIds.blockBlobId);
+    assert.ok(blobIds.metadataBlobId);
+  });
 
-  //   const blobIds = await client.publishBlockUpdate(
-  //     finalizedState,
-  //     nextStateValidatedIntentOperations,
-  //     nextStateRoots,
-  //     localStateProxy
-  //   );
+  it('should publish an block update', async () => {
+    const { nextStateValidatedIntentOperations, nextStateRoots } =
+      await processLocalIntentsForNextBlock(localStateProxy);
 
-  //   //This is the blockFinalizedEventState
-  //   finalizedState = {
-  //     stateRoots: nextStateRoots,
-  //     stateBlobHandle: blobIds.blockBlobId,
-  //     metadataBlobHandle: blobIds.metadataBlobId,
-  //   };
+    const blobIds = await client.publishBlockUpdate(
+      localStateProxy,
+      new NextStateCandidate(
+        nextStateRoots,
+        nextStateValidatedIntentOperations
+      )
+    );
 
-  //   //Now we need to update the localFinalizedState to the blockFinalizedEventState
+    //This is the blockFinalizedEventState
+    finalizedState = {
+      stateRoots: nextStateRoots,
+      stateStoreMetadata: {
+        blockBlobId: blobIds.blockBlobId,
+        metadataBlobId: blobIds.metadataBlobId,
+      },
+    };
 
-  //   assert.ok(blobIds.blockBlobId);
-  //   assert.ok(blobIds.metadataBlobId);
-  // });
+    //Now we need to update the localFinalizedState to the blockFinalizedEventState
 
-  // it('should sync the local state to the target metadata', async () => {
-  //   await client.syncToFinalizedState(
-  //     localStateProxy,
-  //     finalizedState.metadataBlobHandle
-  //   );
+    assert.ok(blobIds.blockBlobId);
+    assert.ok(blobIds.metadataBlobId);
+  });
 
-  //   const localState = await localStateProxy.useState();
-  //   assert.ok(
-  //     stateRootsEqual(localState.roots(), finalizedState.stateRoots),
-  //     'Local state roots do not match finalized state roots after initial sync'
-  //   );
-  // });
+  it('should sync the local state to the finalized state', async () => {
+    await client.syncToFinalizedState(
+      {
+        localStateProxy,
+        metadataBlobId: finalizedState.stateStoreMetadata.metadataBlobId,
+      }
+    );
 
-  // it('should publish a checkpoint after 10 blocks', async () => {
-  //   for (let i = 0; i < 10; i++) {
-  //     const { nextStateValidatedIntentOperations, nextStateRoots } =
-  //       await processLocalIntentsForNextBlock(localStateProxy);
+    const localState = await localStateProxy.useState();
+    assert.ok(
+      stateRootsEqual(localState.roots(), finalizedState.stateRoots),
+      'Local state roots do not match finalized state roots after initial sync'
+    );
+  });
 
-  //     const blobIds = await client.publishBlockUpdate(
-  //       finalizedState,
-  //       nextStateValidatedIntentOperations,
-  //       nextStateRoots,
-  //       localStateProxy
-  //     );
+  it('should publish a checkpoint after 10 blocks', async () => {
+    for (let i = 0; i < 10; i++) {
+      const { nextStateValidatedIntentOperations, nextStateRoots } =
+        await processLocalIntentsForNextBlock(localStateProxy);
 
-  //     finalizedState = {
-  //       stateRoots: nextStateRoots,
-  //       stateBlobHandle: blobIds.blockBlobId,
-  //       metadataBlobHandle: blobIds.metadataBlobId,
-  //     };
+      const blobIds = await client.publishBlockUpdate(
+        localStateProxy,
+        new NextStateCandidate(
+          nextStateRoots,
+          nextStateValidatedIntentOperations
+        )
+      );
 
-  //     await client.syncToFinalizedState(
-  //       localStateProxy,
-  //       finalizedState.metadataBlobHandle
-  //     );
+      finalizedState = {
+        stateRoots: nextStateRoots,
+        stateStoreMetadata: {
+          blockBlobId: blobIds.blockBlobId,
+          metadataBlobId: blobIds.metadataBlobId,
+        },
+      };
 
-  //     const localState = await localStateProxy.useState();
+      await client.syncToFinalizedState(
+        { localStateProxy,
+          metadataBlobId: finalizedState.stateStoreMetadata.metadataBlobId
+        }
+      );
 
-  //     assert.ok(
-  //       stateRootsEqual(localState.roots(), finalizedState.stateRoots),
-  //       `Local state roots do not match finalized state roots after ${i} blocks`
-  //     );
-  //   }
-  // });
+      const localState = await localStateProxy.useState();
 
-  // it('should sync the local state to the target metadata after a checkpoint', async () => {
-  //   //First we reset our local state to the genesis state
-  //   const freshState = FullState.newGenesisState(systemParams);
-  //   await localStateProxy.setState(freshState);
+      assert.ok(
+        stateRootsEqual(localState.roots(), finalizedState.stateRoots),
+        `Local state roots do not match finalized state roots after ${i} blocks`
+      );
+    }
+  });
 
-  //   await client.syncToFinalizedState(
-  //     localStateProxy,
-  //     finalizedState.metadataBlobHandle
-  //   );
+  it('should sync the local state to the target metadata after a checkpoint', async () => {
+    //First we reset our local state to the genesis state
+    const freshState = FullState.newGenesisState(systemParams);
+    const freshStateStoreMetadata = 
+    await localStateProxy.setState({
+      finalizedState: freshState,
+      finalizedStateStoreMetadata: finalizedState.stateStoreMetadata
+    });
 
-  //   const localState = await localStateProxy.useState();
+    const mockStoreMetadata = {
+      blockBlobId: 'mock-block-blob-id',
+      metadataBlobId: 'mock-metadata-blob-id'
+    };
 
-  //   assert.ok(
-  //     stateRootsEqual(localState.roots(), finalizedState.stateRoots),
-  //     'Local state roots do not match finalized state roots after sync'
-  //   );
-  // });
+    await client.syncToFinalizedState(
+      {localStateProxy,
+        metadataBlobId: mockStoreMetadata.metadataBlobId
+      }
+    );
+
+    const localState = await localStateProxy.useState();
+
+    assert.ok(
+      stateRootsEqual(localState.roots(), finalizedState.stateRoots),
+      'Local state roots do not match finalized state roots after sync'
+    );
+  });
 });

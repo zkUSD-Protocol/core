@@ -24,14 +24,6 @@ export type StateLengths = {
 };
 
 /**
- * Identifies the state of an block using its state root.
- */
-export type BlockStateCommitment = {
-  roots: StateRoots;
-  lengths: StateLengths;
-};
-
-/**
  * Checks if two block state roots are equal.
  */
 export function stateRootsEqual(
@@ -44,42 +36,23 @@ export function stateRootsEqual(
   );
 }
 
-export type NextBlockStateCommitment = {
-  // resulting state roots and lengths
-  nextBlockState: BlockStateCommitment;
-  // commitment to a sequence of operations that have occurred since the last block
-  intentOperationsHash: Field;
-};
 
 export class NextStateCandidate {
-  nextBlockState: BlockStateCommitment;
+  nextBlockStateRoots: StateRoots;
   intentOperations: IntentMapOperation[];
-  systemParams: SystemParams; // not used for now?
-  timestamp: number; // we get this from the sequencer block end event
+  // systemParams: SystemParams; // not used for now?
+  // timestamp: number; // we get this from the sequencer block end event
 
   constructor(
-    blockState: BlockStateCommitment,
+    blockStateRoots: StateRoots,
     intentOperations: IntentMapOperation[],
-    systemParams: SystemParams,
-    timestamp: number
+    // systemParams: SystemParams,
+    // timestamp: number
   ) {
-    this.nextBlockState = blockState;
+    this.nextBlockStateRoots = blockStateRoots;
     this.intentOperations = intentOperations;
-    this.systemParams = systemParams;
-    this.timestamp = timestamp;
-  }
-  toCommitment(): NextBlockStateCommitment {
-    const intentOperationsHash = IntentMapOperation.rollingHash(
-      this.intentOperations
-    );
-    return {
-      nextBlockState: this.nextBlockState,
-      intentOperationsHash,
-    };
-  }
-
-  stateRoots(): StateRoots {
-    throw new Error("not implemented");
+    // this.systemParams = systemParams;
+    // this.timestamp = timestamp;
   }
 }
 
@@ -108,20 +81,6 @@ export class FullState {
     return {
       vaultMapRoot: this.vaultMap.root,
       zkUsdMapRoot: this.zkUsdMap.root,
-    };
-  }
-
-  // to commitment
-  toCommitment(): BlockStateCommitment {
-    return {
-      roots: {
-        vaultMapRoot: this.vaultMap.root,
-        zkUsdMapRoot: this.zkUsdMap.root,
-      },
-      lengths: {
-        vaultMapLength: this.vaultMap.length,
-        zkUsdMapLength: this.zkUsdMap.length,
-      },
     };
   }
 

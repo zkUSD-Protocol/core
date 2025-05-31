@@ -1,8 +1,5 @@
 import {
-  BlockStateCommitment,
-  NextStateCandidate,
   StateRoots,
-  SystemParams,
 } from '../../validator/block-state.js';
 import { IntentMapOperation } from '../../validator/map-operation.js';
 import {

@@ -20,7 +20,7 @@ export interface DataAvailInterface {
   /**
    * Fetches an intent proof from the data availability layer.
    */
-  fetchIntentProof(intentBlobHandle: string): Promise<IntentProof>;
+  fetchIntentProof(intentBlobId: string): Promise<IntentProof>;
 
   /**
    * Syncs the local state to match the state referenced by the metadata blob.
@@ -29,7 +29,7 @@ export interface DataAvailInterface {
    */
   syncToFinalizedState(args:{
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string,
+    metadataBlobId: string,
   }
   ): Promise<void>;
 

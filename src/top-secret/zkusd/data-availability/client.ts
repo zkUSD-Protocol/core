@@ -104,14 +104,14 @@ export class DataAvailClient implements DataAvailInterface {
 
     // 6. Return the blob IDs
     return {
-        blockBlobHandle: genesisBlockBlobId,
-        metadataBlobHandle: genesisMetadataBlobId,
+        blockBlobId: genesisBlockBlobId,
+        metadataBlobId: genesisMetadataBlobId,
     };
   }
 
-  async fetchIntentProof(intentBlobHandle: string): Promise<IntentProof> {
+  async fetchIntentProof(intentBlobId: string): Promise<IntentProof> {
     try {
-      const rawData = await this.storageProvider.retrieve(intentBlobHandle);
+      const rawData = await this.storageProvider.retrieve(intentBlobId);
       const intentProof = JSON.parse(rawData) as IntentProof;
       return intentProof;
     } catch (error) {
@@ -123,12 +123,12 @@ export class DataAvailClient implements DataAvailInterface {
 
   async syncToFinalizedState(args:{
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string
+    metadataBlobId: string
   }
   ): Promise<void> {
     return this.syncService.syncToMetadataFileState(
       args.localStateProxy,
-      args.metadataBlobHandle
+      args.metadataBlobId
     );
   }
 
@@ -140,7 +140,7 @@ export class DataAvailClient implements DataAvailInterface {
     
     // 1. Retrieve the previous block file
     const previousBlockRawData = await this.storageProvider.retrieve(
-      previousBlockStateCommitment.stateStoreMetadata.blockBlobHandle,
+      previousBlockStateCommitment.stateStoreMetadata.blockBlobId,
       {
         fileType: FileType.EPOCH,
       }
@@ -164,9 +164,9 @@ export class DataAvailClient implements DataAvailInterface {
     const newBlockFile = BlockFileBuilder.buildBlockFile({
       previousBlockFile,
       previousStateRoots: previousBlockStateCommitment.stateRoots,
-      previousBlockBlobId: previousBlockStateCommitment.stateStoreMetadata.blockBlobHandle,
+      previousBlockBlobId: previousBlockStateCommitment.stateStoreMetadata.blockBlobId,
       nextStateValidatedIntentOperations: nextStateCandidate.intentOperations,
-      nextStateRoots: nextStateCandidate.stateRoots(),
+      nextStateRoots: nextStateCandidate.nextBlockStateRoots,
     });
 
     // 3. Store the new block file
@@ -191,7 +191,7 @@ export class DataAvailClient implements DataAvailInterface {
 
     // 5. Retrieve the metadata file
     const metadataRawData = await this.storageProvider.retrieve(
-      previousBlockStateCommitment.stateStoreMetadata.metadataBlobHandle,
+      previousBlockStateCommitment.stateStoreMetadata.metadataBlobId,
       {
         fileType: FileType.METADATA,
       }
@@ -220,8 +220,8 @@ export class DataAvailClient implements DataAvailInterface {
     );
 
     return {
-      metadataBlobHandle: newMetadataBlobId,
-      blockBlobHandle: newBlockBlobId,
+      metadataBlobId: newMetadataBlobId,
+      blockBlobId: newBlockBlobId,
     };
 
   }

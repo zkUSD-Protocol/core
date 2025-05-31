@@ -26,11 +26,11 @@ export class StateSyncService {
    */
   async syncToMetadataFileState(
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string,
+    metadataBlobId: string,
   ): Promise<void> {
     // 1. Fetch target metadata
     const metadata = await this.fetchMetadata(
-      metadataBlobHandle
+      metadataBlobId
     );
 
     // 2. Get current local state
@@ -50,7 +50,7 @@ export class StateSyncService {
     const syncStrategy = await this.determineSyncStrategy(
       currentLocalRoots,
       metadata,
-      metadataBlobHandle
+      metadataBlobId
     );
 
     // 5. Execute sync strategy
@@ -58,9 +58,9 @@ export class StateSyncService {
   }
 
   private async fetchMetadata(
-    metadataBlobHandle: string
+    metadataBlobId: string
   ): Promise<MetadataFile> {
-    const rawData = await this.storageProvider.retrieve(metadataBlobHandle, {
+    const rawData = await this.storageProvider.retrieve(metadataBlobId, {
       fileType: FileType.METADATA,
     });
     return JSON.parse(rawData) as MetadataFile;
@@ -212,8 +212,8 @@ export class StateSyncService {
         await localStateProxy.applyIntentOperations({
       finalizedBlockOperations: this.fileToIntentOperations(blockFile.operations),
       finalizedStateStoreMetadata: {
-        metadataBlobHandle: strategy.metadataBlobId,
-        blockBlobHandle: blockBlobId,
+        metadataBlobId: strategy.metadataBlobId,
+        blockBlobId: blockBlobId,
       }
         }
         );
@@ -244,8 +244,8 @@ export class StateSyncService {
     await localStateProxy.setState({
       finalizedState: restoredState,
       finalizedStateStoreMetadata: {
-        metadataBlobHandle: strategy.metadataBlobId,
-        blockBlobHandle: 'checkpoint',
+        metadataBlobId: strategy.metadataBlobId,
+        blockBlobId: 'checkpoint',
       },
     });
 
@@ -256,8 +256,8 @@ export class StateSyncService {
         await localStateProxy.applyIntentOperations({
           finalizedBlockOperations: this.fileToIntentOperations(blockFile.operations),
           finalizedStateStoreMetadata: {
-            metadataBlobHandle: strategy.metadataBlobId,
-            blockBlobHandle: blockBlobId,
+            metadataBlobId: strategy.metadataBlobId,
+            blockBlobId: blockBlobId,
           },
         });
       }

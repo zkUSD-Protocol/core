@@ -48,9 +48,9 @@ export class Validator {
     await this._dataAvail.syncToFinalizedState(
       {
         localStateProxy:this._finalizedStateProxy,
-        metadataBlobHandle: finalizedStateMetadata ?
-        finalizedStateMetadata.stateStoreMetadata.metadataBlobHandle :
-        (await this._sequencer.fetchFinalizedStateCommitment()).stateStoreMetadata.metadataBlobHandle
+        metadataBlobId: finalizedStateMetadata ?
+        finalizedStateMetadata.stateStoreMetadata.metadataBlobId :
+        (await this._sequencer.fetchFinalizedStateCommitment()).stateStoreMetadata.metadataBlobId
       }
     );
     await this._optimisticStateComputer.setState(
@@ -101,7 +101,7 @@ export class Validator {
     const finalizedStateMetadata =  await this._finalizedStateProxy.getStateCommitment();
 
     const stateCandidateMetadata = {
-      stateRoots: computedState.stateRoots(),
+      stateRoots: computedState.nextBlockStateRoots,
       stateStoreMetadata,
     }
 
@@ -130,7 +130,7 @@ export class Validator {
       }
       else if (
         !stateRootsEqual(
-          nextStateCandidate.stateRoots(),
+          nextStateCandidate.nextBlockStateRoots,
           blockFinalizedEvent.finalizedStateMetadata.stateRoots
         )
       ) {
@@ -138,7 +138,7 @@ export class Validator {
         // - fetch the state and update the local finalized state
         await this._dataAvail.syncToFinalizedState({
           localStateProxy: this._finalizedStateProxy,
-          metadataBlobHandle: blockFinalizedEvent.finalizedStateMetadata.stateStoreMetadata.metadataBlobHandle
+          metadataBlobId: blockFinalizedEvent.finalizedStateMetadata.stateStoreMetadata.metadataBlobId
         });
         await this._optimisticStateComputer.setState(
           await this._finalizedStateProxy.cloneState()
@@ -170,7 +170,7 @@ export class Validator {
       if (validPreconditions) {
         try {
           const intentProof = await this._dataAvail.fetchIntentProof(
-            intentEvent.intentBlobHandle
+            intentEvent.intentBlobId
           );
           await this._optimisticStateComputer.step(intentProof);
         } catch (error) {

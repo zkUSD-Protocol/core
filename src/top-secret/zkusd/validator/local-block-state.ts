@@ -9,7 +9,14 @@ export interface LocalStateProxyInitializer{
 
 }
 
-
+/**
+ * This is the interface through which you interact with a locally available
+ * full-state of ZKUSD, like system parameters of maps.
+ * This state is a finalized state - meaning that it inderwent the consensus
+ * and for a given block was an actual state of the system, not only a candidate.
+ * The interface makes sure that you always provide a data availability handles
+ * via which you can find the state globally.
+ */
 export interface LocalStateProxy {
   cloneState(): Promise<FullState>;
   setState(args: {finalizedState: FullState, finalizedStateStoreMetadata: StateStoreMetadata}): Promise<void>;
@@ -34,7 +41,7 @@ export class InMemoryStateProxy implements LocalStateProxy {
   private _state: FullState;
   private _stateStoreMetadata: StateStoreMetadata;
 
-  constructor(initialState: FullState, private initialStateStoreMetadata: StateStoreMetadata) {
+  constructor(initialState: FullState, initialStateStoreMetadata: StateStoreMetadata) {
     this._state = initialState;
     this._stateStoreMetadata = initialStateStoreMetadata;
   }

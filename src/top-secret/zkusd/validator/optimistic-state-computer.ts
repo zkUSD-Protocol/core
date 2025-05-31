@@ -43,10 +43,8 @@ export class NonProvingStateComputer implements OptimisticStateComputer {
   }
   async getStateCandidate(): Promise<NextStateCandidate> {
     return new NextStateCandidate(
-      this._liveState.toCommitment(),
+      this._liveState.roots(),
       this._newBlockOperations,
-      this._liveState.systemParams,
-      Date.now()
     );
   }
   async step(intentProof: IntentProof): Promise<void> {
