@@ -5,8 +5,6 @@ export type SequencerStateMetadata = {
   stateRoots: StateRoots;
   /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */
   stateBlobHandle: string;
-  /** Handle to retrieve the metadata blob from DA. */
-  metadataBlobHandle: string;
 };
 
 /**

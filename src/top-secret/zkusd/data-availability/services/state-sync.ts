@@ -1,11 +1,12 @@
 import { LocalStateProxy } from '../../validator/local-block-state.js';
 import { StorageProvider } from '../providers/storage-provider.js';
 import {
-  MetadataFile,
-  BlockFile,
-  CheckpointFile,
-  FileType,
+  BlockBlob,
+  CheckpointBlob,
+  BlobType,
   Operation,
+  BlockMetadata,
+  BlockData,
 } from '../types/types.js';
 import {
   StateRoots,
@@ -25,41 +26,47 @@ export class StateSyncService {
    */
   async syncLocalState(
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string
+    blockBlobHandle: string
   ): Promise<void> {
-    // 1. Fetch target metadata
-    const metadata = await this.fetchMetadata(metadataBlobHandle);
+    // 1. Fetch block blob
+    const blockBlob = await this.fetchBlockBlob(blockBlobHandle);
 
     // 2. Get current local state
     const currentLocalRoots = await localStateProxy.stateRoots();
 
-    const metadataRoots: StateRoots = {
-      vaultMapRoot: Field(metadata.latestVaultMapRoot),
-      zkUsdMapRoot: Field(metadata.latestZkUsdMapRoot),
+    const blockRoots: StateRoots = {
+      vaultMapRoot: Field(blockBlob.blockData.vaultMapRoot),
+      zkUsdMapRoot: Field(blockBlob.blockData.zkUsdMapRoot),
     };
 
-    const isAlreadySynced = stateRootsEqual(currentLocalRoots, metadataRoots);
+    const isAlreadySynced = stateRootsEqual(currentLocalRoots, blockRoots);
 
     // 3. Check if already synced
-    if (isAlreadySynced) return;
+
+    if (isAlreadySynced) {
+      console.log('Local state is already synced');
+      return;
+    }
 
     // 4. Determine sync strategy
     const syncStrategy = await this.determineSyncStrategy(
       currentLocalRoots,
-      metadata
+      blockBlob.blockMetadata
     );
 
     // 5. Execute sync strategy
-    await this.executeSyncStrategy(localStateProxy, syncStrategy);
+    await this.executeSyncStrategy(
+      localStateProxy,
+      syncStrategy,
+      blockBlob.blockData
+    );
   }
 
-  private async fetchMetadata(
-    metadataBlobHandle: string
-  ): Promise<MetadataFile> {
-    const rawData = await this.storageProvider.retrieve(metadataBlobHandle, {
-      fileType: FileType.METADATA,
+  private async fetchBlockBlob(blockBlobHandle: string): Promise<BlockBlob> {
+    const rawData = await this.storageProvider.retrieve(blockBlobHandle, {
+      blobType: BlobType.BLOCK,
     });
-    return JSON.parse(rawData) as MetadataFile;
+    return JSON.parse(rawData) as BlockBlob;
   }
 
   /**
@@ -70,68 +77,79 @@ export class StateSyncService {
    */
   private async determineSyncStrategy(
     currentLocalRoots: StateRoots,
-    metadata: MetadataFile
+    blockMetadata: BlockMetadata
   ): Promise<SyncStrategy> {
     //Check which block our local state is at
+
+    console.log('Determining sync strategy');
+
     const localStateBlock = this.identifyLocalStateBlock(
       currentLocalRoots,
-      metadata
+      blockMetadata
     );
 
     if (localStateBlock === 0) {
+      console.log('Unable to find local state block, using checkpoint');
       //We were unable to find the block that our local state is at, fully resync the state
 
-      if (metadata.latestCheckpointFileBlobId) {
+      if (blockMetadata.checkpointBlobId) {
         return {
           type: 'checkpoint-incremental',
-          checkpointBlobId: metadata.latestCheckpointFileBlobId,
+          checkpointBlobId: blockMetadata.checkpointBlobId,
           incrementalBlockBlobIds: this.getIncrementalBlockIds(
-            metadata.latestCheckpointBlock,
-            metadata
+            blockMetadata.checkpointBlock,
+            blockMetadata
           ),
         };
       } else {
         //We don't have a checkpoint, so we need to do a full sync
+        console.log('No checkpoint, doing full sync');
         return {
           type: 'full-incremental',
-          blockBlobIds: this.getAllBlockIds(metadata),
+          blockBlobIds: this.getAllBlockIds(blockMetadata),
         };
       }
     }
+
+    console.log('Found local state block, doing partial sync');
 
     // We found our local state in the metadata history
     // Just sync incrementally from where we left off
     return {
       type: 'partial-incremental',
       fromBlock: localStateBlock,
-      blockBlobIds: this.getIncrementalBlockIds(localStateBlock, metadata),
+      blockBlobIds: this.getIncrementalBlockIds(localStateBlock, blockMetadata),
     };
   }
 
-  private getAllBlockIds(metadata: MetadataFile): string[] {
-    return metadata.blocks
+  private getAllBlockIds(blockMetadata: BlockMetadata): string[] {
+    return blockMetadata.sinceCheckpointBlockHeaders
       .sort((a, b) => a.block - b.block) // Ensure chronological order
       .map((block) => block.blockBlobId);
   }
 
   private identifyLocalStateBlock(
     currentLocalRoots: StateRoots,
-    metadata: MetadataFile
+    blockMetadata: BlockMetadata
   ): number {
-    const blockMetadata = metadata.blocks.find((block) => {
-      const blockRoots = {
-        vaultMapRoot: Field(block.vaultMapRoot),
-        zkUsdMapRoot: Field(block.zkUsdMapRoot),
-      };
-      return stateRootsEqual(currentLocalRoots, blockRoots);
-    });
+    const matchingBlock = blockMetadata.sinceCheckpointBlockHeaders.find(
+      (block) => {
+        const blockRoots = {
+          vaultMapRoot: Field(block.vaultMapRoot),
+          zkUsdMapRoot: Field(block.zkUsdMapRoot),
+        };
+        return stateRootsEqual(currentLocalRoots, blockRoots);
+      }
+    );
 
-    if (!blockMetadata) {
+    console.log('Matching Block:', matchingBlock?.block);
+
+    if (!matchingBlock) {
       //We were unable to find the block that our local state is at, fully resync the state
       return 0;
     }
 
-    return blockMetadata.block;
+    return matchingBlock.block;
   }
 
   private fileToIntentOperations(
@@ -150,26 +168,31 @@ export class StateSyncService {
 
   private async fetchCheckpoint(
     checkpointBlobId: string
-  ): Promise<CheckpointFile> {
+  ): Promise<CheckpointBlob> {
     const rawData = await this.storageProvider.retrieve(checkpointBlobId, {
-      fileType: FileType.CHECKPOINT,
+      blobType: BlobType.CHECKPOINT,
     });
-    return JSON.parse(rawData) as CheckpointFile;
+    return JSON.parse(rawData) as CheckpointBlob;
   }
 
   private getIncrementalBlockIds(
     fromBlock: number,
-    metadata: MetadataFile
+    blockMetadata: BlockMetadata
   ): string[] {
     const blockIds: string[] = [];
+    const blockHistory = blockMetadata.sinceCheckpointBlockHeaders;
+
+    if (blockHistory.length === 0) return [];
+
+    const currentBlock = blockHistory[blockHistory.length - 1].block;
 
     // Get block blob IDs from fromBlock + 1 to current block
-    for (let block = fromBlock + 1; block <= metadata.latestBlock; block++) {
-      const blockMetadata = metadata.blocks.find(
-        (blockMetadata) => blockMetadata.block === block
+    for (let block = fromBlock + 1; block <= currentBlock; block++) {
+      const blockHistoryItem = blockHistory.find(
+        (blockHistoryItem) => blockHistoryItem.block === block
       );
-      if (blockMetadata) {
-        blockIds.push(blockMetadata.blockBlobId);
+      if (blockHistoryItem) {
+        blockIds.push(blockHistoryItem.blockBlobId);
       } else {
         throw new Error(`Block ${block} not found in metadata`);
       }
@@ -180,55 +203,66 @@ export class StateSyncService {
 
   private async executeSyncStrategy(
     localStateProxy: LocalStateProxy,
-    strategy: SyncStrategy
+    strategy: SyncStrategy,
+    currentBlockData: BlockData
   ): Promise<void> {
     switch (strategy.type) {
       case 'checkpoint-incremental':
-        await this.executeCheckpointIncrementalSync(localStateProxy, strategy);
+        await this.executeCheckpointIncrementalSync(
+          localStateProxy,
+          strategy,
+          currentBlockData
+        );
         break;
       case 'partial-incremental':
-        await this.executePartialIncrementalSync(localStateProxy, strategy);
+        await this.executeIncrementalSync(
+          localStateProxy,
+          strategy,
+          currentBlockData
+        );
         break;
       case 'full-incremental':
-        await this.executeFullIncrementalSync(localStateProxy, strategy);
+        await this.executeIncrementalSync(
+          localStateProxy,
+          strategy,
+          currentBlockData
+        );
         break;
     }
   }
 
-  private async executePartialIncrementalSync(
+  private async executeIncrementalSync(
     localStateProxy: LocalStateProxy,
-    strategy: PartialIncrementalStrategy
+    strategy: FullIncrementalStrategy | PartialIncrementalStrategy,
+    currentBlockData: BlockData
   ): Promise<void> {
-    // Apply operations from the specified block files sequentially
-    for (const blockBlobId of strategy.blockBlobIds) {
-      const blockFile = await this.fetchBlockFile(blockBlobId);
-      if (blockFile.operations.length > 0) {
-        await localStateProxy.applyIntentOperations(
-          this.fileToIntentOperations(blockFile.operations)
-        );
-      }
-    }
-  }
+    console.log('Executing incremental sync');
+    console.log(strategy);
 
-  private async executeFullIncrementalSync(
-    localStateProxy: LocalStateProxy,
-    strategy: FullIncrementalStrategy
-  ): Promise<void> {
     // Apply operations from all block files sequentially
     for (const blockBlobId of strategy.blockBlobIds) {
-      const blockFile = await this.fetchBlockFile(blockBlobId);
-      if (blockFile.operations.length > 0) {
+      const blockBlob = await this.fetchBlockBlob(blockBlobId);
+      if (blockBlob.blockData.operations.length > 0) {
         await localStateProxy.applyIntentOperations(
-          this.fileToIntentOperations(blockFile.operations)
+          this.fileToIntentOperations(blockBlob.blockData.operations)
         );
       }
     }
+
+    // Apply latest block operations
+    await localStateProxy.applyIntentOperations(
+      this.fileToIntentOperations(currentBlockData.operations)
+    );
   }
 
   private async executeCheckpointIncrementalSync(
     localStateProxy: LocalStateProxy,
-    strategy: CheckpointIncrementalStrategy
+    strategy: CheckpointIncrementalStrategy,
+    currentBlockData: BlockData
   ): Promise<void> {
+    console.log('Executing checkpoint incremental sync');
+    console.log(strategy);
+
     // 1. Load state from checkpoint
     const checkpointData = await this.fetchCheckpoint(
       strategy.checkpointBlobId
@@ -238,24 +272,22 @@ export class StateSyncService {
 
     // 2. Apply incremental operations
     for (const blockBlobId of strategy.incrementalBlockBlobIds) {
-      const blockFile = await this.fetchBlockFile(blockBlobId);
-      if (blockFile.operations.length > 0) {
+      const blockBlob = await this.fetchBlockBlob(blockBlobId);
+      if (blockBlob.blockData.operations.length > 0) {
         await localStateProxy.applyIntentOperations(
-          this.fileToIntentOperations(blockFile.operations)
+          this.fileToIntentOperations(blockBlob.blockData.operations)
         );
       }
     }
-  }
 
-  private async fetchBlockFile(blockBlobId: string): Promise<BlockFile> {
-    const rawData = await this.storageProvider.retrieve(blockBlobId, {
-      fileType: FileType.EPOCH,
-    });
-    return JSON.parse(rawData) as BlockFile;
+    // 3. Apply current block operations
+    await localStateProxy.applyIntentOperations(
+      this.fileToIntentOperations(currentBlockData.operations)
+    );
   }
 
   private restoreStateFromCheckpoint(
-    checkpointData: CheckpointFile
+    checkpointData: CheckpointBlob
   ): FullState {
     // Restore maps from serialized data
     const vaultMap = VaultMap.fromSerialized(checkpointData.vaultMapData);

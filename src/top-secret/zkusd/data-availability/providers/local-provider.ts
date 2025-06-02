@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { randomUUID } from 'crypto';
 import { StorageMetadata, StorageProvider } from './storage-provider.js';
-import { FileType } from '../types/types.js';
+import { BlobType } from '../types/types.js';
 
 export class LocalProvider implements StorageProvider {
   private readonly baseDir: string;
@@ -19,19 +19,10 @@ export class LocalProvider implements StorageProvider {
     try {
       // Generate a unique blob ID
       const blobId = this.generateBlobId();
-      const filePath = this.getBlobPath(blobId, metadata?.fileType);
+      const filePath = this.getBlobPath(blobId, metadata?.blobType);
 
       // Ensure the directory exists
       await this.ensureDirectoryExists();
-
-      if (metadata?.fileType === FileType.METADATA) {
-        //remove the current files in the metadata directory
-        const metadataDir = path.join(this.baseDir, 'metadata');
-        const files = await fs.readdir(metadataDir);
-        for (const file of files) {
-          await fs.unlink(path.join(metadataDir, file));
-        }
-      }
 
       // Parse and re-stringify with formatting for better readability
       const parsedData = JSON.parse(data);
@@ -50,7 +41,7 @@ export class LocalProvider implements StorageProvider {
 
   async retrieve(blobId: string, metadata?: StorageMetadata): Promise<string> {
     try {
-      const filePath = this.getBlobPath(blobId, metadata?.fileType);
+      const filePath = this.getBlobPath(blobId, metadata?.blobType);
 
       // Check if file exists
       try {
@@ -71,7 +62,7 @@ export class LocalProvider implements StorageProvider {
 
   async getUrl(blobId: string, metadata?: StorageMetadata): Promise<string> {
     // For local provider, return file path as URL
-    const filePath = this.getBlobPath(blobId, metadata?.fileType);
+    const filePath = this.getBlobPath(blobId, metadata?.blobType);
     return `file://${filePath}`;
   }
 
@@ -108,7 +99,7 @@ export class LocalProvider implements StorageProvider {
       try {
         await fs.unlink(filePath);
       } catch {
-        // File might not exist, that's ok
+        // Blob might not exist, that's ok
       }
 
       console.log(`🗑️  Deleted locally: ${blobId}`);
@@ -117,6 +108,10 @@ export class LocalProvider implements StorageProvider {
         `Local deletion failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  async cleanAfterCheckpoint(checkpointBlobId: string): Promise<void> {
+    //TODO: Implement
   }
 
   async cleanup(): Promise<void> {
@@ -142,15 +137,14 @@ export class LocalProvider implements StorageProvider {
     return randomUUID().replace(/-/g, '');
   }
 
-  private getBlobPath(blobId: string, fileType?: FileType): string {
-    return path.join(this.baseDir, `${fileType ?? ''}`, `${blobId}.json`);
+  private getBlobPath(blobId: string, blobType?: BlobType): string {
+    return path.join(this.baseDir, `${blobType ?? ''}`, `${blobId}.json`);
   }
 
   private async ensureDirectoryExists(): Promise<void> {
     try {
       await fs.mkdir(this.baseDir, { recursive: true });
       await fs.mkdir(path.join(this.baseDir, 'block'), { recursive: true });
-      await fs.mkdir(path.join(this.baseDir, 'metadata'), { recursive: true });
       await fs.mkdir(path.join(this.baseDir, 'checkpoint'), {
         recursive: true,
       });

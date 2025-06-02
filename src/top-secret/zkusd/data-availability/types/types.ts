@@ -1,16 +1,15 @@
 import { SerializableMapData } from '../../data/maps/serializable-indexed-map';
 import { StateRoots } from '../../validator/block-state';
 
-export enum FileType {
+export enum BlobType {
   INTENT = 'intent',
-  EPOCH = 'block',
-  METADATA = 'metadata',
+  BLOCK = 'block',
   CHECKPOINT = 'checkpoint',
 }
 
-export interface File {
+export interface Blob {
   version: string;
-  fileType: FileType;
+  blobType: BlobType;
 }
 
 export enum IntentType {
@@ -34,68 +33,25 @@ export enum OperationType {
   SET = 'set',
 }
 
-export interface IntentFile extends File {
-  fileType: FileType.INTENT;
+export interface IntentBlob extends Blob {
+  blobType: BlobType.INTENT;
   intentType: IntentType;
   proof: string;
   encryptedNotes: string[];
 }
 
-export interface BlockFile extends File {
-  fileType: FileType.EPOCH;
-
-  // Timestamp of the block end -> from the sequencer
-  // timestamp: number;
-
-  // Previous block information
-  previousBlock: number;
-  previousBlockBlobId: string;
+export interface BlockBlob extends Blob {
+  blobType: BlobType.BLOCK;
 
   // Block identification
-  block: number;
+  blockData: BlockData;
 
-  //Vault map information
-  previousVaultMapRoot: string;
-  newVaultMapRoot: string;
-
-  //ZkUsd map information
-  previousZkUsdMapRoot: string;
-  newZkUsdMapRoot: string;
-
-  // Operations in this block
-  operations: Operation[]; // 78 operations
-
-  // Metadata
-  operationCount: number;
+  // Block History Metadata
+  blockMetadata: BlockMetadata;
 }
 
-export interface MetadataFile extends File {
-  fileType: FileType.METADATA;
-
-  // Latest block file
-  latestBlockFileBlobId: string;
-
-  // Latest checkpoint file
-  latestCheckpointFileBlobId: string;
-  latestCheckpointBlock: number;
-
-  // Current state
-  latestBlock: number;
-  latestVaultMapRoot: string; // hex string
-  latestZkUsdMapRoot: string; // hex string
-  totalOperations: number;
-
-  // Block history (most recent first)
-  blocks: BlockMetadata[];
-
-  // Integrity information
-  continuityProof: {
-    blockRootChain: string[]; // hashed roots of last 100 blockes for verification
-  };
-}
-
-export interface CheckpointFile extends File {
-  fileType: FileType.CHECKPOINT;
+export interface CheckpointBlob extends Blob {
+  blobType: BlobType.CHECKPOINT;
 
   // Maps data
   vaultMapData: SerializableMapData;
@@ -103,12 +59,27 @@ export interface CheckpointFile extends File {
 
   // Checkpoint metadata
   block: number;
-  blockBlobId: string;
-  checkpointId: string;
 
   // Roots
   vaultMapRoot: string; // hex string
   zkUsdMapRoot: string; // hex string
+
+  //Full block history
+  blocks: BlockData[];
+}
+
+export interface BlockData {
+  block: number;
+  vaultMapRoot: string;
+  zkUsdMapRoot: string;
+  operations: Operation[];
+  operationCount: number;
+}
+
+export interface BlockMetadata {
+  checkpointBlobId: string;
+  checkpointBlock: number;
+  sinceCheckpointBlockHeaders: BlockHeader[];
 }
 
 export interface Operation {
@@ -120,17 +91,14 @@ export interface Operation {
   value: string; // hex string (32 bytes) - for inserts
 }
 
-export interface BlockMetadata {
+export interface BlockHeader {
   block: number;
   vaultMapRoot: string; // hex string
   zkUsdMapRoot: string; // hex string
   // timestamp: number;
   operationCount: number;
 
-  // Blob IDs
+  // Blob IDs - ephemeral as older blobs are deleted after archiving in checkpoint
+  // We store this prior to archiving in checkpoint to allow for easier blob
   blockBlobId: string;
-
-  // For verification
-  blockHash: string; // hash of the entire block content
-  previousBlockHash: string; // for chain integrity
 }

@@ -1,78 +1,78 @@
-import { saveToWalrus, readFromWalrus } from '../utils/walrus.js';
+import { WalrusClient } from '@mysten/walrus';
 import { StorageMetadata, StorageProvider } from './storage-provider.js';
+import {
+  WalrusNetwork,
+  WalrusClientOptions,
+  createWalrusClient,
+} from '../walrus/walrus-client.js';
+import { RetryableWalrusClientError } from '@mysten/walrus';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { suiSigner } from '../../config/keys.js';
+import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
+
+export interface WalrusProviderOptions extends WalrusClientOptions {
+  defaultEpochs?: number;
+  defaultAddress?: string;
+}
 
 export class WalrusProvider implements StorageProvider {
-  private readonly defaultBlocks: number;
+  private walrusClient: WalrusClient;
+  private readonly network: WalrusNetwork;
+  private readonly defaultEpochs: number;
   private readonly defaultAddress?: string;
+  private readonly clientOptions: WalrusClientOptions;
+  private readonly signer: Ed25519Keypair;
+  private readonly suiClient: SuiClient;
 
-  constructor(options?: { defaultBlocks?: number; defaultAddress?: string }) {
-    this.defaultBlocks = options?.defaultBlocks ?? 2;
-    this.defaultAddress = options?.defaultAddress;
+  constructor(options: WalrusProviderOptions = {}, client: WalrusClient) {
+    this.network = options.network ?? 'testnet';
+    this.defaultEpochs = options.defaultEpochs ?? 10;
+    this.defaultAddress = options.defaultAddress;
+    this.clientOptions = options;
+    this.walrusClient = client;
+    this.signer = suiSigner;
+    this.suiClient = new SuiClient({
+      url: getFullnodeUrl('testnet'),
+    });
+  }
+
+  static async createWalrusProvider(
+    network: WalrusNetwork,
+    options: WalrusProviderOptions = {}
+  ): Promise<WalrusProvider> {
+    const client = await createWalrusClient(options);
+    console.log(options);
+    return new WalrusProvider(options, client);
   }
 
   async store(data: string, metadata?: StorageMetadata): Promise<string> {
-    try {
-      const blobId = await saveToWalrus({
-        data,
-        address: metadata?.address ?? this.defaultAddress,
-        numBlocks: metadata?.numBlocks ?? this.defaultBlocks,
-      });
-
-      if (!blobId) {
-        throw new Error('Failed to store data in Walrus: no blob ID returned');
-      }
-
-      return blobId;
-    } catch (error) {
-      throw new Error(
-        `Walrus storage failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
-  }
-
-  async retrieve(blobId: string, metadata?: StorageMetadata): Promise<string> {
-    try {
-      const data = await readFromWalrus({ blobId });
-
-      if (!data) {
-        throw new Error(
-          `Failed to retrieve data from Walrus for blob ID: ${blobId}`
-        );
-      }
-
-      return data;
-    } catch (error) {
-      throw new Error(
-        `Walrus retrieval failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
-  }
-
-  async getUrl(blobId: string, metadata?: StorageMetadata): Promise<string> {
-    try {
-      // Import your existing getWalrusUrl function
-      const { getWalrusUrl } = await import('../utils/walrus.js');
-      return await getWalrusUrl({ blobId });
-    } catch (error) {
-      throw new Error(
-        `Failed to get Walrus URL: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-    }
-  }
-
-  // Walrus-specific helper methods
-  async storeWithRetry(
-    data: string,
-    metadata?: StorageMetadata,
-    maxRetries: number = 3
-  ): Promise<string> {
+    const maxRetries = 3;
     let lastError: Error;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        return await this.store(data, metadata);
+        const blob = new TextEncoder().encode(data);
+        const epochs = metadata?.numEpochs ?? this.defaultEpochs;
+
+        const result = await this.walrusClient.writeBlob({
+          blob,
+          deletable: false,
+          epochs,
+          signer: this.signer,
+        });
+
+        return result.blobId;
       } catch (error) {
+        console.log(error);
         lastError = error instanceof Error ? error : new Error('Unknown error');
+
+        // Handle retryable errors
+        if (error instanceof RetryableWalrusClientError) {
+          console.warn(
+            `Retryable error on attempt ${attempt}, resetting client...`
+          );
+          this.resetClient();
+        }
 
         if (attempt === maxRetries) {
           break;
@@ -85,18 +85,49 @@ export class WalrusProvider implements StorageProvider {
     }
 
     throw new Error(
-      `Failed to store after ${maxRetries} attempts: ${lastError!.message}`
+      `Failed to store data after ${maxRetries} attempts: ${lastError!.message}`
     );
   }
 
-  // Check if blob exists without downloading full content
+  async retrieve(blobId: string, metadata?: StorageMetadata): Promise<string> {
+    try {
+      const blob = await this.walrusClient.readBlob({ blobId });
+      return new TextDecoder().decode(blob);
+    } catch (error) {
+      if (error instanceof RetryableWalrusClientError) {
+        this.resetClient();
+
+        // Retry once after reset
+        const blob = await this.walrusClient.readBlob({ blobId });
+        return new TextDecoder().decode(blob);
+      }
+
+      throw new Error(
+        `Failed to retrieve data from Walrus for blob ID ${blobId}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
+    }
+  }
+
+  async cleanAfterCheckpoint(checkpointBlobId: string): Promise<void> {
+    //TODO: Implement
+  }
+
+  /**
+   * Check if a blob exists
+   */
   async exists(blobId: string): Promise<boolean> {
     try {
-      const url = await this.getUrl(blobId);
-      const response = await fetch(url, { method: 'HEAD' });
-      return response.ok;
+      const blob = await this.walrusClient.readBlob({ blobId });
+      return blob !== null;
     } catch {
       return false;
     }
+  }
+
+  private async resetClient(): Promise<void> {
+    this.walrusClient.reset();
+    this.walrusClient = await createWalrusClient(this.clientOptions);
   }
 }

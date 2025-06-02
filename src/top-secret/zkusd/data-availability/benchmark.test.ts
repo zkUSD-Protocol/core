@@ -7,7 +7,7 @@ import { Bool, Field, UInt64, UInt8 } from 'o1js';
 import { DataAvailClient } from './client.js';
 import { FullState, SystemParams } from '../validator/block-state.js';
 import { InMemoryStateProxy } from '../validator/local-block-state.js';
-import { CheckpointFileBuilder } from './services/checkpoint-file-builder.js';
+import { CheckpointBlobBuilder } from './services/checkpoint-blob-builder.js';
 
 interface BenchmarkResult {
   recordCount: number;
@@ -41,11 +41,8 @@ class BenchmarkSuite {
   private client: DataAvailClient;
   private systemParams: SystemParams;
 
-  constructor() {
-    this.client = DataAvailClient.withLocal({
-      baseDir: './src/top-secret/zkusd/data-availability/benchmark-data',
-      checkpointInterval: 1000,
-    });
+  constructor(client: DataAvailClient) {
+    this.client = client;
 
     this.systemParams = {
       validPriceBlockCount: UInt8.from(10),
@@ -149,12 +146,12 @@ class BenchmarkSuite {
   ): Promise<PerformanceMetrics> {
     const start = performance.now();
 
-    const checkpointFile = CheckpointFileBuilder.buildCheckpointFile({
+    const checkpointFile = CheckpointBlobBuilder.buildCheckpointBlob({
       vaultMap: state.vaultMap,
       zkUsdMap: state.zkUsdMap,
-      block: 1,
-      blockBlobId: 'test-block-blob',
-      checkpointId: `benchmark-${recordCount}`,
+      checkpointBlockHistory: [],
+      checkpointBlock: 1,
+      previousCheckpointBlob: undefined,
     });
 
     const serializedCheckpoint = JSON.stringify(checkpointFile);
@@ -368,12 +365,12 @@ class BenchmarkSuite {
       state,
       recordCount
     );
-    const checkpointFile = CheckpointFileBuilder.buildCheckpointFile({
+    const checkpointFile = CheckpointBlobBuilder.buildCheckpointBlob({
       vaultMap: state.vaultMap,
       zkUsdMap: state.zkUsdMap,
-      block: 1,
-      blockBlobId: 'test-block-blob',
-      checkpointId: `benchmark-${recordCount}`,
+      checkpointBlockHistory: [],
+      checkpointBlock: 1,
+      previousCheckpointBlob: undefined,
     });
     const checkpointRestorationMetrics =
       await this.measureCheckpointRestoration(checkpointFile, recordCount);
@@ -683,7 +680,11 @@ describe('ZkUSD Checkpoint & Sync Benchmarks', () => {
   let results: BenchmarkResult[] = [];
 
   before(async () => {
-    benchmarkSuite = new BenchmarkSuite();
+    const client = await DataAvailClient.withLocal({
+      baseDir:
+        './src/top-secret/zkusd/data-availability/local-data-availability',
+    });
+    benchmarkSuite = new BenchmarkSuite(client);
     await benchmarkSuite.setup();
   });
 
@@ -753,7 +754,7 @@ describe('ZkUSD Checkpoint & Sync Benchmarks', () => {
       'Serialization should be under 1ms per record'
     );
 
-    // File size should be reasonable
+    // Blob size should be reasonable
     const bytesPerRecord1000 = result1000!.serializedSizeBytes / 1000;
     console.log(`  Storage: ${bytesPerRecord1000.toFixed(0)} bytes per record`);
     assert.ok(bytesPerRecord1000 < 1000, 'Should use less than 1KB per record');

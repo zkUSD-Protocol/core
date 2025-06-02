@@ -1,26 +1,28 @@
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
-import { CheckpointFile, FileType } from '../types/types.js';
-import { BaseFileBuilder } from './base-file-builder.js';
+import { CheckpointBlob, BlobType, BlockData } from '../types/types.js';
+import { BaseBlobBuilder } from './base-blob-builder.js';
 
-interface BuildCheckpointFileArgs {
+interface BuildCheckpointBlobArgs {
   readonly vaultMap: VaultMap;
   readonly zkUsdMap: ZkUsdMap;
-  readonly block: number;
-  readonly blockBlobId: string;
-  readonly checkpointId: string;
+  readonly previousCheckpointBlob?: CheckpointBlob;
+  readonly checkpointBlockHistory: BlockData[];
+  readonly checkpointBlock: number;
 }
 
-export class CheckpointFileBuilder extends BaseFileBuilder<CheckpointFile> {
-  static buildCheckpointFile(args: BuildCheckpointFileArgs): CheckpointFile {
-    return new CheckpointFileBuilder()
+export class CheckpointBlobBuilder extends BaseBlobBuilder<CheckpointBlob> {
+  static buildCheckpointBlob(args: BuildCheckpointBlobArgs): CheckpointBlob {
+    return new CheckpointBlobBuilder()
       .withMaps(args.vaultMap, args.zkUsdMap)
-      .withMetadata(args.block, args.checkpointId, args.blockBlobId)
+      .withPreviousCheckpointBlob(args.previousCheckpointBlob)
+      .withCheckpointBlockDataHistory(args.checkpointBlockHistory)
+      .withCheckpointBlock(args.checkpointBlock)
       .build();
   }
 
   withMaps(vaultMap: VaultMap, zkUsdMap: ZkUsdMap): this {
-    this.initializeFile(FileType.CHECKPOINT, '1.0.0');
+    this.initializeBlob(BlobType.CHECKPOINT, '1.0.0');
 
     const vaultMapData = vaultMap.serialize();
     const zkUsdMapData = zkUsdMap.serialize();
@@ -35,12 +37,25 @@ export class CheckpointFileBuilder extends BaseFileBuilder<CheckpointFile> {
     return this;
   }
 
-  withMetadata(block: number, checkpointId: string, blockBlobId: string): this {
+  withPreviousCheckpointBlob(previousCheckpointBlob?: CheckpointBlob): this {
     this.file = {
       ...this.file,
-      block,
-      checkpointId,
-      blockBlobId,
+      blocks: previousCheckpointBlob ? previousCheckpointBlob.blocks : [],
+    };
+    return this;
+  }
+  withCheckpointBlockDataHistory(blockHistory: BlockData[]): this {
+    this.file = {
+      ...this.file,
+      blocks: this.file.blocks!.concat(blockHistory),
+    };
+    return this;
+  }
+
+  withCheckpointBlock(checkpointBlock: number): this {
+    this.file = {
+      ...this.file,
+      block: checkpointBlock,
     };
     return this;
   }
@@ -48,19 +63,18 @@ export class CheckpointFileBuilder extends BaseFileBuilder<CheckpointFile> {
   protected getRequiredFields(): string[] {
     return [
       'version',
-      'fileType',
+      'blobType',
       'vaultMapData',
       'zkUsdMapData',
-      'block',
-      'blockBlobId',
-      'checkpointId',
       'vaultMapRoot',
       'zkUsdMapRoot',
+      'block',
+      'blocks',
     ];
   }
 
   // Static utility methods (keeping your existing functionality)
-  static loadMapsFromCheckpoint(checkpoint: CheckpointFile): {
+  static loadMapsFromCheckpoint(checkpoint: CheckpointBlob): {
     vaultMap: VaultMap;
     zkUsdMap: ZkUsdMap;
   } {
@@ -81,10 +95,10 @@ export class CheckpointFileBuilder extends BaseFileBuilder<CheckpointFile> {
   }
 
   // Quick metadata access without loading full maps
-  static getCheckpointMetadata(checkpoint: CheckpointFile) {
+  static getCheckpointMetadata(checkpoint: CheckpointBlob) {
     return {
       block: checkpoint.block,
-      checkpointId: checkpoint.checkpointId,
+      // checkpointId: checkpoint.checkpointId,
       vaultMapRoot: checkpoint.vaultMapRoot,
       zkUsdMapRoot: checkpoint.zkUsdMapRoot,
     };

@@ -78,13 +78,20 @@ describe('ZkUsd DA Tests', () => {
 
   before(async () => {
     //create a local client for testing
-    client = DataAvailClient.withLocal({
-      baseDir:
-        './src/top-secret/zkusd/data-availability/local-data-availability',
-      checkpointInterval: 10, // Create checkpoints every 10 blocks for testing
-    });
+    // client = await DataAvailClient.withLocal({
+    //   baseDir:
+    //     './src/top-secret/zkusd/data-availability/local-data-availability',
+    //   checkpointInterval: 10, // Create checkpoints every 10 blocks for testing
+    // });
 
-    await client.storageProvider.cleanup!();
+    // await client.storageProvider.cleanup!();
+
+    client = await DataAvailClient.withWalrus({
+      network: 'testnet',
+      defaultEpochs: 1,
+      checkpointInterval: 10,
+      timeout: 60_000,
+    });
   });
 
   it('should initialize the data availability', async () => {
@@ -93,11 +100,9 @@ describe('ZkUsd DA Tests', () => {
     finalizedState = {
       stateRoots: await localStateProxy.stateRoots(),
       stateBlobHandle: blobIds.blockBlobId,
-      metadataBlobHandle: blobIds.metadataBlobId,
     };
 
     assert.ok(blobIds.blockBlobId);
-    assert.ok(blobIds.metadataBlobId);
   });
 
   it('should publish an block update', async () => {
@@ -115,20 +120,20 @@ describe('ZkUsd DA Tests', () => {
     finalizedState = {
       stateRoots: nextStateRoots,
       stateBlobHandle: blobIds.blockBlobId,
-      metadataBlobHandle: blobIds.metadataBlobId,
     };
 
     //Now we need to update the localFinalizedState to the blockFinalizedEventState
 
     assert.ok(blobIds.blockBlobId);
-    assert.ok(blobIds.metadataBlobId);
   });
 
   it('should sync the local state to the target metadata', async () => {
     await client.syncLocalState(
       localStateProxy,
-      finalizedState.metadataBlobHandle
+      finalizedState.stateBlobHandle
     );
+
+    console.log(finalizedState);
 
     const localState = await localStateProxy.useState();
     assert.ok(
@@ -152,12 +157,11 @@ describe('ZkUsd DA Tests', () => {
       finalizedState = {
         stateRoots: nextStateRoots,
         stateBlobHandle: blobIds.blockBlobId,
-        metadataBlobHandle: blobIds.metadataBlobId,
       };
 
       await client.syncLocalState(
         localStateProxy,
-        finalizedState.metadataBlobHandle
+        finalizedState.stateBlobHandle
       );
 
       const localState = await localStateProxy.useState();
@@ -176,7 +180,7 @@ describe('ZkUsd DA Tests', () => {
 
     await client.syncLocalState(
       localStateProxy,
-      finalizedState.metadataBlobHandle
+      finalizedState.stateBlobHandle
     );
 
     const localState = await localStateProxy.useState();

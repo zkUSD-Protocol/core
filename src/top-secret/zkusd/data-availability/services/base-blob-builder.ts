@@ -1,13 +1,13 @@
-import { File, FileType } from '../types/types.js';
+import { Blob, BlobType } from '../types/types.js';
 
-export abstract class BaseFileBuilder<T extends File> {
+export abstract class BaseBlobBuilder<T extends Blob> {
   protected file: Partial<T> = {};
 
-  protected initializeFile(fileType: FileType, version: string): this {
+  protected initializeBlob(blobType: BlobType, version: string): this {
     this.file = {
       ...this.file,
       version,
-      fileType,
+      blobType,
     } as Partial<T>;
     return this;
   }

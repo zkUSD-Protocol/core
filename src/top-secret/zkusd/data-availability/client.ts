@@ -3,113 +3,95 @@ import {
   DataAvailInterface,
 } from '../validator/data-avail-interface.js';
 import { IntentProof } from '../types/intent-proof.js';
-import {
-  FullState,
-  NextBlockStateCandidate,
-  StateRoots,
-} from '../validator/block-state.js';
+import { StateRoots } from '../validator/block-state.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
-import { BlockFile, FileType, MetadataFile } from './types/types.js';
-import { BlockFileBuilder } from './services/block-file-builder.js';
-import { MetadataFileBuilder } from './services/metadata-file-builder.js';
-import { CheckpointFileBuilder } from './services/checkpoint-file-builder.js';
+import {
+  BlockBlob,
+  BlobType,
+  CheckpointBlob,
+  BlockData,
+} from './types/types.js';
+import { BlockBlobBuilder } from './services/block-blob-builder.js';
+import { CheckpointBlobBuilder } from './services/checkpoint-blob-builder.js';
 import { SequencerStateMetadata } from '../validator/sequencer-interface.js';
 import { IntentMapOperation } from '../validator/map-operation.js';
 import { StorageProvider } from './providers/storage-provider.js';
 import {
   ProviderFactory,
-  ProviderConfig,
+  WalrusOptions,
+  LocalOptions,
   ProviderType,
 } from './providers/provider-factory.js';
 import { StateSyncService } from './services/state-sync.js';
 
 export interface DataAvailClientConfig {
-  provider: ProviderConfig;
+  storageProvider: StorageProvider;
+  walrusOptions?: WalrusOptions;
+  localOptions?: LocalOptions;
   checkpointInterval?: number;
 }
 
 export class DataAvailClient implements DataAvailInterface {
   storageProvider: StorageProvider;
   private readonly syncService: StateSyncService;
-  private readonly blockFileBuilder: BlockFileBuilder;
+  private readonly blockBlobBuilder: BlockBlobBuilder;
   private readonly checkpointInterval: number;
 
   constructor(config: DataAvailClientConfig) {
-    this.storageProvider = ProviderFactory.createProvider(config.provider);
-    this.blockFileBuilder = new BlockFileBuilder();
+    // Use the factory to create the appropriate provider
+    this.storageProvider = config.storageProvider;
+    this.blockBlobBuilder = new BlockBlobBuilder();
     this.checkpointInterval = config.checkpointInterval ?? 500;
     this.syncService = new StateSyncService(this.storageProvider);
   }
 
   // Convenience constructor methods for easier usage
-  static withWalrus(options?: {
-    defaultBlocks?: number;
-    defaultAddress?: string;
-    checkpointInterval?: number;
-  }): DataAvailClient {
+  static async withWalrus(
+    options?: WalrusOptions & { checkpointInterval?: number }
+  ): Promise<DataAvailClient> {
+    const { checkpointInterval, ...walrusOptions } = options || {};
     return new DataAvailClient({
-      provider: {
-        type: 'walrus',
-        walrus: {
-          defaultBlocks: options?.defaultBlocks,
-          defaultAddress: options?.defaultAddress,
-        },
-      },
-      checkpointInterval: options?.checkpointInterval,
+      storageProvider: await ProviderFactory.createProvider(
+        'walrus',
+        walrusOptions
+      ),
+      checkpointInterval,
     });
   }
 
-  static withLocal(options?: {
-    baseDir?: string;
-    checkpointInterval?: number;
-  }): DataAvailClient {
+  static async withLocal(
+    options?: LocalOptions & { checkpointInterval?: number }
+  ): Promise<DataAvailClient> {
+    const { checkpointInterval, ...localOptions } = options || {};
     return new DataAvailClient({
-      provider: {
-        type: 'local',
-        local: {
-          baseDir: options?.baseDir,
-        },
-      },
-      checkpointInterval: options?.checkpointInterval,
+      storageProvider: await ProviderFactory.createProvider(
+        'local',
+        localOptions
+      ),
+      checkpointInterval,
     });
   }
 
   async initDA(localStateProxy: LocalStateProxy): Promise<DataAvailBlobIds> {
     // 1. Get the initial state from the local proxy
-    const initialState = await localStateProxy.useState();
     const initialStateRoots = await localStateProxy.stateRoots();
 
     // 2. Create the genesis block file
-    const genesisBlockFile = BlockFileBuilder.buildGenesisBlockFile({
+    const genesisBlockBlob = BlockBlobBuilder.buildGenesisBlockBlob({
       initialStateRoots,
     });
 
     // 3. Store the genesis block file
     const genesisBlockBlobId = await this.storageProvider.store(
-      JSON.stringify(genesisBlockFile),
+      JSON.stringify(genesisBlockBlob),
       {
-        fileType: FileType.EPOCH,
-      }
-    );
-
-    // 4. Create the genesis metadata file
-    const genesisMetadataFile = MetadataFileBuilder.buildGenesisMetadataFile({
-      genesisBlockFile,
-      genesisBlockBlobId,
-    });
-
-    // 5. Store the genesis metadata file
-    const genesisMetadataBlobId = await this.storageProvider.store(
-      JSON.stringify(genesisMetadataFile),
-      {
-        fileType: FileType.METADATA,
+        blobType: BlobType.BLOCK,
       }
     );
 
     // 6. Return the blob IDs
     return {
       blockBlobId: genesisBlockBlobId,
-      metadataBlobId: genesisMetadataBlobId,
     };
   }
 
@@ -127,11 +109,11 @@ export class DataAvailClient implements DataAvailInterface {
 
   async syncLocalState(
     localStateProxy: LocalStateProxy,
-    targetMetadataBlobHandle: string
+    latestBlockBlobHandle: string
   ): Promise<void> {
     return this.syncService.syncLocalState(
       localStateProxy,
-      targetMetadataBlobHandle
+      latestBlockBlobHandle
     );
   }
 
@@ -145,75 +127,60 @@ export class DataAvailClient implements DataAvailInterface {
     const previousBlockRawData = await this.storageProvider.retrieve(
       finalizedStateMetadata.stateBlobHandle,
       {
-        fileType: FileType.EPOCH,
+        blobType: BlobType.BLOCK,
       }
     );
 
-    const previousBlockFile = JSON.parse(previousBlockRawData) as BlockFile;
-    const currentBlock = previousBlockFile.block + 1;
+    const previousBlockBlob = JSON.parse(previousBlockRawData) as BlockBlob;
+    const currentBlock = previousBlockBlob.blockData.block + 1;
 
-    // 2. Build the new block file
-    const newBlockFile = BlockFileBuilder.buildBlockFile({
-      previousBlockFile,
+    // 2. Check if we need to create a checkpoint (after checkpoint interval)
+    let checkpointBlobId: string | undefined;
+    const shouldCreateCheckpoint = this.shouldCreateCheckpoint(currentBlock);
+
+    if (shouldCreateCheckpoint) {
+      console.log(
+        'Creating checkpoint for block:',
+        previousBlockBlob.blockData.block
+      );
+      checkpointBlobId = await this.createCheckpoint(
+        localStateProxy, // The checkpoint represents the state at the previous block
+        previousBlockBlob
+      );
+
+      console.log('Checkpoint Blob ID:', checkpointBlobId);
+    }
+
+    if (checkpointBlobId) {
+      console.log(
+        'Adding new checkpoint blob id to block metadata:',
+        checkpointBlobId
+      );
+    }
+
+    // 3. Build the new block file
+    const newBlockFile = BlockBlobBuilder.buildBlockBlob({
+      previousBlockBlob,
       previousStateRoots: finalizedStateMetadata.stateRoots,
       previousBlockBlobId: finalizedStateMetadata.stateBlobHandle,
       nextStateValidatedIntentOperations,
       nextStateRoots,
+      checkpointBlobId,
+      checkpointBlock: checkpointBlobId
+        ? previousBlockBlob.blockData.block
+        : undefined,
     });
 
     // 3. Store the new block file
     const newBlockBlobId = await this.storageProvider.store(
       JSON.stringify(newBlockFile),
       {
-        fileType: FileType.EPOCH,
-      }
-    );
-
-    // 4. Check if we need to create a checkpoint (after checkpoint interval)
-    let checkpointBlobId: string | undefined;
-    const shouldCreateCheckpoint = this.shouldCreateCheckpoint(currentBlock);
-
-    if (shouldCreateCheckpoint) {
-      checkpointBlobId = await this.createCheckpoint(
-        localStateProxy,
-        previousBlockFile.block, // The checkpoint represents the state at the previous block
-        finalizedStateMetadata.stateBlobHandle
-      );
-    }
-
-    // 5. Retrieve the metadata file
-    const metadataRawData = await this.storageProvider.retrieve(
-      finalizedStateMetadata.metadataBlobHandle,
-      {
-        fileType: FileType.METADATA,
-      }
-    );
-    const previousMetadataFile = JSON.parse(metadataRawData) as MetadataFile;
-
-    let checkpointBlock: number | undefined;
-
-    if (checkpointBlobId) checkpointBlock = previousBlockFile.block;
-
-    // 6. Build the metadata file (with optional checkpoint reference)
-    const newMetadataFile = MetadataFileBuilder.buildMetadataFile({
-      previousMetadataFile,
-      newBlockFile,
-      newBlockBlobId,
-      checkpointBlobId, // Will be included if checkpoint was created
-      checkpointBlock,
-    });
-
-    // 7. Store the metadata file
-    const newMetadataBlobId = await this.storageProvider.store(
-      JSON.stringify(newMetadataFile),
-      {
-        fileType: FileType.METADATA,
+        blobType: BlobType.BLOCK,
       }
     );
 
     return {
       blockBlobId: newBlockBlobId,
-      metadataBlobId: newMetadataBlobId,
       checkpointBlobId,
     };
   }
@@ -230,33 +197,76 @@ export class DataAvailClient implements DataAvailInterface {
    */
   private async createCheckpoint(
     localStateProxy: LocalStateProxy,
-    block: number,
-    blockBlobId: string
+    blockBlob: BlockBlob
   ): Promise<string> {
+    let previousCheckpointBlob: CheckpointBlob | undefined;
+    let previousCheckpointBlobId: string =
+      blockBlob.blockMetadata.checkpointBlobId;
+
+    if (previousCheckpointBlobId) {
+      // 1. Retrieve the previous checkpoint blob
+      const previousCheckpointBlobRawData = await this.storageProvider.retrieve(
+        previousCheckpointBlobId,
+        {
+          blobType: BlobType.CHECKPOINT,
+        }
+      );
+
+      previousCheckpointBlob = JSON.parse(
+        previousCheckpointBlobRawData
+      ) as CheckpointBlob;
+    }
+
+    // 2. Collect the checkpoint block history
+    const checkpointBlockHistory =
+      await this.collectCheckpointBlockHistory(blockBlob);
+
     // Get the current state from the local proxy (this represents block - 1 state)
     const currentState = await localStateProxy.useState();
 
-    // Generate checkpoint ID
-    const checkpointId = `checkpoint-block-${block}-${Date.now()}`;
-
     // Build the checkpoint file using the current state maps
-    const checkpointFile = CheckpointFileBuilder.buildCheckpointFile({
+    const checkpointBlob = CheckpointBlobBuilder.buildCheckpointBlob({
       vaultMap: currentState.vaultMap,
       zkUsdMap: currentState.zkUsdMap,
-      block: block,
-      checkpointId,
-      blockBlobId,
+      checkpointBlock: blockBlob.blockData.block,
+      checkpointBlockHistory,
+      previousCheckpointBlob: previousCheckpointBlob ?? undefined,
     });
 
     // Store the checkpoint file
     const checkpointBlobId = await this.storageProvider.store(
-      JSON.stringify(checkpointFile),
+      JSON.stringify(checkpointBlob),
       {
-        fileType: FileType.CHECKPOINT,
+        blobType: BlobType.CHECKPOINT,
       }
     );
 
     return checkpointBlobId;
+  }
+
+  private async collectCheckpointBlockHistory(
+    blockBlob: BlockBlob
+  ): Promise<BlockData[]> {
+    const checkpointBlockHistoryData: BlockData[] = [];
+
+    const blobsToCollect = blockBlob.blockMetadata.sinceCheckpointBlockHeaders;
+
+    for (const blockHeader of blobsToCollect) {
+      const blockBlobRawData = await this.storageProvider.retrieve(
+        blockHeader.blockBlobId,
+        {
+          blobType: BlobType.BLOCK,
+        }
+      );
+
+      const blockBlob = JSON.parse(blockBlobRawData) as BlockBlob;
+      checkpointBlockHistoryData.push(blockBlob.blockData);
+    }
+
+    // Add the current block data
+    checkpointBlockHistoryData.push(blockBlob.blockData);
+
+    return checkpointBlockHistoryData;
   }
 
   // Utility methods for testing and debugging

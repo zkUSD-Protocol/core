@@ -1,4 +1,4 @@
-const daemon: 'local' | 'testnet' = 'testnet' as 'local' | 'testnet';
+const daemon: 'local' | 'testnet' = 'local' as 'local' | 'testnet';
 const basePublisherUrl =
   daemon === 'local'
     ? 'http://127.0.0.1:31417'
@@ -14,28 +14,33 @@ const MAX_EPOCHS = 53;
 export async function saveToWalrus({
   data,
   address,
-  numBlocks = 2,
+  numEpochs = 2,
 }: {
   data: string;
   address?: string;
-  numBlocks?: number;
+  numEpochs?: number;
 }): Promise<string | undefined> {
   let sendToParam = address ? `&send_object_to=${address}` : '';
-  let blocks =
-    numBlocks < MIN_EPOCHS
+  let epochs =
+    numEpochs < MIN_EPOCHS
       ? MIN_EPOCHS
-      : numBlocks > MAX_EPOCHS
+      : numEpochs > MAX_EPOCHS
         ? MAX_EPOCHS
-        : numBlocks;
-  console.log('Writing to Walrus');
+        : numEpochs;
+  console.log(
+    `Writing Blob to Walrus of size ${data.length} bytes which is ${data.length / 1024} KB and ${data.length / 1024 / 1024} MB`
+  );
+  console.log(`Writing file to Walrus`);
+  console.log(JSON.parse(data));
   console.time('written');
   const response = await fetch(
-    `${basePublisherUrl}/v1/blobs?blocks=${blocks}${sendToParam}`,
+    `${basePublisherUrl}/v1/blobs?epochs=${epochs}${sendToParam}`,
     {
       method: 'PUT',
       body: data,
     }
   );
+  // console.log('write info ', await response.json());
   console.timeEnd('written');
   if (response.status === 200) {
     const info = await response.json();
@@ -45,11 +50,12 @@ export async function saveToWalrus({
     console.log('Walrus blobId', blobId);
     return blobId;
   } else {
+    console.error(response);
     console.error('saveToDA failed:', {
       statusText: response.statusText,
       status: response.status,
     });
-    return undefined;
+    throw new Error('saveToDA failed');
   }
 }
 
@@ -70,10 +76,10 @@ export async function readFromWalrus({
       statusText: response.statusText,
       status: response.status,
     });
-    return undefined;
+    throw new Error('readFromDA failed');
   } else {
     const blob = await response.text();
-    console.log('blob', blob);
+    // console.log('blob', blob);
     return blob;
   }
 }

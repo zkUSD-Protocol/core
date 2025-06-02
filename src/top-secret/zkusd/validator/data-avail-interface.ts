@@ -10,7 +10,6 @@ import { IntentMapOperation } from './map-operation.js';
 
 export type DataAvailBlobIds = {
   blockBlobId: string;
-  metadataBlobId: string;
   checkpointBlobId?: string;
 };
 
@@ -37,7 +36,7 @@ export interface DataAvailInterface {
    */
   syncLocalState(
     localStateProxy: LocalStateProxy,
-    metadataBlobHandle: string
+    blockBlobHandle: string
   ): Promise<void>;
 
   /**
