@@ -1,6 +1,14 @@
-import { StateRoots } from './block-state.js';
+import { IntentStateRoots } from '../types/intent-proof';
+import { StateRoots } from './block-state';
 
-export type SequencerStateMetadata = {
+export type StateStoreMetadata = {
+  /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */
+  blockBlobId: string;
+  /** Handle to retrieve the checkpoint blob from DA. - This is actually the previous checkpoint file */
+  checkpointBlobId?: string;
+};
+
+export type StateCommitment = {
   /** State root to match against the validator’s computed state. */
   stateRoots: StateRoots;
   /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */
@@ -14,10 +22,10 @@ export type SequencerStateMetadata = {
 export interface IntentEvent {
   kind: 'intent';
   /** Handle to retrieve the intent blob from the data availability (DA) layer. */
-  intentBlobHandle: string;
+  intentBlobId: string;
   /** State root to verify before fetching the associated intent data. */
   // TODO will intents with invalid state roots be even accepted by SUI contracts?
-  intentBlockStateRoots: StateRoots;
+  intentBlockStateRoots: IntentStateRoots;
   /** Sequence number of the intent. */
   intentSequence: number;
 }
@@ -31,7 +39,7 @@ export interface BlockEndEvent {
   /** Timestamp of the block end - required for DA file creation */
   timestamp: number;
   /** Intents hash of the block, sha256 */
-  intentsHash: string;
+  intentsSHA256: string;
 }
 /**
  * Represents the finalization of an block.
@@ -40,7 +48,7 @@ export interface BlockEndEvent {
 export interface BlockFinalizedEvent {
   kind: 'block-finalized';
   /** Metadata of the state after the block */
-  finalizedStateMetadata: SequencerStateMetadata;
+  finalizedStateMetadata: StateCommitment;
 }
 
 /**
@@ -66,27 +74,27 @@ export interface SequencerEventQueue {
 export interface SequencerInterface {
   /**
    * Returns a queue of sequencer events.
-   * If `blockStateMetadata` is provided, returns events from that block onward.
+   * If `finalizedStateMetadata` is provided, returns events from that block onward.
    * Otherwise, starts from the last known block.
    */
   getSequencerEventQueue(
-    blockStateMetadata?: SequencerStateMetadata
+    finalizedStateMetadata?: StateCommitment
   ): Promise<SequencerEventQueue>;
 
   /**
    * Returns the most recent 'block-start' event.
    */
-  fetchFinalizedStateBlockMetadata(): Promise<SequencerStateMetadata>;
+  fetchFinalizedStateCommitment(): Promise<StateCommitment>;
 
   /**
    * Commits the given block state root to the sequencer's consensus.
    * Should be called by the validator after successfully processing an block.
    */
-  commitToBlockState(
+  commitToBlockState(args: {
     /** Metadata of the finalized (previous) block state */
-    finalizedStateMetadata: SequencerStateMetadata,
+    finalizedStateMetadata: StateCommitment;
 
     /** Metadata of the candidate (next) block state */
-    stateCandidateMetadata: SequencerStateMetadata
-  ): Promise<void>;
+    stateCandidateMetadata: StateCommitment;
+  }): Promise<void>;
 }

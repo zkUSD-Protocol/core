@@ -1,4 +1,4 @@
-// import { ZkUsdState } from "./data/state.js";
+// import { ZkUsdState } from "../data/state.js";
 // import { VaultMap } from "./data/vault-map.js";
 // import { ZkUsdMap } from "./data/zkusd-map.js";
 // import { MockStateEventQueue, StateEventQueue } from "./rollup-state-event-queue.js";
@@ -7,18 +7,18 @@
 // import { InMemoryZkusdStateManager, OptimisticStateComputer, OptimisticStateProcessor } from "./optimistic.js";
 // import { MockStatePublisher } from "./rollup-state-publisher.js";
 // import { StateProcessorLog } from "./optimistic-types.js";
-// import { KeyPair } from "../../types/utility.js";
+// import { KeyPair } from "../../../types/utility.js";
 // import { PrivateKey, Signature, UInt64, UInt8 } from "o1js";
-// import { CreateVaultIntent, CreateVaultIntentInput, CreateVaultIntentKey, CreateVaultIntentProof, CreateVaultPrivateInput } from "./programs/intents/create-vault.js";
+// import { CreateVaultIntent, CreateVaultIntentInput, CreateVaultIntentKey, CreateVaultIntentProof, CreateVaultPrivateInput } from "../programs/intents/create-vault.js";
 // import { Field } from "o1js";
-// import { IntentProof } from "./types/intent-proof.js";
+// import { IntentProof } from "../types/intent-proof.js";
 // import { Proof } from "o1js/dist/node/lib/proof-system/circuit.js";
-// import { DepositIntent, DepositIntentInput, DepositIntentKey, DepositIntentProof, DepositPrivateInput } from "./programs/intents/deposit.js";
-// import { MintIntent, MintIntentInput, MintIntentPrivateInput, MintIntentProof } from "./programs/intents/mint.js";
-// import { InputNotes, Note, OutputNotes } from "./data/note.js";
-// import { AggregateOraclePricesProof } from "../../proofs/oracle-price-aggregation/prove.js";
-// import { TransferIntent, TransferIntentInput, TransferIntentPrivateInput, TransferIntentProof } from "./programs/intents/transfer.js";
-// import { RedeemIntent, RedeemIntentInput, RedeemIntentPrivateInput, RedeemIntentProof } from "./programs/intents/redeem.js";
+// import { DepositIntent, DepositIntentInput, DepositIntentKey, DepositIntentProof, DepositPrivateInput } from "../programs/intents/deposit.js";
+// import { MintIntent, MintIntentInput, MintIntentPrivateInput, MintIntentProof } from "../programs/intents/mint.js";
+// import { InputNotes, Note, OutputNotes } from "../data/note.js";
+// import { AggregateOraclePricesProof } from "../../../proofs/oracle-price-aggregation/prove.js";
+// import { TransferIntent, TransferIntentInput, TransferIntentPrivateInput, TransferIntentProof } from "../programs/intents/transfer.js";
+// import { RedeemIntent, RedeemIntentInput, RedeemIntentPrivateInput, RedeemIntentProof } from "../programs/intents/redeem.js";
 
 // interface MapProvider{
 //     vaultMap(): Promise<VaultMap>;

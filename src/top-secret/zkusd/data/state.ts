@@ -12,8 +12,6 @@ export class ZkUsdState extends Struct({
   intentZkUsdMapRoot: Field,
   liveVaultMapRoot: Field,
   liveZkUsdMapRoot: Field,
-  sequence: UInt32,
-  blockNumber: UInt32,
   validPriceBlockCount: UInt8,
   emergencyStop: Bool,
   collateralRatio: UInt8,
@@ -33,8 +31,6 @@ export class ZkUsdState extends Struct({
       intentZkUsdMapRoot: zkUsdMap.root,
       liveVaultMapRoot: vaultMap.root,
       liveZkUsdMapRoot: zkUsdMap.root,
-      sequence: UInt32.from(0),
-      blockNumber: UInt32.from(0),
       validPriceBlockCount: UInt8.from(1),
       emergencyStop: Bool(false),
       collateralRatio: UInt8.from(150),
@@ -43,14 +39,11 @@ export class ZkUsdState extends Struct({
       oraclesHash: Field(0),
     });
   }
-
   static assertEqual(a: ZkUsdState, b: ZkUsdState) {
     a.intentVaultMapRoot.assertEquals(b.intentVaultMapRoot);
     a.intentZkUsdMapRoot.assertEquals(b.intentZkUsdMapRoot);
     a.liveVaultMapRoot.assertEquals(b.liveVaultMapRoot);
     a.liveZkUsdMapRoot.assertEquals(b.liveZkUsdMapRoot);
-    a.sequence.assertEquals(b.sequence);
-    a.blockNumber.assertEquals(b.blockNumber);
     a.validPriceBlockCount.assertEquals(b.validPriceBlockCount);
     a.emergencyStop.assertEquals(b.emergencyStop);
     a.collateralRatio.assertEquals(b.collateralRatio);

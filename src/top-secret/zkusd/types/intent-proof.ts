@@ -1,273 +1,200 @@
-import { BurnIntentProof } from '../programs/intents/burn.js';
-import { MintIntentOutput, MintIntentProof } from '../programs/intents/mint.js';
-import {
-  TransferIntentOutput,
-  TransferIntentProof,
-} from '../programs/intents/transfer.js';
-import {
-  RedeemIntentOutput,
-  RedeemIntentProof,
-} from '../programs/intents/redeem.js';
-import {
-  CreateVaultIntentOutput,
-  CreateVaultIntentProof,
-} from '../programs/intents/create-vault.js';
-import {
-  DepositIntentOutput,
-  DepositIntentProof,
-} from '../programs/intents/deposit.js';
-import {
-  LiquidateIntentOutput,
-  LiquidateIntentProof,
-} from '../programs/intents/liquidate.js';
 import { createHash } from 'crypto';
-import { Field, Poseidon } from 'o1js';
-import { StateRoots, SystemParams } from '../validator/block-state.js';
-import { IntentMapOperation } from '../validator/map-operation.js';
-import { Vault } from '../data/vault.js';
-import { Note } from '../data/note.js';
+import { Field } from 'o1js';
 
+import {
+  BurnIntentProof,     MintIntentProof,     TransferIntentProof,
+  RedeemIntentProof,   CreateVaultIntentProof,
+  DepositIntentProof,  LiquidateIntentProof,
+} from '../programs/intents';
+
+import { SystemParams, StateRoots }  from '../validator/block-state.js';
+import { IntentMapOperation }        from '../validator/map-operation.js';
+import { Vault }                     from '../data/vault.js';
+import { Note }                      from '../data/note.js';
+
+/* ─────────────────────────────────────────────────────────────── */
 export type IntentProofKind =
-  | 'burn'
-  | 'mint'
-  | 'transfer'
-  | 'redeem'
-  | 'create-vault'
-  | 'deposit'
-  | 'liquidate';
+  | 'burn' | 'mint' | 'transfer' | 'redeem'
+  | 'create-vault' | 'deposit' | 'liquidate';
 
 export type IntentProof =
-  | { kind: 'burn'; proof: BurnIntentProof }
-  | { kind: 'mint'; proof: MintIntentProof }
-  | { kind: 'transfer'; proof: TransferIntentProof }
-  | { kind: 'redeem'; proof: RedeemIntentProof }
-  | { kind: 'create-vault'; proof: CreateVaultIntentProof }
-  | { kind: 'deposit'; proof: DepositIntentProof }
-  | { kind: 'liquidate'; proof: LiquidateIntentProof };
+  | { kind: 'burn';        proof: BurnIntentProof }
+  | { kind: 'mint';        proof: MintIntentProof }
+  | { kind: 'transfer';    proof: TransferIntentProof }
+  | { kind: 'redeem';      proof: RedeemIntentProof }
+  | { kind: 'create-vault';proof: CreateVaultIntentProof }
+  | { kind: 'deposit';     proof: DepositIntentProof }
+  | { kind: 'liquidate';   proof: LiquidateIntentProof };
 
-type IntentStateRoots = {
-  vaultMapRoot: Field | undefined;
-  zkUsdMapRoot: Field | undefined;
-};
-
-export function intentStateRootsMatchBlock(
-  intentStateRoots: IntentStateRoots,
-  blockStateRoots: StateRoots
-): boolean {
-  // if an intent root is present then it must be equal if not then it doesnt matter
-  if (intentStateRoots.vaultMapRoot !== undefined) {
-    return intentStateRoots.vaultMapRoot
-      .equals(blockStateRoots.vaultMapRoot)
-      .toBoolean();
-  }
-  if (intentStateRoots.zkUsdMapRoot !== undefined) {
-    return intentStateRoots.zkUsdMapRoot
-      .equals(blockStateRoots.zkUsdMapRoot)
-      .toBoolean();
-  }
-  return true;
+export interface IntentStateRoots {
+  vaultMapRoot?: Field;
+  zkUsdMapRoot?: Field;
 }
 
-export function extractIntentMapOperations(
-  intentProof: IntentProof,
-  systemParams: SystemParams
-): IntentMapOperation[] {
-  if (isMintIntentProof(intentProof)) {
-    const proof = intentProof.proof as MintIntentProof;
-    const publicOutput: MintIntentOutput = proof.publicOutput;
-    const liquidationBonusRatio = systemParams.liquidationBonusRatio;
-    const intentMapOperations = IntentMapOperation.updateVaultMap(
-      publicOutput.vaultUpdate.vaultAddress,
-      Vault({
-        collateralRatio: systemParams.collateralRatio,
-        liquidationBonusRatio,
-      })
-        .fromState(publicOutput.vaultUpdate.vaultState)
-        .pack()
-    );
+/* ------------------------------------------------------------------
+ *  Function-style Handler Definition
+ * ----------------------------------------------------------------- */
+interface HandlerResult {
+  operations: IntentMapOperation[];
+  roots:      IntentStateRoots;
+}
+type HandlerFn<K extends IntentProofKind> =
+  (intent: Extract<IntentProof, { kind: K }>,
+   params: SystemParams) => HandlerResult;
 
-    return [intentMapOperations];
-  }
-  if (isTransferIntentProof(intentProof)) {
-    const proof = intentProof.proof as TransferIntentProof;
-    const publicOutput: TransferIntentOutput = proof.publicOutput;
-    const nullifiers = publicOutput.nullifiers;
-    const outputNoteCommitments = publicOutput.outputNoteCommitments;
+/* internal registry */
+const registry: Partial<Record<IntentProofKind, HandlerFn<any>>> = {};
 
-    const operations: IntentMapOperation[] = [];
-    nullifiers.nullifiers.forEach((nullifier) => {
-      if (nullifier.isDummy.not().toBoolean()) {
-        operations.push(
-          IntentMapOperation.setVaultMap(nullifier.nullifier, Note.included())
-        );
+/* helper: register many handlers declaratively */
+function registerHandlers<
+  R extends { [K in IntentProofKind]?: HandlerFn<K> }
+>(impl: R): void {
+  Object.assign(registry, impl);
+}
+
+/* ------------------------------------------------------------------
+ *  Built-in Handlers
+ * ----------------------------------------------------------------- */
+registerHandlers({
+  mint: (i, s) => {
+    const o = i.proof.publicOutput;
+    const vault = Vault({
+      collateralRatio: s.collateralRatio,
+      liquidationBonusRatio: s.liquidationBonusRatio,
+    }).fromState(o.vaultUpdate.vaultState).pack();
+
+    return {
+      operations: [
+        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
+      ],
+      roots: {
+        vaultMapRoot: i.proof.publicInput.intentVaultMapRoot,
+        zkUsdMapRoot: i.proof.publicInput.intentZkUsdMapRoot,
+      },
+    };
+  },
+
+  transfer: (i) => {
+    const { nullifiers, outputNoteCommitments } = i.proof.publicOutput;
+    const ops: IntentMapOperation[] = [];
+
+    nullifiers.nullifiers.forEach(n => {
+      if (!n.isDummy.toBoolean()) {
+        ops.push(IntentMapOperation.setVaultMap(n.nullifier, Note.included()));
       }
     });
-    outputNoteCommitments.commitments.forEach((outputNoteCommitment) => {
-      if (outputNoteCommitment.isDummy.not().toBoolean()) {
-        operations.push(
-          IntentMapOperation.setZkusdMap(
-            outputNoteCommitment.commitment,
-            Note.included()
-          )
-        );
+    outputNoteCommitments.commitments.forEach(c => {
+      if (!c.isDummy.toBoolean()) {
+        ops.push(IntentMapOperation.setZkusdMap(c.commitment, Note.included()));
       }
     });
 
-    return operations;
-  }
-
-  if (isRedeemIntentProof(intentProof)) {
-    const proof = intentProof.proof as RedeemIntentProof;
-    const publicOutput: RedeemIntentOutput = proof.publicOutput;
-    const liquidationBonusRatio = systemParams.liquidationBonusRatio;
-    const updateVault = IntentMapOperation.updateVaultMap(
-      publicOutput.vaultUpdate.vaultAddress,
-      Vault({
-        collateralRatio: systemParams.collateralRatio,
-        liquidationBonusRatio,
-      })
-        .fromState(publicOutput.vaultUpdate.vaultState)
-        .pack()
-    );
-
-    return [updateVault];
-  }
-  if (isCreateVaultIntentProof(intentProof)) {
-    const proof = intentProof.proof as CreateVaultIntentProof;
-    const publicOutput: CreateVaultIntentOutput = proof.publicOutput;
-    const insertVault = IntentMapOperation.insertVaultMap(
-      publicOutput.vaultKey.key,
-      Vault({
-        collateralRatio: systemParams.collateralRatio,
-        liquidationBonusRatio: systemParams.liquidationBonusRatio,
-      })
-        .new(publicOutput.vaultType)
-        .pack()
-    );
-
-    return [insertVault];
-  }
-  if (isDepositIntentProof(intentProof)) {
-    const proof = intentProof.proof as DepositIntentProof;
-    const publicOutput: DepositIntentOutput = proof.publicOutput;
-    const updateVault = IntentMapOperation.updateVaultMap(
-      publicOutput.vaultKey.key,
-      publicOutput.vaultPack
-    );
-
-    return [updateVault];
-  }
-  if (isLiquidateIntentProof(intentProof)) {
-    const proof = intentProof.proof as LiquidateIntentProof;
-    const publicOutput: LiquidateIntentOutput = proof.publicOutput;
-    const vaultUpdate = IntentMapOperation.updateVaultMap(
-      publicOutput.vaultUpdate.vaultAddress,
-      Vault({
-        collateralRatio: systemParams.collateralRatio,
-        liquidationBonusRatio: systemParams.liquidationBonusRatio,
-      })
-        .fromState(publicOutput.vaultUpdate.vaultState)
-        .pack()
-    );
-    const outputNoteCommitment = publicOutput.outputNoteCommitment;
-    const zkusdUpdate = IntentMapOperation.insertZkusdMap(
-      outputNoteCommitment.commitment,
-      Note.included()
-    );
-
-    return [vaultUpdate, zkusdUpdate];
-  }
-  throw new Error('Unknown intent proof kind');
-}
-
-export function extractIntentStateCommitment(
-  proof: IntentProof
-): IntentStateRoots {
-  if (isMintIntentProof(proof)) {
     return {
-      vaultMapRoot: proof.proof.publicInput.intentVaultMapRoot,
-      zkUsdMapRoot: proof.proof.publicInput.intentZkUsdMapRoot,
+      operations: ops,
+      roots: { zkUsdMapRoot: i.proof.publicInput.intentZkUsdMapRoot },
     };
-  }
-  if (isTransferIntentProof(proof)) {
+  },
+
+  redeem: (i, s) => {
+    const o = i.proof.publicOutput;
+    const vault = Vault({
+      collateralRatio: s.collateralRatio,
+      liquidationBonusRatio: s.liquidationBonusRatio,
+    }).fromState(o.vaultUpdate.vaultState).pack();
+
     return {
-      vaultMapRoot: undefined,
-      zkUsdMapRoot: proof.proof.publicInput.intentZkUsdMapRoot,
+      operations: [
+        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
+      ],
+      roots: { vaultMapRoot: i.proof.publicInput.intentVaultMapRoot },
     };
-  }
-  if (isRedeemIntentProof(proof)) {
+  },
+
+  'create-vault': (i, s) => {
+    const o = i.proof.publicOutput;
+    const vault = Vault({
+      collateralRatio: s.collateralRatio,
+      liquidationBonusRatio: s.liquidationBonusRatio,
+    }).new(o.vaultType).pack();
+
     return {
-      vaultMapRoot: proof.proof.publicInput.intentVaultMapRoot,
-      zkUsdMapRoot: undefined,
+      operations: [
+        IntentMapOperation.insertVaultMap(o.vaultKey.key, vault),
+      ],
+      roots: { vaultMapRoot: i.proof.publicInput.vaultMapRoot },
     };
-  }
-  if (isCreateVaultIntentProof(proof)) {
+  },
+
+  deposit: (i) => ({
+    operations: [
+      IntentMapOperation.updateVaultMap(
+        i.proof.publicOutput.vaultKey.key,
+        i.proof.publicOutput.vaultPack,
+      ),
+    ],
+    roots: { vaultMapRoot: i.proof.publicInput.vaultMapRoot },
+  }),
+
+  liquidate: (i, s) => {
+    const o = i.proof.publicOutput;
+    const vault = Vault({
+      collateralRatio: s.collateralRatio,
+      liquidationBonusRatio: s.liquidationBonusRatio,
+    }).fromState(o.vaultUpdate.vaultState).pack();
+
     return {
-      vaultMapRoot: proof.proof.publicInput.vaultMapRoot,
-      zkUsdMapRoot: undefined,
+      operations: [
+        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
+        IntentMapOperation.insertZkusdMap(o.outputNoteCommitment.commitment, Note.included()),
+      ],
+      roots: {
+        vaultMapRoot: i.proof.publicInput.intentVaultMapRoot,
+        zkUsdMapRoot: i.proof.publicInput.intentZkUsdMapRoot,
+      },
     };
+  },
+
+  burn: () => ({ operations: [], roots: {} }), // placeholder
+});
+
+/* ------------------------------------------------------------------
+ *  Facade: same API as before, but now uses functional handlers
+ * ----------------------------------------------------------------- */
+export class IntentProofHelper {
+  private get<K extends IntentProofKind>(k: K): HandlerFn<K> {
+    const fn = registry[k];
+    if (!fn) throw new Error(`No handler registered for kind ${k}`);
+    return fn;
   }
-  if (isDepositIntentProof(proof)) {
-    return {
-      vaultMapRoot: proof.proof.publicInput.vaultMapRoot,
-      zkUsdMapRoot: undefined,
-    };
+
+  constructor(private readonly sysParams: SystemParams) {}
+
+  extractOperations(intent: IntentProof): IntentMapOperation[] {
+    return this.get(intent.kind)(intent as any, this.sysParams).operations;
   }
-  if (isLiquidateIntentProof(proof)) {
-    return {
-      vaultMapRoot: proof.proof.publicInput.intentVaultMapRoot,
-      zkUsdMapRoot: proof.proof.publicInput.intentZkUsdMapRoot,
-    };
-  } else throw new Error('Unknown intent proof kind');
-}
 
-export function hashAnyIntentProof(proof: IntentProof): string {
-  const stringified = JSON.stringify(proof.proof.toJSON());
+  stateRoots(intent: IntentProof): IntentStateRoots {
+    return this.get(intent.kind)(intent as any, this.sysParams).roots;
+  }
 
-  // sha256
-  const hash = createHash('sha3-256').update(stringified).digest('hex');
-  return hash;
-}
+  rootsMatch(intent: IntentProof, block: StateRoots): boolean {
+    const r = this.stateRoots(intent);
+    return IntentProofHelper.intentStateRootsMatchBlock({intentStateRoots: r, blockStateRoots: block});
+  }
 
-// Example: type guard
-export function isBurnIntentProof(
-  obj: IntentProof
-): obj is { kind: 'burn'; proof: BurnIntentProof } {
-  return obj.kind === 'burn';
-}
+  static hash(intent: IntentProof): string {
+    return createHash('sha3-256')
+      .update(JSON.stringify(intent.proof.toJSON()))
+      .digest('hex');
+  }
 
-export function isMintIntentProof(
-  obj: IntentProof
-): obj is { kind: 'mint'; proof: MintIntentProof } {
-  return obj.kind === 'mint';
-}
-
-export function isTransferIntentProof(
-  obj: IntentProof
-): obj is { kind: 'transfer'; proof: TransferIntentProof } {
-  return obj.kind === 'transfer';
-}
-
-export function isRedeemIntentProof(
-  obj: IntentProof
-): obj is { kind: 'redeem'; proof: RedeemIntentProof } {
-  return obj.kind === 'redeem';
-}
-
-export function isCreateVaultIntentProof(
-  obj: IntentProof
-): obj is { kind: 'create-vault'; proof: CreateVaultIntentProof } {
-  return obj.kind === 'create-vault';
-}
-
-export function isDepositIntentProof(
-  obj: IntentProof
-): obj is { kind: 'deposit'; proof: DepositIntentProof } {
-  return obj.kind === 'deposit';
-}
-
-export function isLiquidateIntentProof(
-  obj: IntentProof
-): obj is { kind: 'liquidate'; proof: LiquidateIntentProof } {
-  return obj.kind === 'liquidate';
+  static intentStateRootsMatchBlock(args:{
+    intentStateRoots: IntentStateRoots,
+    blockStateRoots: StateRoots
+  }
+  ): boolean {
+    if (args.intentStateRoots.vaultMapRoot && !args.intentStateRoots.vaultMapRoot.equals(args.blockStateRoots.vaultMapRoot).toBoolean()) return false;
+    if (args.intentStateRoots.zkUsdMapRoot && !args.intentStateRoots.zkUsdMapRoot.equals(args.blockStateRoots.zkUsdMapRoot).toBoolean()) return false;
+    return true;
+  }
 }

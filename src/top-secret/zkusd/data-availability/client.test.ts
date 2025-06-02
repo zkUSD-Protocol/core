@@ -6,11 +6,15 @@ import { Bool, Field, UInt64, UInt8 } from 'o1js';
 import { DataAvailClient } from './client.js';
 import {
   FullState,
+  NextStateCandidate,
   stateRootsEqual,
   SystemParams,
 } from '../validator/block-state.js';
-import { InMemoryStateProxy } from '../validator/local-block-state.js';
-import { SequencerStateMetadata } from '../validator/sequencer-interface.js';
+import {
+  InMemoryStateProxy,
+  LocalStateProxy,
+} from '../validator/local-block-state.js';
+import { StateCommitment } from '../validator/sequencer-interface.js';
 import { IntentMapOperation } from '../validator/map-operation.js';
 import { StateRoots } from '../validator/block-state.js';
 import { MapType, OperationType } from './types/types.js';
@@ -41,7 +45,7 @@ function generateRandomIntentMapOperation(): IntentMapOperation {
 }
 
 async function processLocalIntentsForNextBlock(
-  localStateProxy: InMemoryStateProxy,
+  localStateProxy: LocalStateProxy,
   numberOfIntents: number = 10
 ): Promise<{
   nextStateValidatedIntentOperations: IntentMapOperation[];
@@ -71,10 +75,11 @@ describe('ZkUsd DA Tests', () => {
     vaultDebtCeiling: UInt64.from(1_000_000e9),
     oraclesHash: Field.from(0),
   };
+  let genesisRoots: StateRoots;
   const genesisState = FullState.newGenesisState(systemParams);
-  const localStateProxy = new InMemoryStateProxy(genesisState);
+  let localStateProxy: LocalStateProxy;
   let client: DataAvailClient;
-  let finalizedState: SequencerStateMetadata;
+  let finalizedState: StateCommitment;
 
   before(async () => {
     //create a local client for testing
@@ -92,15 +97,26 @@ describe('ZkUsd DA Tests', () => {
       checkpointInterval: 10,
       timeout: 60_000,
     });
+    await client.storageProvider.cleanup!();
+
+    genesisRoots = {
+      vaultMapRoot: new VaultMap().root,
+      zkUsdMapRoot: new ZkUsdMap().root,
+    };
   });
 
   it('should initialize the data availability', async () => {
-    const blobIds = await client.initDA(localStateProxy);
+    const blobIds = await client.initDA(genesisRoots);
 
     finalizedState = {
       stateRoots: await localStateProxy.stateRoots(),
       stateBlobHandle: blobIds.blockBlobId,
     };
+
+    localStateProxy = new InMemoryStateProxy(genesisState, {
+      blockBlobId: blobIds.blockBlobId,
+      checkpointBlobId: blobIds.checkpointBlobId,
+    });
 
     assert.ok(blobIds.blockBlobId);
   });
@@ -110,10 +126,8 @@ describe('ZkUsd DA Tests', () => {
       await processLocalIntentsForNextBlock(localStateProxy);
 
     const blobIds = await client.publishBlockUpdate(
-      finalizedState,
-      nextStateValidatedIntentOperations,
-      nextStateRoots,
-      localStateProxy
+      localStateProxy,
+      new NextStateCandidate(nextStateRoots, nextStateValidatedIntentOperations)
     );
 
     //This is the blockFinalizedEventState
@@ -128,10 +142,10 @@ describe('ZkUsd DA Tests', () => {
   });
 
   it('should sync the local state to the target metadata', async () => {
-    await client.syncLocalState(
+    await client.syncViaBlockBlob({
       localStateProxy,
-      finalizedState.stateBlobHandle
-    );
+      blockBlobId: finalizedState.stateBlobHandle,
+    });
 
     console.log(finalizedState);
 
@@ -148,10 +162,11 @@ describe('ZkUsd DA Tests', () => {
         await processLocalIntentsForNextBlock(localStateProxy);
 
       const blobIds = await client.publishBlockUpdate(
-        finalizedState,
-        nextStateValidatedIntentOperations,
-        nextStateRoots,
-        localStateProxy
+        localStateProxy,
+        new NextStateCandidate(
+          nextStateRoots,
+          nextStateValidatedIntentOperations
+        )
       );
 
       finalizedState = {
@@ -159,10 +174,10 @@ describe('ZkUsd DA Tests', () => {
         stateBlobHandle: blobIds.blockBlobId,
       };
 
-      await client.syncLocalState(
+      await client.syncViaBlockBlob({
         localStateProxy,
-        finalizedState.stateBlobHandle
-      );
+        blockBlobId: finalizedState.stateBlobHandle,
+      });
 
       const localState = await localStateProxy.useState();
 
@@ -176,12 +191,15 @@ describe('ZkUsd DA Tests', () => {
   it('should sync the local state to the target metadata after a checkpoint', async () => {
     //First we reset our local state to the genesis state
     const freshState = FullState.newGenesisState(systemParams);
-    await localStateProxy.setState(freshState);
+    const freshStateStoreMetadata = await localStateProxy.setState({
+      finalizedState: freshState,
+      finalizedStateStoreMetadata: finalizedState.stateStoreMetadata,
+    });
 
-    await client.syncLocalState(
+    await client.syncViaBlockBlob({
       localStateProxy,
-      finalizedState.stateBlobHandle
-    );
+      blockBlobId: finalizedState.stateBlobHandle,
+    });
 
     const localState = await localStateProxy.useState();
 

@@ -1,9 +1,4 @@
-import {
-  BlockStateCommitment,
-  NextBlockStateCandidate,
-  StateRoots,
-  SystemParams,
-} from '../../validator/block-state.js';
+import { StateRoots } from '../../validator/block-state.js';
 import { IntentMapOperation } from '../../validator/map-operation.js';
 import {
   BlockBlob,

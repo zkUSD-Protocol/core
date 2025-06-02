@@ -3,6 +3,7 @@ import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import { Field } from 'o1js';
 import { UInt64, Bool, UInt8 } from 'o1js';
 import { IntentMapOperation } from './map-operation.js';
+import { ZkUsdState } from '../data/state.js';
 
 export type SystemParams = {
   validPriceBlockCount: UInt8;
@@ -24,14 +25,6 @@ export type StateLengths = {
 };
 
 /**
- * Identifies the state of an block using its state root.
- */
-export type BlockStateCommitment = {
-  roots: StateRoots;
-  lengths: StateLengths;
-};
-
-/**
  * Checks if two block state roots are equal.
  */
 export function stateRootsEqual(
@@ -44,38 +37,23 @@ export function stateRootsEqual(
   );
 }
 
-export type NextBlockStateCommitment = {
-  // resulting state roots and lengths
-  nextBlockState: BlockStateCommitment;
-  // commitment to a sequence of operations that have occurred since the last block
-  intentOperationsHash: Field;
-};
 
-export class NextBlockStateCandidate {
-  nextBlockState: BlockStateCommitment;
+export class NextStateCandidate {
+  nextBlockStateRoots: StateRoots;
   intentOperations: IntentMapOperation[];
-  systemParams: SystemParams;
-  timestamp: number; // we get this from the sequencer block end event
+  // systemParams: SystemParams; // not used for now?
+  // timestamp: number; // we get this from the sequencer block end event
 
   constructor(
-    blockState: BlockStateCommitment,
+    blockStateRoots: StateRoots,
     intentOperations: IntentMapOperation[],
-    systemParams: SystemParams,
-    timestamp: number
+    // systemParams: SystemParams,
+    // timestamp: number
   ) {
-    this.nextBlockState = blockState;
+    this.nextBlockStateRoots = blockStateRoots;
     this.intentOperations = intentOperations;
-    this.systemParams = systemParams;
-    this.timestamp = timestamp;
-  }
-  toCommitment(): NextBlockStateCommitment {
-    const intentOperationsHash = IntentMapOperation.rollingHash(
-      this.intentOperations
-    );
-    return {
-      nextBlockState: this.nextBlockState,
-      intentOperationsHash,
-    };
+    // this.systemParams = systemParams;
+    // this.timestamp = timestamp;
   }
 }
 
@@ -104,20 +82,6 @@ export class FullState {
     return {
       vaultMapRoot: this.vaultMap.root,
       zkUsdMapRoot: this.zkUsdMap.root,
-    };
-  }
-
-  // to commitment
-  toCommitment(): BlockStateCommitment {
-    return {
-      roots: {
-        vaultMapRoot: this.vaultMap.root,
-        zkUsdMapRoot: this.zkUsdMap.root,
-      },
-      lengths: {
-        vaultMapLength: this.vaultMap.length,
-        zkUsdMapLength: this.zkUsdMap.length,
-      },
     };
   }
 
@@ -152,5 +116,20 @@ export class FullState {
       this.vaultMap.clone() as VaultMap,
       this.zkUsdMap.clone() as ZkUsdMap
     );
+  }
+
+  toRollupProofState(): ZkUsdState {
+    return new ZkUsdState({
+      intentVaultMapRoot: this.vaultMap.root,
+      intentZkUsdMapRoot: this.zkUsdMap.root,
+      liveVaultMapRoot: this.vaultMap.root,
+      liveZkUsdMapRoot: this.zkUsdMap.root,
+      validPriceBlockCount: this.systemParams.validPriceBlockCount,
+      emergencyStop: this.systemParams.emergencyStop,
+      collateralRatio: this.systemParams.collateralRatio,
+      liquidationBonusRatio: this.systemParams.liquidationBonusRatio,
+      vaultDebtCeiling: this.systemParams.vaultDebtCeiling,
+      oraclesHash: this.systemParams.oraclesHash,
+    });
   }
 }

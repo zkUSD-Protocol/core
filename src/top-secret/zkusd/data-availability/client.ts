@@ -1,9 +1,6 @@
-import {
-  DataAvailBlobIds,
-  DataAvailInterface,
-} from '../validator/data-avail-interface.js';
+import { DataAvailInterface } from '../validator/data-avail-interface.js';
 import { IntentProof } from '../types/intent-proof.js';
-import { StateRoots } from '../validator/block-state.js';
+import { NextStateCandidate, StateRoots } from '../validator/block-state.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
 import {
   BlockBlob,
@@ -13,7 +10,6 @@ import {
 } from './types/types.js';
 import { BlockBlobBuilder } from './services/block-blob-builder.js';
 import { CheckpointBlobBuilder } from './services/checkpoint-blob-builder.js';
-import { SequencerStateMetadata } from '../validator/sequencer-interface.js';
 import { IntentMapOperation } from '../validator/map-operation.js';
 import { StorageProvider } from './providers/storage-provider.js';
 import {
@@ -23,6 +19,8 @@ import {
   ProviderType,
 } from './providers/provider-factory.js';
 import { StateSyncService } from './services/state-sync.js';
+import { Field } from 'o1js';
+import { StateStoreMetadata } from '../validator/sequencer-interface.js';
 
 export interface DataAvailClientConfig {
   storageProvider: StorageProvider;
@@ -72,9 +70,9 @@ export class DataAvailClient implements DataAvailInterface {
     });
   }
 
-  async initDA(localStateProxy: LocalStateProxy): Promise<DataAvailBlobIds> {
+  async initDA(genesisStateRoots: StateRoots): Promise<StateStoreMetadata> {
     // 1. Get the initial state from the local proxy
-    const initialStateRoots = await localStateProxy.stateRoots();
+    const initialStateRoots = genesisStateRoots;
 
     // 2. Create the genesis block file
     const genesisBlockBlob = BlockBlobBuilder.buildGenesisBlockBlob({
@@ -95,9 +93,9 @@ export class DataAvailClient implements DataAvailInterface {
     };
   }
 
-  async fetchIntentProof(intentBlobHandle: string): Promise<IntentProof> {
+  async fetchIntentProof(intentBlobId: string): Promise<IntentProof> {
     try {
-      const rawData = await this.storageProvider.retrieve(intentBlobHandle);
+      const rawData = await this.storageProvider.retrieve(intentBlobId);
       const intentProof = JSON.parse(rawData) as IntentProof;
       return intentProof;
     } catch (error) {
@@ -107,25 +105,26 @@ export class DataAvailClient implements DataAvailInterface {
     }
   }
 
-  async syncLocalState(
-    localStateProxy: LocalStateProxy,
-    latestBlockBlobHandle: string
-  ): Promise<void> {
-    return this.syncService.syncLocalState(
-      localStateProxy,
-      latestBlockBlobHandle
+  async syncViaBlockBlob(args: {
+    localStateProxy: LocalStateProxy;
+    blockBlobId: string;
+  }): Promise<void> {
+    await this.syncService.syncToBlockBlobState(
+      args.localStateProxy,
+      args.blockBlobId
     );
   }
 
   async publishBlockUpdate(
-    finalizedStateMetadata: SequencerStateMetadata,
-    nextStateValidatedIntentOperations: IntentMapOperation[],
-    nextStateRoots: StateRoots,
-    localStateProxy: LocalStateProxy
-  ): Promise<DataAvailBlobIds> {
+    localStateProxy: LocalStateProxy,
+    nextStateCandidate: NextStateCandidate
+  ): Promise<StateStoreMetadata> {
+    const previousBlockStateCommitment =
+      await localStateProxy.getStateCommitment();
+
     // 1. Retrieve the previous block file
     const previousBlockRawData = await this.storageProvider.retrieve(
-      finalizedStateMetadata.stateBlobHandle,
+      previousBlockStateCommitment.stateBlobHandle,
       {
         blobType: BlobType.BLOCK,
       }
@@ -161,10 +160,10 @@ export class DataAvailClient implements DataAvailInterface {
     // 3. Build the new block file
     const newBlockFile = BlockBlobBuilder.buildBlockBlob({
       previousBlockBlob,
-      previousStateRoots: finalizedStateMetadata.stateRoots,
-      previousBlockBlobId: finalizedStateMetadata.stateBlobHandle,
-      nextStateValidatedIntentOperations,
-      nextStateRoots,
+      previousStateRoots: previousBlockStateCommitment.stateRoots,
+      previousBlockBlobId: previousBlockStateCommitment.stateBlobHandle,
+      nextStateValidatedIntentOperations: nextStateCandidate.intentOperations,
+      nextStateRoots: nextStateCandidate.nextBlockStateRoots,
       checkpointBlobId,
       checkpointBlock: checkpointBlobId
         ? previousBlockBlob.blockData.block
