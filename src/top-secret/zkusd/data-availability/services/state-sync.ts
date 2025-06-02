@@ -287,10 +287,6 @@ export class StateSyncService {
     );
     const restoredState = this.restoreStateFromCheckpoint(checkpointData);
 
-    const lastBlockBlobId = strategy.incrementalBlockBlobIds.at(-1);
-    if (!lastBlockBlobId) {
-      throw new Error('No incremental block blob IDs found');
-    }
     await localStateProxy.setState({
       finalizedState: restoredState,
       finalizedStateStoreMetadata: {

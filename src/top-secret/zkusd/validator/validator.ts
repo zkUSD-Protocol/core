@@ -44,15 +44,16 @@ export class Validator {
     this._isRunning = false;
   }
 
-  async syncToBlockStart(finalizedStateMetadata?: StateCommitment): Promise<void> {
-    await this._dataAvail.syncViaMetadataBlob(
-      {
-        localStateProxy:this._finalizedStateProxy,
-        metadataBlobId: finalizedStateMetadata ?
-        finalizedStateMetadata.stateStoreMetadata.metadataBlobId :
-        (await this._sequencer.fetchFinalizedStateCommitment()).stateStoreMetadata.metadataBlobId
-      }
-    );
+  async syncToBlockStart(
+    finalizedStateMetadata?: StateCommitment
+  ): Promise<void> {
+    await this._dataAvail.syncViaBlockBlob({
+      localStateProxy: this._finalizedStateProxy,
+      blockBlobId: finalizedStateMetadata
+        ? finalizedStateMetadata.stateBlobHandle
+        : (await this._sequencer.fetchFinalizedStateCommitment())
+            .stateBlobHandle,
+    });
     await this._optimisticStateComputer.setState(
       await this._finalizedStateProxy.cloneState()
     );
@@ -65,9 +66,7 @@ export class Validator {
   async start(): Promise<void> {
     this._isRunning = true;
     try {
-      const eventQueue = await this._sequencer.getSequencerEventQueue(
-
-      );
+      const eventQueue = await this._sequencer.getSequencerEventQueue();
       while (this._isRunning) {
         const event = await eventQueue.fetchNextEvent();
         switch (event.kind) {
@@ -90,45 +89,50 @@ export class Validator {
 
   async processBlockEnd(): Promise<void> {
     // get the computed state
-    const computedState = await this._optimisticStateComputer.getStateCandidate()
+    const computedState =
+      await this._optimisticStateComputer.getStateCandidate();
 
     // this state should be published to DA
     const stateStoreMetadata = await this._dataAvail.publishBlockUpdate(
       this._finalizedStateProxy,
-      computedState,
+      computedState
     );
     // metadata of the finalized state
-    const finalizedStateMetadata =  await this._finalizedStateProxy.getStateCommitment();
+    const finalizedStateMetadata =
+      await this._finalizedStateProxy.getStateCommitment();
 
     const stateCandidateMetadata = {
       stateRoots: computedState.nextBlockStateRoots,
-      stateStoreMetadata,
-    }
+      stateBlobHandle: stateStoreMetadata.blockBlobId,
+    };
 
     // use DA metadata to commit to the state
-    await this._sequencer.commitToBlockState(
-      {
-        finalizedStateMetadata,
-        stateCandidateMetadata,
-      }
-    );
+    await this._sequencer.commitToBlockState({
+      finalizedStateMetadata,
+      stateCandidateMetadata,
+    });
   }
 
-  async processBlockFinalized(blockFinalizedEvent: BlockFinalizedEvent): Promise<void> {
+  async processBlockFinalized(
+    blockFinalizedEvent: BlockFinalizedEvent
+  ): Promise<void> {
     // check the current state of the computed state
     // if it is not equal then fetch the new state and reset the computer state
     try {
-      const stateComputerFinalizedStateRoots = await this._optimisticStateComputer.getFinalizedStateRoots();
-      const nextStateCandidate = await this._optimisticStateComputer.getStateCandidate();
+      const stateComputerFinalizedStateRoots =
+        await this._optimisticStateComputer.getFinalizedStateRoots();
+      const nextStateCandidate =
+        await this._optimisticStateComputer.getStateCandidate();
       // sanity check finalized state equals to the optimistic computer previous block state
       if (
         !this._finalizedStateProxy.stateRootsEqual(
           stateComputerFinalizedStateRoots
         )
       ) {
-        throw new Error('Finalized state does not match the optimistic computer previous block state');
-      }
-      else if (
+        throw new Error(
+          'Finalized state does not match the optimistic computer previous block state'
+        );
+      } else if (
         !stateRootsEqual(
           nextStateCandidate.nextBlockStateRoots,
           blockFinalizedEvent.finalizedStateMetadata.stateRoots
@@ -136,9 +140,10 @@ export class Validator {
       ) {
         // the computed state candidate does not match the finalized state
         // - fetch the state and update the local finalized state
-        await this._dataAvail.syncViaMetadataBlob({
+        await this._dataAvail.syncViaBlockBlob({
           localStateProxy: this._finalizedStateProxy,
-          metadataBlobId: blockFinalizedEvent.finalizedStateMetadata.stateStoreMetadata.metadataBlobId
+          blockBlobId:
+            blockFinalizedEvent.finalizedStateMetadata.stateBlobHandle,
         });
         await this._optimisticStateComputer.setState(
           await this._finalizedStateProxy.cloneState()
@@ -150,9 +155,11 @@ export class Validator {
           await this._optimisticStateComputer.getStateCandidate();
         await this._finalizedStateProxy.applyIntentOperations({
           finalizedBlockOperations: stateCandidate.intentOperations,
-          finalizedStateStoreMetadata: blockFinalizedEvent.finalizedStateMetadata.stateStoreMetadata
-        }
-        );
+          finalizedStateStoreMetadata: {
+            blockBlobId:
+              blockFinalizedEvent.finalizedStateMetadata.stateBlobHandle,
+          },
+        });
       }
     } catch (error) {
       await this._errorManager.onError(error, this.getRecoveryInterface());
@@ -164,7 +171,7 @@ export class Validator {
       // check if intent expected state is present
       const validPreconditions = IntentProofHelper.intentStateRootsMatchBlock({
         intentStateRoots: intentEvent.intentBlockStateRoots,
-        blockStateRoots: await this._finalizedStateProxy.stateRoots()
+        blockStateRoots: await this._finalizedStateProxy.stateRoots(),
       });
 
       if (validPreconditions) {

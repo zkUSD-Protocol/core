@@ -77,27 +77,30 @@ describe('ZkUsd DA Tests', () => {
   };
   let genesisRoots: StateRoots;
   const genesisState = FullState.newGenesisState(systemParams);
-  let localStateProxy: LocalStateProxy;
+  let localStateProxy: LocalStateProxy = new InMemoryStateProxy(genesisState, {
+    blockBlobId: '',
+    checkpointBlobId: '',
+  });
   let client: DataAvailClient;
   let finalizedState: StateCommitment;
 
   before(async () => {
     //create a local client for testing
-    // client = await DataAvailClient.withLocal({
-    //   baseDir:
-    //     './src/top-secret/zkusd/data-availability/local-data-availability',
-    //   checkpointInterval: 10, // Create checkpoints every 10 blocks for testing
-    // });
-
-    // await client.storageProvider.cleanup!();
-
-    client = await DataAvailClient.withWalrus({
-      network: 'testnet',
-      defaultEpochs: 1,
-      checkpointInterval: 10,
-      timeout: 60_000,
+    client = await DataAvailClient.withLocal({
+      baseDir:
+        './src/top-secret/zkusd/data-availability/local-data-availability',
+      checkpointInterval: 10, // Create checkpoints every 10 blocks for testing
     });
+
     await client.storageProvider.cleanup!();
+
+    // client = await DataAvailClient.withWalrus({
+    //   network: 'testnet',
+    //   defaultEpochs: 1,
+    //   checkpointInterval: 10,
+    //   timeout: 60_000,
+    // });
+    // await client.storageProvider.cleanup!();
 
     genesisRoots = {
       vaultMapRoot: new VaultMap().root,
@@ -193,7 +196,9 @@ describe('ZkUsd DA Tests', () => {
     const freshState = FullState.newGenesisState(systemParams);
     const freshStateStoreMetadata = await localStateProxy.setState({
       finalizedState: freshState,
-      finalizedStateStoreMetadata: finalizedState.stateStoreMetadata,
+      finalizedStateStoreMetadata: {
+        blockBlobId: finalizedState.stateBlobHandle,
+      },
     });
 
     await client.syncViaBlockBlob({

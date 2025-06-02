@@ -35,3 +35,5 @@ price-inputs.json
 /.envrc
 .windsurfrules
 bun.lock
+
+**/local-data-availability/**
