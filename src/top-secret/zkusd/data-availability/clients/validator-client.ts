@@ -1,41 +1,45 @@
-import { DataAvailInterface } from '../validator/data-avail-interface.js';
-import { IntentProof } from '../types/intent-proof.js';
-import { NextStateCandidate, StateRoots } from '../validator/block-state.js';
-import { LocalStateProxy } from '../validator/local-block-state.js';
+import { ValidatorDAInterface } from '../../validator/da-interface.js';
+import {
+  IntentProof,
+  IntentProofHelper,
+  JsonIntentProof,
+} from '../../types/intent-proof.js';
+import { NextStateCandidate, StateRoots } from '../../validator/block-state.js';
+import { LocalStateProxy } from '../../validator/local-block-state.js';
 import {
   BlockBlob,
   BlobType,
   CheckpointBlob,
   BlockData,
-} from './types/types.js';
-import { BlockBlobBuilder } from './services/block-blob-builder.js';
-import { CheckpointBlobBuilder } from './services/checkpoint-blob-builder.js';
-import { IntentMapOperation } from '../validator/map-operation.js';
-import { StorageProvider } from './providers/storage-provider.js';
+} from '../types/types.js';
+import { BlockBlobBuilder } from '../services/block-blob-builder.js';
+import { CheckpointBlobBuilder } from '../services/checkpoint-blob-builder.js';
+import { IntentMapOperation } from '../../validator/map-operation.js';
+import { StorageProvider } from '../providers/storage-provider.js';
 import {
   ProviderFactory,
   WalrusOptions,
   LocalOptions,
   ProviderType,
-} from './providers/provider-factory.js';
-import { StateSyncService } from './services/state-sync.js';
+} from '../providers/provider-factory.js';
+import { StateSyncService } from '../services/state-sync.js';
 import { Field } from 'o1js';
-import { StateStoreMetadata } from '../validator/sequencer-interface.js';
+import { StateStoreMetadata } from '../../validator/sequencer-interface.js';
 
-export interface DataAvailClientConfig {
+export interface ValidatorDAClientConfig {
   storageProvider: StorageProvider;
   walrusOptions?: WalrusOptions;
   localOptions?: LocalOptions;
   checkpointInterval?: number;
 }
 
-export class DataAvailClient implements DataAvailInterface {
+export class ValidatorDAClient implements ValidatorDAInterface {
   storageProvider: StorageProvider;
   private readonly syncService: StateSyncService;
   private readonly blockBlobBuilder: BlockBlobBuilder;
   private readonly checkpointInterval: number;
 
-  constructor(config: DataAvailClientConfig) {
+  constructor(config: ValidatorDAClientConfig) {
     // Use the factory to create the appropriate provider
     this.storageProvider = config.storageProvider;
     this.blockBlobBuilder = new BlockBlobBuilder();
@@ -46,9 +50,9 @@ export class DataAvailClient implements DataAvailInterface {
   // Convenience constructor methods for easier usage
   static async withWalrus(
     options?: WalrusOptions & { checkpointInterval?: number }
-  ): Promise<DataAvailClient> {
+  ): Promise<ValidatorDAClient> {
     const { checkpointInterval, ...walrusOptions } = options || {};
-    return new DataAvailClient({
+    return new ValidatorDAClient({
       storageProvider: await ProviderFactory.createProvider(
         'walrus',
         walrusOptions
@@ -59,9 +63,9 @@ export class DataAvailClient implements DataAvailInterface {
 
   static async withLocal(
     options?: LocalOptions & { checkpointInterval?: number }
-  ): Promise<DataAvailClient> {
+  ): Promise<ValidatorDAClient> {
     const { checkpointInterval, ...localOptions } = options || {};
-    return new DataAvailClient({
+    return new ValidatorDAClient({
       storageProvider: await ProviderFactory.createProvider(
         'local',
         localOptions
@@ -96,7 +100,9 @@ export class DataAvailClient implements DataAvailInterface {
   async fetchIntentProof(intentBlobId: string): Promise<IntentProof> {
     try {
       const rawData = await this.storageProvider.retrieve(intentBlobId);
-      const intentProof = JSON.parse(rawData) as IntentProof;
+      const jsonIntentProof = JSON.parse(rawData) as JsonIntentProof;
+      const intentProof: IntentProof =
+        await IntentProofHelper.fromJSON(jsonIntentProof);
       return intentProof;
     } catch (error) {
       throw new Error(

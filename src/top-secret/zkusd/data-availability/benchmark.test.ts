@@ -4,7 +4,7 @@ import { performance } from 'perf_hooks';
 import { VaultMap } from '../data/maps/vault-map.js';
 import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import { Bool, Field, UInt64, UInt8 } from 'o1js';
-import { DataAvailClient } from './client.js';
+import { ValidatorDAClient } from './clients/validator-client.js';
 import { FullState, SystemParams } from '../validator/block-state.js';
 import { InMemoryStateProxy } from '../validator/local-block-state.js';
 import { CheckpointBlobBuilder } from './services/checkpoint-blob-builder.js';
@@ -38,10 +38,10 @@ interface NetworkEstimates {
 }
 
 class BenchmarkSuite {
-  private client: DataAvailClient;
+  private client: ValidatorDAClient;
   private systemParams: SystemParams;
 
-  constructor(client: DataAvailClient) {
+  constructor(client: ValidatorDAClient) {
     this.client = client;
 
     this.systemParams = {
@@ -680,7 +680,7 @@ describe('ZkUSD Checkpoint & Sync Benchmarks', () => {
   let results: BenchmarkResult[] = [];
 
   before(async () => {
-    const client = await DataAvailClient.withLocal({
+    const client = await ValidatorDAClient.withLocal({
       baseDir:
         './src/top-secret/zkusd/data-availability/local-data-availability',
     });

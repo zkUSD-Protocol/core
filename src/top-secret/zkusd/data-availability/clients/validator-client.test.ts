@@ -1,23 +1,23 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert';
-import { VaultMap, PrunedVaultMap } from '../data/maps/vault-map.js';
-import { ZkUsdMap, PrunedZkUsdMap } from '../data/maps/zkusd-map.js';
+import { VaultMap, PrunedVaultMap } from '../../data/maps/vault-map.js';
+import { ZkUsdMap, PrunedZkUsdMap } from '../../data/maps/zkusd-map.js';
 import { Bool, Field, UInt64, UInt8 } from 'o1js';
-import { DataAvailClient } from './client.js';
+import { ValidatorDAClient } from './validator-client.js';
 import {
   FullState,
   NextStateCandidate,
   stateRootsEqual,
   SystemParams,
-} from '../validator/block-state.js';
+} from '../../validator/block-state.js';
 import {
   InMemoryStateProxy,
   LocalStateProxy,
-} from '../validator/local-block-state.js';
-import { StateCommitment } from '../validator/sequencer-interface.js';
-import { IntentMapOperation } from '../validator/map-operation.js';
-import { StateRoots } from '../validator/block-state.js';
-import { MapType, OperationType } from './types/types.js';
+} from '../../validator/local-block-state.js';
+import { StateCommitment } from '../../validator/sequencer-interface.js';
+import { IntentMapOperation } from '../../validator/map-operation.js';
+import { StateRoots } from '../../validator/block-state.js';
+import { MapType, OperationType } from '../types/types.js';
 
 function generateRandomVaultMapOperation(): IntentMapOperation {
   const mapType = MapType.VAULT;
@@ -81,12 +81,12 @@ describe('ZkUsd DA Tests', () => {
     blockBlobId: '',
     checkpointBlobId: '',
   });
-  let client: DataAvailClient;
+  let client: ValidatorDAClient;
   let finalizedState: StateCommitment;
 
   before(async () => {
     //create a local client for testing
-    client = await DataAvailClient.withLocal({
+    client = await ValidatorDAClient.withLocal({
       baseDir:
         './src/top-secret/zkusd/data-availability/local-data-availability',
       checkpointInterval: 10, // Create checkpoints every 10 blocks for testing
@@ -94,7 +94,7 @@ describe('ZkUsd DA Tests', () => {
 
     await client.storageProvider.cleanup!();
 
-    // client = await DataAvailClient.withWalrus({
+    // client = await ValidatorDAClient.withWalrus({
     //   network: 'testnet',
     //   defaultEpochs: 1,
     //   checkpointInterval: 10,

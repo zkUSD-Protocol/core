@@ -5,7 +5,7 @@ import {
   SequencerInterface,
 } from './sequencer-interface.js';
 import { LocalStateProxy } from './local-block-state.js';
-import { DataAvailInterface } from './data-avail-interface.js';
+import { ValidatorDAInterface } from './da-interface.js';
 import { stateRootsEqual } from './block-state.js';
 import { OptimisticStateComputer } from './optimistic-state-computer.js';
 import { IntentProofHelper } from '../types/intent-proof.js';
@@ -20,7 +20,7 @@ export class Validator {
   private readonly _sequencer: SequencerInterface;
   private _finalizedEvent?: BlockFinalizedEvent;
   private readonly _finalizedStateProxy: LocalStateProxy;
-  private readonly _dataAvail: DataAvailInterface;
+  private readonly _dataAvail: ValidatorDAInterface;
   private readonly _optimisticStateComputer: OptimisticStateComputer;
   private readonly _errorManager: ValidatorFailureManager;
   private _isRunning: boolean;
@@ -32,7 +32,7 @@ export class Validator {
   constructor(
     sequencerClient: SequencerInterface,
     localBlockState: LocalStateProxy,
-    dataAvailClient: DataAvailInterface,
+    dataAvailClient: ValidatorDAInterface,
     optimisticStateComputer: OptimisticStateComputer,
     errorManager: ValidatorFailureManager
   ) {

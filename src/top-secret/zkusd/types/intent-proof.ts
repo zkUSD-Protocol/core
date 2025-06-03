@@ -1,30 +1,44 @@
 import { createHash } from 'crypto';
-import { Field } from 'o1js';
+import { Field, JsonProof } from 'o1js';
 
 import {
-  BurnIntentProof,     MintIntentProof,     TransferIntentProof,
-  RedeemIntentProof,   CreateVaultIntentProof,
-  DepositIntentProof,  LiquidateIntentProof,
-} from '../programs/intents';
+  BurnIntentProof,
+  MintIntentProof,
+  TransferIntentProof,
+  RedeemIntentProof,
+  CreateVaultIntentProof,
+  DepositIntentProof,
+  LiquidateIntentProof,
+} from '../programs/intents/index.js';
 
-import { SystemParams, StateRoots }  from '../validator/block-state.js';
-import { IntentMapOperation }        from '../validator/map-operation.js';
-import { Vault }                     from '../data/vault.js';
-import { Note }                      from '../data/note.js';
+import { SystemParams, StateRoots } from '../validator/block-state.js';
+import { IntentMapOperation } from '../validator/map-operation.js';
+import { Vault } from '../data/vault.js';
+import { Note } from '../data/note.js';
 
 /* ─────────────────────────────────────────────────────────────── */
 export type IntentProofKind =
-  | 'burn' | 'mint' | 'transfer' | 'redeem'
-  | 'create-vault' | 'deposit' | 'liquidate';
+  | 'burn'
+  | 'mint'
+  | 'transfer'
+  | 'redeem'
+  | 'create-vault'
+  | 'deposit'
+  | 'liquidate';
 
 export type IntentProof =
-  | { kind: 'burn';        proof: BurnIntentProof }
-  | { kind: 'mint';        proof: MintIntentProof }
-  | { kind: 'transfer';    proof: TransferIntentProof }
-  | { kind: 'redeem';      proof: RedeemIntentProof }
-  | { kind: 'create-vault';proof: CreateVaultIntentProof }
-  | { kind: 'deposit';     proof: DepositIntentProof }
-  | { kind: 'liquidate';   proof: LiquidateIntentProof };
+  | { kind: 'burn'; proof: BurnIntentProof }
+  | { kind: 'mint'; proof: MintIntentProof }
+  | { kind: 'transfer'; proof: TransferIntentProof }
+  | { kind: 'redeem'; proof: RedeemIntentProof }
+  | { kind: 'create-vault'; proof: CreateVaultIntentProof }
+  | { kind: 'deposit'; proof: DepositIntentProof }
+  | { kind: 'liquidate'; proof: LiquidateIntentProof };
+
+export type JsonIntentProof = {
+  kind: IntentProofKind;
+  proof: JsonProof;
+};
 
 export interface IntentStateRoots {
   vaultMapRoot?: Field;
@@ -36,19 +50,20 @@ export interface IntentStateRoots {
  * ----------------------------------------------------------------- */
 interface HandlerResult {
   operations: IntentMapOperation[];
-  roots:      IntentStateRoots;
+  roots: IntentStateRoots;
 }
-type HandlerFn<K extends IntentProofKind> =
-  (intent: Extract<IntentProof, { kind: K }>,
-   params: SystemParams) => HandlerResult;
+type HandlerFn<K extends IntentProofKind> = (
+  intent: Extract<IntentProof, { kind: K }>,
+  params: SystemParams
+) => HandlerResult;
 
 /* internal registry */
 const registry: Partial<Record<IntentProofKind, HandlerFn<any>>> = {};
 
 /* helper: register many handlers declaratively */
-function registerHandlers<
-  R extends { [K in IntentProofKind]?: HandlerFn<K> }
->(impl: R): void {
+function registerHandlers<R extends { [K in IntentProofKind]?: HandlerFn<K> }>(
+  impl: R
+): void {
   Object.assign(registry, impl);
 }
 
@@ -61,7 +76,9 @@ registerHandlers({
     const vault = Vault({
       collateralRatio: s.collateralRatio,
       liquidationBonusRatio: s.liquidationBonusRatio,
-    }).fromState(o.vaultUpdate.vaultState).pack();
+    })
+      .fromState(o.vaultUpdate.vaultState)
+      .pack();
 
     return {
       operations: [
@@ -78,12 +95,12 @@ registerHandlers({
     const { nullifiers, outputNoteCommitments } = i.proof.publicOutput;
     const ops: IntentMapOperation[] = [];
 
-    nullifiers.nullifiers.forEach(n => {
+    nullifiers.nullifiers.forEach((n) => {
       if (!n.isDummy.toBoolean()) {
         ops.push(IntentMapOperation.setVaultMap(n.nullifier, Note.included()));
       }
     });
-    outputNoteCommitments.commitments.forEach(c => {
+    outputNoteCommitments.commitments.forEach((c) => {
       if (!c.isDummy.toBoolean()) {
         ops.push(IntentMapOperation.setZkusdMap(c.commitment, Note.included()));
       }
@@ -100,7 +117,9 @@ registerHandlers({
     const vault = Vault({
       collateralRatio: s.collateralRatio,
       liquidationBonusRatio: s.liquidationBonusRatio,
-    }).fromState(o.vaultUpdate.vaultState).pack();
+    })
+      .fromState(o.vaultUpdate.vaultState)
+      .pack();
 
     return {
       operations: [
@@ -115,12 +134,12 @@ registerHandlers({
     const vault = Vault({
       collateralRatio: s.collateralRatio,
       liquidationBonusRatio: s.liquidationBonusRatio,
-    }).new(o.vaultType).pack();
+    })
+      .new(o.vaultType)
+      .pack();
 
     return {
-      operations: [
-        IntentMapOperation.insertVaultMap(o.vaultKey.key, vault),
-      ],
+      operations: [IntentMapOperation.insertVaultMap(o.vaultKey.key, vault)],
       roots: { vaultMapRoot: i.proof.publicInput.vaultMapRoot },
     };
   },
@@ -129,7 +148,7 @@ registerHandlers({
     operations: [
       IntentMapOperation.updateVaultMap(
         i.proof.publicOutput.vaultKey.key,
-        i.proof.publicOutput.vaultPack,
+        i.proof.publicOutput.vaultPack
       ),
     ],
     roots: { vaultMapRoot: i.proof.publicInput.vaultMapRoot },
@@ -140,12 +159,17 @@ registerHandlers({
     const vault = Vault({
       collateralRatio: s.collateralRatio,
       liquidationBonusRatio: s.liquidationBonusRatio,
-    }).fromState(o.vaultUpdate.vaultState).pack();
+    })
+      .fromState(o.vaultUpdate.vaultState)
+      .pack();
 
     return {
       operations: [
         IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
-        IntentMapOperation.insertZkusdMap(o.outputNoteCommitment.commitment, Note.included()),
+        IntentMapOperation.insertZkusdMap(
+          o.outputNoteCommitment.commitment,
+          Note.included()
+        ),
       ],
       roots: {
         vaultMapRoot: i.proof.publicInput.intentVaultMapRoot,
@@ -179,7 +203,10 @@ export class IntentProofHelper {
 
   rootsMatch(intent: IntentProof, block: StateRoots): boolean {
     const r = this.stateRoots(intent);
-    return IntentProofHelper.intentStateRootsMatchBlock({intentStateRoots: r, blockStateRoots: block});
+    return IntentProofHelper.intentStateRootsMatchBlock({
+      intentStateRoots: r,
+      blockStateRoots: block,
+    });
   }
 
   static hash(intent: IntentProof): string {
@@ -188,13 +215,83 @@ export class IntentProofHelper {
       .digest('hex');
   }
 
-  static intentStateRootsMatchBlock(args:{
-    intentStateRoots: IntentStateRoots,
-    blockStateRoots: StateRoots
+  /**
+   * Converts a JsonIntentProof back to an IntentProof by deserializing
+   * the proof using the appropriate fromJSON method based on the kind.
+   */
+  static async fromJSON(
+    jsonIntentProof: JsonIntentProof
+  ): Promise<IntentProof> {
+    const { kind, proof: jsonProof } = jsonIntentProof;
+
+    switch (kind) {
+      case 'burn':
+        return {
+          kind: 'burn',
+          proof: await BurnIntentProof.fromJSON(jsonProof),
+        };
+
+      case 'mint':
+        return {
+          kind: 'mint',
+          proof: await MintIntentProof.fromJSON(jsonProof),
+        };
+
+      case 'transfer':
+        return {
+          kind: 'transfer',
+          proof: await TransferIntentProof.fromJSON(jsonProof),
+        };
+
+      case 'redeem':
+        return {
+          kind: 'redeem',
+          proof: await RedeemIntentProof.fromJSON(jsonProof),
+        };
+
+      case 'create-vault':
+        return {
+          kind: 'create-vault',
+          proof: await CreateVaultIntentProof.fromJSON(jsonProof),
+        };
+
+      case 'deposit':
+        return {
+          kind: 'deposit',
+          proof: await DepositIntentProof.fromJSON(jsonProof),
+        };
+
+      case 'liquidate':
+        return {
+          kind: 'liquidate',
+          proof: await LiquidateIntentProof.fromJSON(jsonProof),
+        };
+
+      default:
+        // TypeScript exhaustiveness check
+        const _exhaustive: never = kind;
+        throw new Error(`Unknown intent proof kind: ${kind}`);
+    }
   }
-  ): boolean {
-    if (args.intentStateRoots.vaultMapRoot && !args.intentStateRoots.vaultMapRoot.equals(args.blockStateRoots.vaultMapRoot).toBoolean()) return false;
-    if (args.intentStateRoots.zkUsdMapRoot && !args.intentStateRoots.zkUsdMapRoot.equals(args.blockStateRoots.zkUsdMapRoot).toBoolean()) return false;
+
+  static intentStateRootsMatchBlock(args: {
+    intentStateRoots: IntentStateRoots;
+    blockStateRoots: StateRoots;
+  }): boolean {
+    if (
+      args.intentStateRoots.vaultMapRoot &&
+      !args.intentStateRoots.vaultMapRoot
+        .equals(args.blockStateRoots.vaultMapRoot)
+        .toBoolean()
+    )
+      return false;
+    if (
+      args.intentStateRoots.zkUsdMapRoot &&
+      !args.intentStateRoots.zkUsdMapRoot
+        .equals(args.blockStateRoots.zkUsdMapRoot)
+        .toBoolean()
+    )
+      return false;
     return true;
   }
 }

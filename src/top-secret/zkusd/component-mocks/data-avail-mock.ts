@@ -7,7 +7,7 @@ import {
   SystemParams,
   stateRootsEqual,
 } from '../validator/block-state.js';
-import { DataAvailInterface } from '../validator/data-avail-interface.js';
+import { ValidatorDAInterface } from '../validator/da-interface.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
 import { StateStoreMetadata } from '../validator/sequencer-interface.js';
 import { IntentProofStore } from './intent-proof-store.js';
@@ -17,7 +17,7 @@ type State = {
   metadata: StateStoreMetadata;
 };
 
-class DataAvailMock implements DataAvailInterface {
+class DataAvailMock implements ValidatorDAInterface {
   // finalizedState  (old consensus state)
   private _finalizedState: State;
   // candidateState (validator proposition)

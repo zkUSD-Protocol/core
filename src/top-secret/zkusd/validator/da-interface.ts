@@ -7,7 +7,7 @@ import { StateCommitment, StateStoreMetadata } from './sequencer-interface.js';
  * The validator's interface to the interactions with
  * the data availability layer.
  */
-export interface DataAvailInterface {
+export interface ValidatorDAInterface {
   /**
    * Initializes the data availability chain.
    * It will create the first block blob and metadata blob.
@@ -41,4 +41,12 @@ export interface DataAvailInterface {
     finalizedState: LocalStateProxy,
     nextBlockStateCandidate: NextStateCandidate
   ): Promise<StateStoreMetadata>;
+}
+
+export interface UserDAInterface {
+  /**
+   * Publishes an intent proof to the data availability layer.
+   * It will return the blob id of the intent proof.
+   */
+  publishIntentProof(intentProof: IntentProof): Promise<string>;
 }
