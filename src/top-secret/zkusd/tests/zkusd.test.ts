@@ -149,7 +149,7 @@ describe('ZkUsd Payment Address Test Suite', () => {
       (serializedNote.length / 1024).toFixed(2) + ' KB'
     );
 
-    const decryptedNote = note.decrypt(encryptedNote, alice.viewingKey);
+    const decryptedNote = Note.decrypt(encryptedNote, alice.viewingKey);
     assert.deepStrictEqual(note, decryptedNote);
   });
 

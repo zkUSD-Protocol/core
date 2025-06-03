@@ -107,7 +107,7 @@ export class Note extends Struct({
     ];
   }
 
-  fromFields(fields: Field[]): Note {
+  static fromFields(fields: Field[]): Note {
     return new Note({
       amount: UInt64.fromFields([fields[0]]),
       address: new PaymentAddress({
@@ -127,9 +127,9 @@ export class Note extends Struct({
   }
 
   //Takes a viewing private key and decrypts the note
-  decrypt(encryptedNote: EncryptedNote, key: PrivateKey): Note {
+  static decrypt(encryptedNote: EncryptedNote, key: PrivateKey): Note {
     const fields = Encryption.decrypt(encryptedNote.cipherText, key);
-    return this.fromFields(fields);
+    return Note.fromFields(fields);
   }
 
   nullifier(nk: Field): Field {
@@ -143,6 +143,16 @@ export class InputNotes extends Struct({
   toFields() {
     return this.notes.map((n) => n.toFields()).flat();
   }
+  
+  static fromArray(notes: Note[]): InputNotes {
+    // check if notes length is less than MAX_INPUT_NOTE_COUNT
+    if(notes.length > MAX_INPUT_NOTE_COUNT){
+      throw new Error('Too many notes');
+    }
+    return new InputNotes({
+      notes,
+    });
+  }
 }
 
 export class OutputNotes extends Struct({
@@ -150,6 +160,16 @@ export class OutputNotes extends Struct({
 }) {
   toFields() {
     return this.notes.map((n) => n.toFields()).flat();
+  }
+
+  static fromArray(notes: Note[]): OutputNotes {
+    // check if notes length is less than MAX_OUTPUT_NOTE_COUNT
+    if(notes.length > MAX_OUTPUT_NOTE_COUNT){
+      throw new Error('Too output notes');
+    }
+    return new OutputNotes({
+      notes,
+    });
   }
 }
 
