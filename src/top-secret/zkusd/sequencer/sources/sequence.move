@@ -407,5 +407,3 @@ public fun get_current_epoch_number(sequencer: &IntentSequencer): u64 {
 public fun get_current_intent_sequence(sequencer: &IntentSequencer): u64 {
   sequencer.current_intent_sequence
 }
-
-/// Function to get the lastest epoch and metadata blob ids

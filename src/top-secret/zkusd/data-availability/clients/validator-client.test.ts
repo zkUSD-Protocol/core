@@ -14,7 +14,7 @@ import {
   InMemoryStateProxy,
   LocalStateProxy,
 } from '../../validator/local-block-state.js';
-import { StateCommitment } from '../../validator/sequencer-interface.js';
+import { StateCommitment } from '../../interfaces/sequencer-interface.js';
 import { IntentMapOperation } from '../../validator/map-operation.js';
 import { StateRoots } from '../../validator/block-state.js';
 import { MapType, OperationType } from '../types/types.js';

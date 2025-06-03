@@ -1,5 +1,5 @@
 import { IntentStateRoots } from '../types/intent-proof';
-import { StateRoots } from './block-state';
+import { StateRoots } from '../validator/block-state.js';
 
 export type StateStoreMetadata = {
   /** Handle to retrieve the block state blob from DA. - This is actually the previous block file */

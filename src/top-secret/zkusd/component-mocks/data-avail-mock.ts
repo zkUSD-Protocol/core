@@ -7,9 +7,9 @@ import {
   SystemParams,
   stateRootsEqual,
 } from '../validator/block-state.js';
-import { ValidatorDAInterface } from '../validator/da-interface.js';
+import { ValidatorDAInterface } from '../interfaces/da-interface.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
-import { StateStoreMetadata } from '../validator/sequencer-interface.js';
+import { StateStoreMetadata } from '../interfaces/sequencer-interface.js';
 import { IntentProofStore } from './intent-proof-store.js';
 
 type State = {

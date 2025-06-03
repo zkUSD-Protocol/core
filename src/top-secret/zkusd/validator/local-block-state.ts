@@ -1,6 +1,9 @@
 import { StateRoots, FullState, stateRootsEqual } from './block-state.js';
 import { IntentMapOperation } from './map-operation.js';
-import { StateCommitment, StateStoreMetadata } from './sequencer-interface.js';
+import {
+  StateCommitment,
+  StateStoreMetadata,
+} from '../interfaces/sequencer-interface.js';
 
 export interface LocalStateProxyInitializer {
   create(): LocalStateProxy;

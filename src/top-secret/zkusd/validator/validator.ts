@@ -3,9 +3,9 @@ import {
   StateCommitment,
   IntentEvent,
   SequencerInterface,
-} from './sequencer-interface.js';
+} from '../interfaces/sequencer-interface.js';
 import { LocalStateProxy } from './local-block-state.js';
-import { ValidatorDAInterface } from './da-interface.js';
+import { ValidatorDAInterface } from '../interfaces/da-interface.js';
 import { stateRootsEqual } from './block-state.js';
 import { OptimisticStateComputer } from './optimistic-state-computer.js';
 import { IntentProofHelper } from '../types/intent-proof.js';

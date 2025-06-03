@@ -17,7 +17,6 @@ import { IntentMapOperation } from '../../validator/map-operation.js';
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import { Bool, Field, UInt64, UInt8 } from 'o1js';
-import { StateCommitment } from '../../validator/sequencer-interface.js';
 
 export class StateSyncService {
   constructor(private storageProvider: StorageProvider) {}

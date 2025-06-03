@@ -1,5 +1,5 @@
 import { IntentProof, JsonIntentProof } from '../../types/intent-proof.js';
-import { UserDAInterface } from '../../validator/da-interface.js';
+import { UserDAInterface } from '../../interfaces/da-interface.js';
 
 export type WalrusEnvironment = 'local' | 'testnet';
 

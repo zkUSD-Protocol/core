@@ -1,6 +1,6 @@
-import { NextStateCandidate, StateRoots } from './block-state.js';
+import { NextStateCandidate, StateRoots } from '../validator/block-state.js';
 import { IntentProof } from '../types/intent-proof.js';
-import { LocalStateProxy } from './local-block-state.js';
+import { LocalStateProxy } from '../validator/local-block-state.js';
 import { StateCommitment, StateStoreMetadata } from './sequencer-interface.js';
 
 /**

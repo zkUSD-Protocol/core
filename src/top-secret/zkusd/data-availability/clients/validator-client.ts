@@ -1,4 +1,4 @@
-import { ValidatorDAInterface } from '../../validator/da-interface.js';
+import { ValidatorDAInterface } from '../../interfaces/da-interface.js';
 import {
   IntentProof,
   IntentProofHelper,
@@ -24,7 +24,7 @@ import {
 } from '../providers/provider-factory.js';
 import { StateSyncService } from '../services/state-sync.js';
 import { Field } from 'o1js';
-import { StateStoreMetadata } from '../../validator/sequencer-interface.js';
+import { StateStoreMetadata } from '../../interfaces/sequencer-interface.js';
 
 export interface ValidatorDAClientConfig {
   storageProvider: StorageProvider;
