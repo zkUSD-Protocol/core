@@ -20,7 +20,7 @@ import { ZkUsdMap } from "../data/maps/zkusd-map.js";
 export interface Wallet {
   keyPair(): KeyPair;
   notes(): Note[];
-  addDecryptedNotes(encryptedNotes: EncryptedNote[]): void;
+  extractAndAddUserNotes(encryptedNotes: EncryptedNote[]): void;
   createTransferNotes(args: {
     state: FullState;
     amount: UInt64;
@@ -47,7 +47,7 @@ export class InMemoryWallet implements Wallet {
   /**
    * Tries to decrypt and store unique notes that match the user's private key.
    */
-  addDecryptedNotes(encryptedNotes: EncryptedNote[]): void {
+  extractAndAddUserNotes(encryptedNotes: EncryptedNote[]): void {
     for (const encNote of encryptedNotes) {
       try {
         const note = Note.decrypt(encNote, this._keyPair.privateKey);
@@ -143,6 +143,8 @@ export type KeyPairAlias = number | string;
 
 export interface Wallets {
   user(keyPairAlias: KeyPairAlias): Wallet;
+
+  all(): Wallet[];
 }
 
 /**
@@ -162,4 +164,8 @@ export class WalletsImpl implements Wallets {
     }
     return wallet;
   }
+
+  all(): Wallet[] {
+    return Array.from(this._wallets.values());
+}
 }

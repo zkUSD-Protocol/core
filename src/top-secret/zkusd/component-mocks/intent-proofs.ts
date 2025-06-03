@@ -6,7 +6,8 @@ import {
   UInt8,
 } from "o1js";
 
-import { FullState } from "../validator/block-state.js";
+import { EncryptedNote } from "../data/note.js";
+import { FullState }      from "../validator/block-state.js";
 
 import {
   CreateVaultIntentKey,
@@ -40,10 +41,6 @@ import {
   KeyPairAlias,
 } from "./wallet.js";
 
-/**
- * Provides high-level helpers that create intent proofs for the various
- * circuits, delegating all wallet-related duties to `wallet.ts`.
- */
 export class IntentProofProvider {
   readonly wallets: Wallets;
   readonly intentProofStore?: IntentProofStore;
@@ -53,9 +50,23 @@ export class IntentProofProvider {
     this.intentProofStore = args?.intentProofStore;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*                          CREATE-VAULT INTENT                       */
-  /* ------------------------------------------------------------------ */
+  /* --------------------------------------------------------------- */
+  /*                 BATCH-UPDATE WALLETS WITH NOTES                 */
+  /* --------------------------------------------------------------- */
+
+  /**
+   * Feeds the same encrypted-note batch to every wallet managed by this
+   * provider.  Each wallet silently discards notes it cannot decrypt.
+   */
+  updateWalletsWithEncryptedNotes(encryptedNotes: EncryptedNote[]): void {
+    for (const wallet of this.wallets.all()) {
+      wallet.extractAndAddUserNotes(encryptedNotes);
+    }
+  }
+
+  /* --------------------------------------------------------------- */
+  /*                    CREATE-VAULT INTENT (unchanged)              */
+  /* --------------------------------------------------------------- */
 
   async createVaultIntent(
     userAlias: KeyPairAlias,
@@ -92,9 +103,9 @@ export class IntentProofProvider {
     return intent;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*                           DEPOSIT INTENT                           */
-  /* ------------------------------------------------------------------ */
+  /* --------------------------------------------------------------- */
+  /*                     DEPOSIT INTENT (unchanged)                  */
+  /* --------------------------------------------------------------- */
 
   async depositIntent(
     state: FullState,
@@ -104,19 +115,16 @@ export class IntentProofProvider {
     const wallet = this.wallets.user(userAlias);
     const { vaultMap, systemParams } = state;
 
-    // Public input for the circuit
     const publicInput = new DepositIntentInput({
-      vaultMapRoot:         vaultMap.root,
-      collateralRatio:      systemParams.collateralRatio,
+      vaultMapRoot:          vaultMap.root,
+      collateralRatio:       systemParams.collateralRatio,
       liquidationBonusRatio: systemParams.liquidationBonusRatio,
     });
 
-    // Signature authorising the intent
     const type      = UInt8.from(0);
     const message   = [vaultMap.root, type.value, DepositIntentKey] as Field[];
     const signature = Signature.create(wallet.keyPair().privateKey, message);
 
-    // Private input for the circuit
     const privateInput = new DepositPrivateInput({
       vaultMap,
       type,
@@ -141,9 +149,9 @@ export class IntentProofProvider {
     return intent;
   }
 
-  /* ------------------------------------------------------------------ */
-  /*                           TRANSFER INTENT                          */
-  /* ------------------------------------------------------------------ */
+  /* --------------------------------------------------------------- */
+  /*                     TRANSFER INTENT (unchanged)                 */
+  /* --------------------------------------------------------------- */
 
   async transferIntent(args: {
     userAlias: KeyPairAlias;
@@ -154,13 +162,10 @@ export class IntentProofProvider {
     const { userAlias, state, amount, toPublicKey } = args;
     const wallet = this.wallets.user(userAlias);
 
-    /* ---------- 1. Public input ---------- */
-    const intentZkUsdMap = state.zkUsdMap;
     const publicInput = new TransferIntentInput({
-      intentZkUsdMapRoot: intentZkUsdMap.root,
+      intentZkUsdMapRoot: state.zkUsdMap.root,
     });
 
-    /* ---------- 2. Private input ---------- */
     const { inputNotes, outputNotes } = wallet.createTransferNotes({
       state,
       amount,
@@ -171,14 +176,13 @@ export class IntentProofProvider {
     const signature = Signature.create(wallet.keyPair().privateKey, message);
 
     const privateInput = new TransferIntentPrivateInput({
-      intentZkUsdMap,
+      intentZkUsdMap: state.zkUsdMap,
       inputNotes,
       outputNotes,
       spendingSignature: signature,
-      spendingPublicKey: wallet.keyPair().publicKey, // the spender
+      spendingPublicKey: wallet.keyPair().publicKey,
     });
 
-    /* ---------- 3. Generate dummy proof ---------- */
     const output = await TransferIntent.rawMethods.transfer(
       publicInput,
       privateInput
