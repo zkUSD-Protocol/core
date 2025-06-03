@@ -14,8 +14,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { IntentProof, IntentProofHelper, IntentProofKind } from '../types/intent-proof';
-import { BurnIntentProof, CreateVaultIntentProof, DepositIntentProof, LiquidateIntentProof, MintIntentProof, RedeemIntentProof, TransferIntentProof } from '../programs/intents';
+import { IntentProof, IntentProofHelper, IntentProofKind } from '../types/intent-proof.js';
+import { BurnIntentProof, CreateVaultIntentProof, DepositIntentProof, LiquidateIntentProof, MintIntentProof, RedeemIntentProof, TransferIntentProof } from '../programs/intents/index.js';
 
 /* ------------------------------------------------------------------ */
 /*  IntentProofStore interface                                               */

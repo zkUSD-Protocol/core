@@ -16,14 +16,20 @@ export interface ValidatorFailureManager {
   onError(error: unknown, recovery: ValidatorRecovery): Promise<void>;
 }
 
+export class ProvisionalFailureManager implements ValidatorFailureManager {
+  onError(error: unknown, recovery: ValidatorRecovery): Promise<void> {
+    // just log the details nicely
+    console.error(error); 
+    return Promise.resolve();
+  }
+}
+
 export class Validator {
   private readonly _sequencer: SequencerInterface;
-  private _finalizedEvent?: BlockFinalizedEvent;
   private readonly _finalizedStateProxy: LocalStateProxy;
   private readonly _dataAvail: ValidatorDAInterface;
   private readonly _optimisticStateComputer: OptimisticStateComputer;
   private readonly _errorManager: ValidatorFailureManager;
-  private _isRunning: boolean;
 
   private getRecoveryInterface(): ValidatorRecovery {
     return {};
@@ -41,7 +47,12 @@ export class Validator {
     this._dataAvail = dataAvailClient;
     this._optimisticStateComputer = optimisticStateComputer;
     this._errorManager = errorManager;
-    this._isRunning = false;
+  }
+
+  async init(){
+    await this._optimisticStateComputer.setState(
+      await this._finalizedStateProxy.cloneState()
+    );
   }
 
   async syncToBlockStart(
@@ -59,34 +70,56 @@ export class Validator {
     );
   }
 
-  async end(): Promise<void> {
-    this._isRunning = false;
-  }
+async processNextBlock(): Promise<void> {
+  const eventQueue = await this._sequencer.getSequencerEventQueue();
+  const bufferedIntents: IntentEvent[] = [];
+  let blockStarted = false;
+  let blockEnded = false;
 
-  async start(): Promise<void> {
-    this._isRunning = true;
-    try {
-      const eventQueue = await this._sequencer.getSequencerEventQueue();
-      while (this._isRunning) {
-        const event = await eventQueue.fetchNextEvent();
-        switch (event.kind) {
-          case 'block-end':
-            await this.processBlockEnd();
-            break;
-          case 'block-finalized':
-            this._finalizedEvent = event;
-            await this.processBlockFinalized(event);
-            break;
-          case 'intent':
+  try {
+    while (!blockEnded) {
+      const event = await eventQueue.fetchNextEvent();
+
+      switch (event.kind) {
+        case 'intent':
+          if (!blockStarted) {
+            // Buffer intent events until the block-finalized arrives
+            bufferedIntents.push(event);
+          } else {
+            // Process intents immediately after block-finalized
             await this.processIntent(event);
-            break;
-        }
-      }
-    } catch (error) {
-      await this._errorManager.onError(error, this.getRecoveryInterface());
-    }
-  }
+          }
+          break;
 
+        case 'block-finalized':
+          // Start of a new block
+          blockStarted = true;
+
+          // Process block-finalized first
+          await this.processBlockFinalized(event);
+
+          // Now process all buffered intents
+          for (const intent of bufferedIntents) {
+            await this.processIntent(intent);
+          }
+          bufferedIntents.length = 0; // clear the buffer
+          break;
+
+        case 'block-end':
+          blockEnded = true;
+          await this.processBlockEnd();
+          break;
+
+        default:
+          console.warn(`Unknown event type: ${event}`);
+      }
+    }
+  } catch (error) {
+    await this._errorManager.onError(error, this.getRecoveryInterface());
+  }
+}
+    
+  
   async processBlockEnd(): Promise<void> {
     // get the computed state
     const computedState =

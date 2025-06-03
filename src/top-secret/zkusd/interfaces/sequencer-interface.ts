@@ -1,3 +1,4 @@
+import { EncryptedNote } from '../data/note';
 import { IntentStateRoots } from '../types/intent-proof';
 import { StateRoots } from '../validator/block-state.js';
 
@@ -28,6 +29,8 @@ export interface IntentEvent {
   intentBlockStateRoots: IntentStateRoots;
   /** Sequence number of the intent. */
   intentSequence: number;
+  /** intent output notes */
+  outputNotes: EncryptedNote[]
 }
 
 /**

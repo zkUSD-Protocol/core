@@ -10,18 +10,41 @@ import {
 import { ValidatorDAInterface } from '../interfaces/da-interface.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
 import { StateStoreMetadata } from '../interfaces/sequencer-interface.js';
-import { IntentProofStore } from './intent-proof-store.js';
+import { IntentProofStore, SqliteIntentProofStore } from './intent-proof-store.js';
+import { IntentMapOperation } from '../validator/map-operation.js';
 
 type State = {
   state: FullState;
   metadata: StateStoreMetadata;
 };
 
-class DataAvailMock implements ValidatorDAInterface {
+export class DataAvailMock implements ValidatorDAInterface {
   // finalizedState  (old consensus state)
   private _finalizedState: State;
   // candidateState (validator proposition)
   private _candidateState: State | null;
+  private _candidateStateOperations: IntentMapOperation[];
+
+  public get candidateStateOperations(): IntentMapOperation[] {
+    return this._candidateStateOperations;
+  }
+
+  public cloneFinalizedState(): State {
+    return {
+      state: this._finalizedState.state.clone(),
+      metadata: this._finalizedState.metadata,
+    };
+  }
+
+  public cloneCandidateState(): State | null {
+    if (!this._candidateState) {
+      return null;
+    }
+    return {
+      state: this._candidateState.state.clone(),
+      metadata: this._candidateState.metadata,
+    };
+  }
 
   // accept validators candidate
   // candidate state moves to finalized state
@@ -32,10 +55,12 @@ class DataAvailMock implements ValidatorDAInterface {
     }
     this._finalizedState = this._candidateState;
     this._candidateState = null;
+    this._candidateStateOperations = [];
   }
 
   denyCandidate(): void {
     this._candidateState = null;
+    this._candidateStateOperations = [];
   }
 
   // setNewConsensusState
@@ -58,10 +83,21 @@ class DataAvailMock implements ValidatorDAInterface {
 
   constructor(private readonly _systemParams: SystemParams) {
     this._inited = false;
+    this._intentProofStore = new SqliteIntentProofStore();
   }
 
   async initDA(genesisStateRoots: StateRoots): Promise<StateStoreMetadata> {
     const genesisState = FullState.newGenesisState(this._systemParams);
+    // assert genesis roots match
+    if (!genesisState.roots()) {
+      throw new Error('Genesis state roots are null');
+    }
+    if (!genesisStateRoots) {
+      throw new Error('Genesis state roots are null');
+    }
+    if (!stateRootsEqual(genesisState.roots(), genesisStateRoots)) {
+      throw new Error('Genesis state roots do not match');
+    }
     this._finalizedState = {
       state: genesisState,
       metadata: {
@@ -112,9 +148,15 @@ class DataAvailMock implements ValidatorDAInterface {
       throw new Error('Next state candidate already exists. Apply or remove.');
     }
 
+    console.log('finalizedStateRoots', this._finalizedState.state.roots());
+    console.log('nextBlockStateCandidateRoots', nextBlockStateCandidate.nextBlockStateRoots);
+
+    const validatedOperations = nextBlockStateCandidate.intentOperations;
+    console.log('validatedOperations', validatedOperations);
+
     const candidateState = this._finalizedState.state.clone();
     candidateState.applyMapOperations(
-      ...nextBlockStateCandidate.intentOperations
+      ...validatedOperations
     );
 
     const hash = Poseidon.hash([
@@ -126,6 +168,7 @@ class DataAvailMock implements ValidatorDAInterface {
       state: candidateState,
       metadata: this.computeCandidateMetadata(hash),
     };
+    this._candidateStateOperations = validatedOperations;
 
     return this._candidateState.metadata;
   }

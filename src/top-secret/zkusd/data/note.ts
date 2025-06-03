@@ -8,12 +8,37 @@ import {
   PrivateKey,
   Bool,
   Provable,
+  Group,
 } from 'o1js';
 import { CipherText } from 'o1js/dist/node/lib/provable/crypto/encryption';
 import { PaymentAddress } from '../types/keys.js';
 
 export const MAX_INPUT_NOTE_COUNT = 3;
 export const MAX_OUTPUT_NOTE_COUNT = 2;
+
+export type EncryptedNote = {
+  cipherText: CipherText
+}
+
+export function serializeEncryptedNote(note: EncryptedNote){
+  return {
+    publicKey: note.cipherText.publicKey.toFields().map((f) => f.toString()),
+    cipherText: note.cipherText.cipherText.map((f) => f.toString()),
+  }
+}
+
+export function deserializeEncryptedNote(note: {
+  publicKey: string[];
+  cipherText: string[];
+}): EncryptedNote {
+  return {
+    cipherText: {
+      publicKey: Group.fromFields(note.publicKey.map((f) => Field(f))),
+      cipherText: note.cipherText.map((f) => Field(f)),
+    },
+  };
+}
+
 
 export class Note extends Struct({
   amount: UInt64,
@@ -95,13 +120,15 @@ export class Note extends Struct({
     });
   }
 
-  encrypt(): CipherText {
-    return Encryption.encrypt(this.toFields(), this.address.viewingPublicKey);
+  encrypt(): EncryptedNote {
+    return {
+      cipherText: Encryption.encrypt(this.toFields(), this.address.viewingPublicKey)
+    }
   }
 
   //Takes a viewing private key and decrypts the note
-  decrypt(CipherText: CipherText, key: PrivateKey): Note {
-    const fields = Encryption.decrypt(CipherText, key);
+  decrypt(encryptedNote: EncryptedNote, key: PrivateKey): Note {
+    const fields = Encryption.decrypt(encryptedNote.cipherText, key);
     return this.fromFields(fields);
   }
 

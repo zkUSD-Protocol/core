@@ -6,7 +6,7 @@
 // } from './optimistic-types.js';
 
 // import { IntentProof, IntentProofKind } from './types/intent-proof.js';
-// import * as Rollup from './programs/rollup.js'; // alias for brevity
+// import * as Rollup from './programs/rollup.js'dds; // alias for brevity
 
 // import { ZkUsdState } from './data/state.js';
 // import { VaultMap } from './data/maps/vault-map.js';

@@ -163,7 +163,7 @@
 
 //         const output = await MintIntent.rawMethods.mint(publicInput, privateInput);
 
-//         const proof = await MintIntentProof.dummy(publicInput, output.publicOutput, 0);
+//         const proof = await MintIntentProof.dummy(publicInput, output.publicOutput, -1);
 
 //         const intentProof: IntentProof = {
 //             kind: 'mint',
