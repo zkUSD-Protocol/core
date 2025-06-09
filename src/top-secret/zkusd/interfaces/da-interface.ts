@@ -38,7 +38,7 @@ export interface ValidatorDAInterface {
    *
    */
   publishBlockUpdate(
-    finalizedState: LocalStateProxy,
+    finalizedState: LocalStateProxy, // this ideally should be read-only
     nextBlockStateCandidate: NextStateCandidate
   ): Promise<StateStoreMetadata>;
 }

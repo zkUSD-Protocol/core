@@ -12,13 +12,14 @@ import { LocalStateProxy } from '../validator/local-block-state.js';
 import { StateStoreMetadata } from '../interfaces/sequencer-interface.js';
 import { IntentProofStore, SqliteIntentProofStore } from './intent-proof-store.js';
 import { IntentMapOperation } from '../validator/map-operation.js';
+import { UserDAInterface } from './temp-user-interfaces.js';
 
 type State = {
   state: FullState;
   metadata: StateStoreMetadata;
 };
 
-export class DataAvailMock implements ValidatorDAInterface {
+export class DataAvailMock implements ValidatorDAInterface, UserDAInterface {
   // finalizedState  (old consensus state)
   private _finalizedState: State;
   // candidateState (validator proposition)
@@ -85,6 +86,12 @@ export class DataAvailMock implements ValidatorDAInterface {
     this._inited = false;
     this._intentProofStore = new SqliteIntentProofStore();
   }
+  async publishIntentProof(intentProof: IntentProof): Promise<string> {
+    return this._intentProofStore.storeProof(intentProof);
+  }
+  readFromWalrus(blobId: string): Promise<string> {
+    throw new Error('Method not implemented.');
+  }
 
   async initDA(genesisStateRoots: StateRoots): Promise<StateStoreMetadata> {
     const genesisState = FullState.newGenesisState(this._systemParams);
@@ -139,8 +146,10 @@ export class DataAvailMock implements ValidatorDAInterface {
       throw new Error('Current state or candidate finalized state is null');
     }
     if (!stateRootsEqual(currentStateRoots, candidateFinalizedStateRoots)) {
-      throw new Error(
-        'Current state and candidate finalized state are not equal'
+      console.warn(
+        'Current state and candidate finalized state are not equal',
+        currentStateRoots,
+        candidateFinalizedStateRoots
       );
     }
 

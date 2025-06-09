@@ -6,7 +6,7 @@ import {
 } from '../interfaces/sequencer-interface.js';
 import { LocalStateProxy } from './local-block-state.js';
 import { ValidatorDAInterface } from '../interfaces/da-interface.js';
-import { stateRootsEqual } from './block-state.js';
+import { StateRoots, stateRootsEqual } from './block-state.js';
 import { OptimisticStateComputer } from './optimistic-state-computer.js';
 import { IntentProofHelper } from '../types/intent-proof.js';
 
@@ -30,10 +30,16 @@ export class Validator {
   private readonly _dataAvail: ValidatorDAInterface;
   private readonly _optimisticStateComputer: OptimisticStateComputer;
   private readonly _errorManager: ValidatorFailureManager;
+  public syncedToBlockBlobId: string | null = null; // remove later
 
   private getRecoveryInterface(): ValidatorRecovery {
     return {};
   }
+
+  public async finalizedStateRoots(): Promise<StateRoots> {
+    return this._finalizedStateProxy.stateRoots();
+  }
+
 
   constructor(
     sequencerClient: SequencerInterface,
@@ -181,6 +187,7 @@ async processNextBlock(): Promise<void> {
         await this._optimisticStateComputer.setState(
           await this._finalizedStateProxy.cloneState()
         );
+        this.syncedToBlockBlobId = blockFinalizedEvent.finalizedStateMetadata.stateBlobHandle;
       } else {
         // if it is matching then the finalized state should be updated
         // with the computed state
@@ -213,6 +220,11 @@ async processNextBlock(): Promise<void> {
             intentEvent.intentBlobId
           );
           await this._optimisticStateComputer.step(intentProof);
+          // once the intent is processed, validate it
+          await this._sequencer.validateIntent({
+            intentSequence: intentEvent.intentSequence,
+            partialStateRoots: this._optimisticStateComputer.getLiveStateRoots(),
+          });
         } catch (error) {
           await this._errorManager.onError(error, this.getRecoveryInterface());
         }

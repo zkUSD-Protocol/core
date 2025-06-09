@@ -100,4 +100,9 @@ export interface SequencerInterface {
     /** Metadata of the candidate (next) block state */
     stateCandidateMetadata: StateCommitment;
   }): Promise<void>;
+
+  validateIntent(args:{
+    intentSequence: number;
+    partialStateRoots: StateRoots;
+  }): Promise<void>;
 }

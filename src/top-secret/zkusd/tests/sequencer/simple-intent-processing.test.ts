@@ -1,15 +1,16 @@
-import assert from 'node:assert';
-import { before, describe, it } from 'node:test';
 import { ProvisionalFailureManager, Validator } from '../../validator/validator.js';
 import { SequencerMock } from '../../component-mocks/sequencer-mock.js';
 import { InMemoryStateProxy } from '../../validator/local-block-state.js';
 import { NonProvingStateComputer } from '../../validator/optimistic-state-computer.js';
-import { FullState, SystemParams } from '../../validator/block-state.js';
-import { Bool, Field, UInt64, UInt8 } from 'o1js';
+import { FullState, stateRootsEqual, SystemParams } from '../../validator/block-state.js';
+import { Bool, Field, Poseidon, UInt64, UInt8 } from 'o1js';
 import { IntentProofProvider } from '../../component-mocks/intent-proofs.js';
 import { IntentProofHelper } from '../../types/intent-proof.js';
 import { DataAvailMock } from '../../component-mocks/data-avail-mock.js';
 import { BlockEndEvent, BlockFinalizedEvent, IntentEvent, StateStoreMetadata } from '../../interfaces/sequencer-interface.js';
+import { SubmitIntentParams } from '../../component-mocks/temp-user-interfaces.js';
+import assert from 'node:assert'; 
+import { describe, it, before } from 'node:test';
 
 
 type TestSystemState = { 
@@ -116,16 +117,15 @@ describe('validator simple intents on genesis state', () => {
       console.log('sequenver', sequencer)
       sequencer.pushEvent(blockFinalizedEvent);
 
-      const intentEvent: IntentEvent = {
-        kind: 'intent',
+      const intentEvent: SubmitIntentParams = {
+        intentType: 'create-vault',
         intentBlobId,
-        intentBlockStateRoots: intentStateRoots,
-        intentSequence: 0,
-        outputNotes: [],
+        intentStateRoots,
+        encryptedNotes: [],
       };
       
       // push new intent event
-      sequencer.pushEvent(intentEvent);
+      sequencer.submitIntent(intentEvent);
 
       const blockEndEvent: BlockEndEvent = {
         kind: 'block-end',
@@ -136,6 +136,13 @@ describe('validator simple intents on genesis state', () => {
       sequencer.pushEvent(blockEndEvent);
 
       await validator.processNextBlock();
+
+      // resulting state roots
+      const resultingStateRoots = (await dataAvailMock.getValidatorCandidateState()).state.roots();
+      
+      const validatedIntents = sequencer.validatedIntents();
+      assert(validatedIntents.length === 1);
+      assert(stateRootsEqual(validatedIntents[0].partialStateRoots, resultingStateRoots));
       
       const candidateStateOperations = dataAvailMock.candidateStateOperations;
       // print the operation field by field
@@ -155,7 +162,119 @@ describe('validator simple intents on genesis state', () => {
       
     });
 
-    it('should fail to create vault if already exists', () => {
+    it('apply candidate state without issues', async () => {
+      const resultingStateRoots = (await dataAvailMock.getValidatorCandidateState()).state.roots();
+      dataAvailMock.acceptCandidate();
+      sequencer.acceptCandidateAndFinalize();
+      
+      sequencer.pushEvent({
+        kind: 'block-end',
+        timestamp: Date.now(),
+        intentsSHA256: 'intentsSHA256',
+      });
+      // process block
+      await validator.processNextBlock();
+      
+      const finalizedValidatorState = await validator.finalizedStateRoots();
+      assert(stateRootsEqual(finalizedValidatorState, resultingStateRoots));
+    });
+
+    it('should sync from da if different state was accepted', async () => {
+      
+
+      // compute new state on a different state computer
+      const stateComputer = new NonProvingStateComputer();
+      const currentFinalizedState = await dataAvailMock.cloneFinalizedState();
+      await stateComputer.setState(currentFinalizedState.state);
+      
+      // sideload intent
+      const intent = await intentProofProvider.createVaultIntent('user2', currentFinalizedState.state);
+      await stateComputer.step(intent);
+
+      // get and set the candidate state bypassing the validator
+      const candidateState = await stateComputer.getStateCandidate();
+      const localStateProxy = new InMemoryStateProxy(currentFinalizedState.state, currentFinalizedState.metadata);
+      await dataAvailMock.publishBlockUpdate(localStateProxy, candidateState);
+      // accept candidate
+      dataAvailMock.acceptCandidate();
+      // finalize block using sequencer block finalized event
+      //
+      // gt the finalized state commitment
+      const finalizedState = dataAvailMock.cloneFinalizedState();
+      sequencer.pushEvent({
+        kind: 'block-finalized',
+        finalizedStateMetadata: {
+          stateRoots: finalizedState.state.roots(),
+          stateBlobHandle: finalizedState.metadata.blockBlobId,
+        },
+      });
+
+      // for test signal the end of the next block
+      sequencer.pushEvent({
+        kind: 'block-end',
+        timestamp: Date.now(),
+        intentsSHA256: 'intentsSHA256',
+      });
+      
+      await validator.processNextBlock();
+
+      // check if the validator state was synced
+      const validatorState = await validator.finalizedStateRoots();
+      // check if sync flag set
+      assert(validator.syncedToBlockBlobId === finalizedState.metadata.blockBlobId);
+      assert(stateRootsEqual(validatorState, finalizedState.state.roots()));
+      dataAvailMock.denyCandidate();
+
+    });
+
+    it('deposit happy path', async () => {
+      // sanity to check if validator and da are in sync
+      const validatorState = await validator.finalizedStateRoots();
+      const dataAvailState = dataAvailMock.cloneFinalizedState();
+      assert(stateRootsEqual(validatorState, dataAvailState.state.roots()));
+
+      // finalize the block if we ended on a different state
+      // get the current finalized state from da
+
+
+      const amount = UInt64.from(100);
+      const finalizedState = dataAvailMock.cloneFinalizedState();
+      sequencer.pushEvent({
+        kind: 'block-finalized',
+        finalizedStateMetadata: {
+          stateRoots: finalizedState.state.roots(),
+          stateBlobHandle: finalizedState.metadata.blockBlobId,
+        },
+      });
+      
+      // reuse one of created vaults
+      const intentProof = await intentProofProvider.depositIntent(finalizedState.state, 'user1', amount);
+
+      // publish intent proof
+      const intentBlobId = await dataAvailMock.publishIntentProof(intentProof);
+
+      sequencer.submitIntent({
+        intentType: 'deposit',
+        intentBlobId,
+        intentStateRoots: intentProofHelper.stateRoots(intentProof),
+        encryptedNotes: [],
+      });
+
+      // signal end of block
+      sequencer.pushEvent({
+        kind: 'block-end',
+        timestamp: Date.now(),
+        intentsSHA256: 'intentsSHA256',
+      });
+      
+      await validator.processNextBlock();
+      
+      // check candidate operations
+      const candidateStateOperations = dataAvailMock.candidateStateOperations;
+      assert(candidateStateOperations.length === 1);
+      assert(candidateStateOperations[0].mapType === 'vault');
+      assert(candidateStateOperations[0].type === 'update');
+      
     });
   });
 

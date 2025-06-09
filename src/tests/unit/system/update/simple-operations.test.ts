@@ -47,7 +47,7 @@ describe('Operation Classes Test Suite', () => {
       // flipping again => false
       const newState2 = op.execute(newState);
       assert.strictEqual(newState2.toBoolean(), false);
-    });
+   });
 
     it('should no-op the state if operation=3 (noop)', () => {
       const op = BoolOperation.noop();

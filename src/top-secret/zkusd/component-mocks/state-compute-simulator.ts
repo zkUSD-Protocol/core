@@ -11,7 +11,7 @@
 // import { PrivateKey, Signature, UInt64, UInt8 } from "o1js";
 // import { CreateVaultIntent, CreateVaultIntentInput, CreateVaultIntentKey, CreateVaultIntentProof, CreateVaultPrivateInput } from "../programs/intents/create-vault.js";
 // import { Field } from "o1js";
-// import { IntentProof } from "../types/intent-proof.js";
+// import { IntentProof } from "../types/intent-proofjs";
 // import { Proof } from "o1js/dist/node/lib/proof-system/circuit.js";
 // import { DepositIntent, DepositIntentInput, DepositIntentKey, DepositIntentProof, DepositPrivateInput } from "../programs/intents/deposit.js";
 // import { MintIntent, MintIntentInput, MintIntentPrivateInput, MintIntentProof } from "../programs/intents/mint.js";

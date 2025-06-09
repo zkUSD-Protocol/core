@@ -65,7 +65,7 @@ export class IntentProofProvider {
   }
 
   /* --------------------------------------------------------------- */
-  /*                    CREATE-VAULT INTENT (unchanged)              */
+  /*                    CREATE-VAULT INTENT                          */
   /* --------------------------------------------------------------- */
 
   async createVaultIntent(
@@ -75,7 +75,7 @@ export class IntentProofProvider {
     const wallet = this.wallets.user(userAlias);
     const { vaultMap } = state;
 
-    const type = UInt8.from(0);
+    const type = UInt8.from(0); // TODO replace with enum or something less hardcoded
     const message: Field[] = [vaultMap.root, type.value, CreateVaultIntentKey];
     const signature = Signature.create(wallet.keyPair().privateKey, message);
 

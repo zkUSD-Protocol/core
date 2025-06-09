@@ -2,11 +2,11 @@ import { FullState, StateRoots } from './block-state.js';
 import { IntentProof, IntentProofHelper } from '../types/intent-proof.js';
 import { IntentMapOperation } from './map-operation.js';
 import { NextStateCandidate } from './block-state.js';
-import { ZkUsdState } from '../data/state.js';
 
 type ProofHandler<P extends IntentProof> = (proof: P) => Promise<void>;
 
 export interface OptimisticStateComputer {
+  getLiveStateRoots(): StateRoots;
   getFinalizedStateRoots(): StateRoots;
   setState(state: FullState): Promise<void>;
   getState(): Promise<{
@@ -22,9 +22,12 @@ export class NonProvingStateComputer implements OptimisticStateComputer {
   private _liveState: FullState;
   private _blockState: FullState;
   private _newBlockOperations: IntentMapOperation[];
-  private _rollupProofState: ZkUsdState;
+  // private _rollupProofState: ZkUsdState;
 
   constructor() {}
+  getLiveStateRoots(): StateRoots {
+    return this._liveState.roots();
+  }
     getFinalizedStateRoots(): StateRoots {
         return this._blockState.roots();
     }
@@ -32,7 +35,7 @@ export class NonProvingStateComputer implements OptimisticStateComputer {
   async setState(state: FullState): Promise<void> {
     this._liveState = state;
     this._blockState = state;
-    this._rollupProofState = state.toRollupProofState();
+    // this._rollupProofState = state.toRollupProofState();
     this._newBlockOperations = [];
   }
   async getState(): Promise<{
