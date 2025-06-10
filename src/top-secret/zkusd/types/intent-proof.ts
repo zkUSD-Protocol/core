@@ -82,7 +82,8 @@ registerHandlers({
 
     return {
       operations: [
-        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
+        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress.key, vault),
+        IntentMapOperation.insertZkusdMap(o.outputNoteCommitment.commitment, Note.included()),
       ],
       roots: {
         vaultMapRoot: i.proof.publicInput.intentVaultMapRoot,
@@ -123,7 +124,7 @@ registerHandlers({
 
     return {
       operations: [
-        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
+        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress.key, vault),
       ],
       roots: { vaultMapRoot: i.proof.publicInput.intentVaultMapRoot },
     };
@@ -165,7 +166,7 @@ registerHandlers({
 
     return {
       operations: [
-        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress, vault),
+        IntentMapOperation.updateVaultMap(o.vaultUpdate.vaultAddress.key, vault),
         IntentMapOperation.insertZkusdMap(
           o.outputNoteCommitment.commitment,
           Note.included()

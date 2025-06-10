@@ -6,7 +6,7 @@ import {
   UInt8,
 } from "o1js";
 
-import { EncryptedNote } from "../data/note.js";
+import { EncryptedNote, Note } from "../data/note.js";
 import { FullState }      from "../validator/block-state.js";
 
 import {
@@ -40,6 +40,12 @@ import {
   WalletsImpl,
   KeyPairAlias,
 } from "./wallet.js";
+import { MintIntent, MintIntentInput, MintIntentPrivateInput, MintIntentProof } from "../programs/intents/mint.js";
+import { Vault } from "../data/vault.js";
+import { VaultAddress } from "../programs/intents/common.js";
+import { Keys } from "../types/keys.js";
+import { AggregateOraclePricesProof, PriceAggregationProofPublicInput, PriceAggregationProofPublicOutput } from "../../../proofs/oracle-price-aggregation/prove.js";
+import { RedeemIntent, RedeemIntentInput, RedeemIntentPrivateInput, RedeemIntentProof } from "../programs/intents/redeem.js";
 
 export class IntentProofProvider {
   readonly wallets: Wallets;
@@ -149,6 +155,72 @@ export class IntentProofProvider {
     return intent;
   }
 
+  async dummyPriceProof(): Promise<AggregateOraclePricesProof> {
+    return AggregateOraclePricesProof.dummy(
+      PriceAggregationProofPublicInput.empty(),
+      PriceAggregationProofPublicOutput.empty(),
+      0
+    );
+  }
+
+  // mint intent
+  async mintIntent(
+    state: FullState,
+    userAlias: KeyPairAlias,
+    amount: UInt64
+  ): Promise<IntentProof> {
+    const wallet = this.wallets.user(userAlias);
+    const { vaultMap, systemParams, zkUsdMap } = state;
+
+    const publicInput = new MintIntentInput({
+      intentZkUsdMapRoot:          zkUsdMap.root,
+      intentVaultMapRoot:          vaultMap.root,
+      collateralRatio:       systemParams.collateralRatio,
+      liquidationBonusRatio: systemParams.liquidationBonusRatio,
+    });
+
+    // message to sign is vault
+    //
+    //Get the vault
+    const type      = UInt8.from(0);
+    const vaultKey = VaultAddress.fromPublicKey(wallet.keyPair().publicKey, type);
+    const vault = Vault({
+      collateralRatio: publicInput.collateralRatio,
+      liquidationBonusRatio: publicInput.liquidationBonusRatio,
+    }).unpack(vaultMap.get(vaultKey.key));
+
+    const message   = vault.toFields(); 
+    const signature = Signature.create(wallet.keyPair().privateKey, message);
+
+    const keys = Keys.fromPrivateKey(wallet.keyPair().privateKey);
+    const note = Note.create(amount, keys.paymentAddress, Field.random(), Field.random());
+    const priceProof = await this.dummyPriceProof();
+    const privateInput = new MintIntentPrivateInput({
+      intentZkUsdMap: zkUsdMap,
+      intentVaultMap: vaultMap,
+      note,
+      priceProof,
+      type,
+      ownerSignature: signature,
+      ownerPublicKey: wallet.keyPair().publicKey,
+    });
+
+    const output = await MintIntent.rawMethods.mint(
+      publicInput,
+      privateInput
+    );
+
+    const proof = await MintIntentProof.dummy(
+      publicInput,
+      output.publicOutput,
+      0
+    );
+
+    const intent: IntentProof = { kind: "mint", proof };
+    this.intentProofStore?.storeProof(intent);
+    return intent;
+  }
+
   /* --------------------------------------------------------------- */
   /*                     TRANSFER INTENT (unchanged)                 */
   /* --------------------------------------------------------------- */
@@ -195,6 +267,78 @@ export class IntentProofProvider {
     );
 
     const intent: IntentProof = { kind: "transfer", proof };
+    this.intentProofStore?.storeProof(intent);
+    return intent;
+  }
+
+  // redeem 
+  async redeemIntent(
+    state: FullState,
+    userAlias: KeyPairAlias,
+    amount: UInt64
+  ): Promise<IntentProof> {
+    const wallet = this.wallets.user(userAlias);
+    const { vaultMap, systemParams } = state;
+
+    const publicInput = new RedeemIntentInput({
+      intentVaultMapRoot:          vaultMap.root,
+      collateralRatio:       systemParams.collateralRatio,
+      liquidationBonusRatio: systemParams.liquidationBonusRatio,
+    });
+
+    // message to sign is vault
+    //
+    //Get the vault
+    const type      = UInt8.from(0);
+    const vaultKey = VaultAddress.fromPublicKey(wallet.keyPair().publicKey, type);
+    const vault = Vault({
+      collateralRatio: publicInput.collateralRatio,
+      liquidationBonusRatio: publicInput.liquidationBonusRatio,
+    }).unpack(vaultMap.get(vaultKey.key));
+
+    const message   = vault.toFields(); 
+    const signature = Signature.create(wallet.keyPair().privateKey, message);
+
+// export class RedeemIntentPrivateInput extends Struct({
+//   intentVaultMap: VaultMap,
+//   type: UInt8,
+//   priceProof: AggregateOraclePricesProof,
+//   ownerSignature: Signature,
+//   ownerPublicKey: PublicKey,
+//   amount: UInt64,
+// }) {}
+    //
+// export class RedeemIntentPrivateInput extends Struct({
+//   intentZkusdMap: ZkUsdMap,
+//   intentVaultMap: VaultMap,
+//   type: UInt8,
+//   priceProof: AggregateOraclePricesProof,
+//   spendingSignature: Signature,
+//   spendingPublicKey: PublicKey,
+//   note: Note,
+// }) {}
+
+    const privateInput = new RedeemIntentPrivateInput({
+      intentVaultMap: vaultMap,
+      type,
+      priceProof: await this.dummyPriceProof(),
+      ownerSignature: signature,
+      ownerPublicKey: wallet.keyPair().publicKey,
+      amount,
+    });
+
+    const output = await RedeemIntent.rawMethods.redeem(
+      publicInput,
+      privateInput
+    );
+
+    const proof = await RedeemIntentProof.dummy(
+      publicInput,
+      output.publicOutput,
+      0
+    );
+
+    const intent: IntentProof = { kind: "redeem", proof };
     this.intentProofStore?.storeProof(intent);
     return intent;
   }

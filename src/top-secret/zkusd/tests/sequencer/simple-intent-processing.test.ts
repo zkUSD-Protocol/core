@@ -240,7 +240,7 @@ describe('validator simple intents on genesis state', () => {
       // get the current finalized state from da
 
 
-      const amount = UInt64.from(100);
+      const amount = UInt64.from(1000e9);
       const finalizedState = dataAvailMock.cloneFinalizedState();
       sequencer.pushEvent({
         kind: 'block-finalized',
@@ -280,8 +280,55 @@ describe('validator simple intents on genesis state', () => {
       
     });
   });
+  
   describe('mintZkUsd', () => {
-    it('should update zkUsdMap and vaultMap', () => {
+    it('mint happy path', async () => {
+      // finalize and accept
+      dataAvailMock.acceptCandidate();
+      sequencer.acceptCandidateAndFinalize();
+      const amount = UInt64.from(100);
+      const finalizedState = dataAvailMock.cloneFinalizedState();
+      
+      // reuse one of created vaults
+      const intentProof = await intentProofProvider.mintIntent(finalizedState.state, 'user1', amount);
+
+      // publish intent proof
+      const intentBlobId = await dataAvailMock.publishIntentProof(intentProof);
+
+      sequencer.submitIntent({
+        intentType: 'mint',
+        intentBlobId,
+        intentStateRoots: intentProofHelper.stateRoots(intentProof),
+        encryptedNotes: [],
+      });
+
+      // signal end of block
+      sequencer.pushEvent({
+        kind: 'block-end',
+        timestamp: Date.now(),
+        intentsSHA256: 'intentsSHA256',
+      });
+      
+      await validator.processUntilBlockEnd();
+      
+      // check candidate operations
+      // pretty print the operations
+      console.log('candidateStateOperations:');
+      const candidateStateOperations = dataAvailMock.candidateStateOperations;
+      for (const op of candidateStateOperations) {
+        console.log(`  mapType: ${op.mapType}`);
+        console.log(`  type: ${op.type}`);
+        console.log(`  key: ${op.key.toString()}`);
+        console.log(`  value: ${op.value.toString()}`);
+        console.log('---------------------------------');
+      }
+      
+      assert(candidateStateOperations.length === 2);
+      assert(candidateStateOperations[0].mapType === 'vault');
+      assert(candidateStateOperations[0].type === 'update');
+      assert(candidateStateOperations[1].mapType === 'zkusd');
+      assert(candidateStateOperations[1].type === 'insert');
+      
     });
   });
 

@@ -1,4 +1,4 @@
-import { Field, Poseidon, SelfProof, UInt32, ZkProgram } from 'o1js';
+import { Field, SelfProof, ZkProgram } from 'o1js';
 import { ZkUsdState } from '../data/state.js';
 import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import {
@@ -169,9 +169,9 @@ export const ZkUsdRollup = ZkProgram({
         zkUsdMap.assertNotIncluded(outputNoteCommitment.commitment);
         zkUsdMap.insert(outputNoteCommitment.commitment, Note.included());
 
-        vaultMap.assertIncluded(vaultUpdate.vaultAddress);
+        vaultMap.assertIncluded(vaultUpdate.vaultAddress.key);
         vaultMap.update(
-          vaultUpdate.vaultAddress,
+          vaultUpdate.vaultAddress.key,
           Vault({
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
@@ -239,9 +239,9 @@ export const ZkUsdRollup = ZkProgram({
         zkUsdMap.assertNotIncluded(outputNoteCommitment.commitment);
         zkUsdMap.insert(outputNoteCommitment.commitment, Note.included());
 
-        vaultMap.assertIncluded(vaultUpdate.vaultAddress);
+        vaultMap.assertIncluded(vaultUpdate.vaultAddress.key);
         vaultMap.update(
-          vaultUpdate.vaultAddress,
+          vaultUpdate.vaultAddress.key,
           Vault({
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
@@ -271,7 +271,7 @@ export const ZkUsdRollup = ZkProgram({
       async method(
         publicInput: ZkUsdState,
         redeemIntentProof: RedeemIntentProof,
-        vaultMap: VaultMap
+        vaultMap: VaultMap,
       ): Promise<{ publicOutput: ZkUsdState }> {
         redeemIntentProof.verify();
 
@@ -286,9 +286,9 @@ export const ZkUsdRollup = ZkProgram({
 
         vaultMap.root.assertEquals(publicInput.liveVaultMapRoot);
 
-        vaultMap.assertIncluded(vaultUpdate.vaultAddress);
+        vaultMap.assertIncluded(vaultUpdate.vaultAddress.key);
         vaultMap.update(
-          vaultUpdate.vaultAddress,
+          vaultUpdate.vaultAddress.key,
           Vault({
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
@@ -355,9 +355,9 @@ export const ZkUsdRollup = ZkProgram({
         zkUsdMap.assertNotIncluded(outputNoteCommitment.commitment);
         zkUsdMap.insert(outputNoteCommitment.commitment, Note.included());
 
-        vaultMap.assertIncluded(vaultUpdate.vaultAddress);
+        vaultMap.assertIncluded(vaultUpdate.vaultAddress.key);
         vaultMap.update(
-          vaultUpdate.vaultAddress,
+          vaultUpdate.vaultAddress.key,
           Vault({
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,

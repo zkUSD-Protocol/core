@@ -67,6 +67,10 @@ export const DepositIntent = ZkProgram({
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
         }).unpack(vaultMap.get(vaultKey.key));
 
+        // TODO this is temporary - it creates zkusd-mina out of thin air
+        // add mina to the collateral
+        vault.collateralAmount = vault.collateralAmount.add(privateInput.amount);
+
         return {
           publicOutput: new DepositIntentOutput({
             vaultKey: vaultKey,

@@ -1,6 +1,5 @@
 import {
   Field,
-  Poseidon,
   PrivateKey,
   Provable,
   PublicKey,
@@ -13,12 +12,12 @@ import {
   DepositIntentInput,
   DepositIntentKey,
   DepositPrivateInput,
-  VaultKey,
 } from './deposit.js';
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { Vault as Vault_ } from '../../data/vault.js';
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { VaultAddress } from './common.js';
 
 export interface DepositIntentTestInput {
   publicInput: DepositIntentInput;
@@ -52,16 +51,10 @@ describe('Deposit Intent Suite', () => {
    */
   async function createVaultMap(): Promise<{
     vaultMap: VaultMap;
-    vaultKey: VaultKey;
+    vaultKey: VaultAddress;
   }> {
     const vaultMap = new VaultMap();
-    const vaultKey = new VaultKey({
-      key: Poseidon.hash([
-        ...publicKey.toFields(),
-        type.value,
-        DepositIntentKey,
-      ]),
-    });
+    const vaultKey = VaultAddress.fromPublicKey(publicKey, type);
 
     // Set the vault in the vault map
     vaultMap.set(vaultKey.key, emptyVault().pack());
@@ -248,13 +241,7 @@ describe('Deposit Intent Suite', () => {
     } = await DepositIntent.rawMethods.deposit(publicInput, privateInput);
 
     // Manually compute the expected vault key
-    const expectedKey = new VaultKey({
-      key: Poseidon.hash([
-        ...publicKey.toFields(),
-        type.value,
-        DepositIntentKey,
-      ]),
-    });
+    const expectedKey = VaultAddress.fromPublicKey(publicKey, type);
 
     assert.deepEqual(outputVaultKey, expectedKey);
   });

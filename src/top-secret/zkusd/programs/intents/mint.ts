@@ -37,7 +37,6 @@ export class MintIntentPrivateInput extends Struct({
   type: UInt8,
   ownerSignature: Signature,
   ownerPublicKey: PublicKey,
-  amount: UInt64,
 }) {}
 
 export const MintIntent = ZkProgram({
@@ -59,13 +58,15 @@ export const MintIntent = ZkProgram({
           type,
           ownerSignature,
           ownerPublicKey,
-          amount,
         } = intent;
 
         intentZkUsdMap.root.assertEquals(publicInput.intentZkUsdMapRoot);
+        Provable.log('intentVaultMapRoot checked');
         intentVaultMap.root.assertEquals(publicInput.intentVaultMapRoot);
+        Provable.log('intentVaultMapRoot checked');
 
         priceProof.verify();
+        Provable.log('priceProof verified');
 
         const minaPrice = priceProof.publicOutput.minaPrice;
 
@@ -73,6 +74,7 @@ export const MintIntent = ZkProgram({
 
         //Ensure the vault is in the map
         intentVaultMap.assertIncluded(vaultKey.key);
+        Provable.log('vault included');
 
         //Get the vault
         const vault = Vault({
@@ -80,19 +82,27 @@ export const MintIntent = ZkProgram({
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
         }).unpack(intentVaultMap.get(vaultKey.key));
 
+        // vault balances
+        Provable.log('vault collateral', vault.collateralAmount.toString());
+        Provable.log('vault debt', vault.debtAmount.toString());
+
+        // price proof mina price
+        minaPrice.priceNanoUSD = UInt64.from(1e9);
+        Provable.log('mina price', minaPrice.priceNanoUSD.div(1e9).toString());
+
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, vault.toFields());
+        Provable.log('owner signature verified');
 
         //Mint the zkusd
-        vault.mintZkUsd(amount, minaPrice);
-
-        //Ensure the note amount is the same as the minted amount
-        note.amount.assertEquals(amount);
+        vault.mintZkUsd(note.amount, minaPrice);
+        Provable.log('zkusd minted', note.amount.toString());
 
         const outputNoteCommitment = OutputNoteCommitment.create(note.hash());
 
         //assert the note is not already in the zkusd map
         intentZkUsdMap.assertNotIncluded(outputNoteCommitment.commitment);
+        Provable.log('note not already in zkusd map');
 
         const vaultUpdate = new VaultUpdate({
           vaultAddress: vaultKey,

@@ -1,23 +1,21 @@
 import {
   Field,
-  Poseidon,
   PrivateKey,
   Provable,
   PublicKey,
   Signature,
   UInt8,
-  ZkProgram,
 } from 'o1js';
 import {
   CreateVaultIntent,
   CreateVaultIntentInput,
   CreateVaultIntentKey,
   CreateVaultPrivateInput,
-  VaultKey,
 } from './create-vault.js';
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { VaultAddress } from './common.js';
 
 export interface VaultIntentTestInput {
   publicInput: CreateVaultIntentInput;
@@ -80,13 +78,7 @@ describe('Create Vault Intent Suite', () => {
 
     Provable.log(vaultKey);
 
-    const expectedKey = new VaultKey({
-      key: Poseidon.hash([
-        ...publicKey.toFields(),
-        type.value,
-        CreateVaultIntentKey,
-      ]),
-    });
+    const expectedKey = VaultAddress.fromPublicKey(publicKey, type);
     assert.deepEqual(vaultKey, expectedKey);
     assert.deepEqual(vaultType, type);
   });

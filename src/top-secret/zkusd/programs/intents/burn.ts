@@ -1,6 +1,5 @@
 import {
   Field,
-  Poseidon,
   Provable,
   PublicKey,
   Signature,
@@ -21,6 +20,7 @@ import {
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../../proofs/oracle-price-aggregation/prove.js';
 import { Vault, VaultUpdate } from '../../data/vault.js';
+import { VaultAddress } from './common.js';
 
 export class BurnIntentInput extends Struct({
   intentZkUsdMapRoot: Field,
@@ -79,19 +79,16 @@ export const BurnIntent = ZkProgram({
         intentZkUsdMap.root.assertEquals(publicInput.intentZkUsdMapRoot);
         intentVaultMap.root.assertEquals(publicInput.intentVaultMapRoot);
 
-        const vaultKey = Poseidon.hash([
-          ...ownerPublicKey.toFields(),
-          type.value,
-        ]);
+        const vaultAddress = VaultAddress.fromPublicKey(ownerPublicKey, type);
 
         //Ensure the vault is in the map
-        intentVaultMap.assertIncluded(vaultKey);
+        intentVaultMap.assertIncluded(vaultAddress.key);
 
         //Get the vault
         const vault = Vault({
           collateralRatio: publicInput.collateralRatio,
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
-        }).unpack(intentVaultMap.get(vaultKey));
+        }).unpack(intentVaultMap.get(vaultAddress.key));
 
         //Verify the owner signature
         ownerSignature.verify(ownerPublicKey, vault.toFields());
@@ -144,7 +141,7 @@ export const BurnIntent = ZkProgram({
 
         //Create the vault update
         const vaultUpdate = new VaultUpdate({
-          vaultAddress: vaultKey,
+          vaultAddress: vaultAddress,
           vaultState: vault,
         });
 
