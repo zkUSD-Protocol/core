@@ -1,6 +1,5 @@
 import {
   Field,
-  Poseidon,
   Provable,
   PublicKey,
   Signature,
@@ -59,7 +58,6 @@ export const TransferIntent = ZkProgram({
           spendingPublicKey,
         } = intent;
 
-        const included = Field(1);
         let valueIn = UInt64.zero;
 
         spendingSignature.verify(spendingPublicKey, inputNotes.toFields());

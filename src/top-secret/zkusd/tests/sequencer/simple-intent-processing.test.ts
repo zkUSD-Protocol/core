@@ -230,7 +230,7 @@ describe('validator simple intents on genesis state', () => {
       dataAvailMock.denyCandidate();
 
     });
-/*     it('deposit happy path', async () => {
+    it('deposit happy path', async () => {
       // sanity to check if validator and da are in sync
       const validatorState = await validator.finalizedStateRoots();
       const dataAvailState = dataAvailMock.cloneFinalizedState();
@@ -270,7 +270,7 @@ describe('validator simple intents on genesis state', () => {
         intentsSHA256: 'intentsSHA256',
       });
       
-      await validator.processNextBlock();
+      await validator.processUntilBlockEnd();
       
       // check candidate operations
       const candidateStateOperations = dataAvailMock.candidateStateOperations;
@@ -279,8 +279,6 @@ describe('validator simple intents on genesis state', () => {
       assert(candidateStateOperations[0].type === 'update');
       
     });
-
- */
   });
   describe('mintZkUsd', () => {
     it('should update zkUsdMap and vaultMap', () => {

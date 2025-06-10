@@ -10,6 +10,7 @@ import {
 } from 'o1js';
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { Vault } from '../../data/vault.js';
+import { VaultAddress } from './common.js';
 
 export class DepositIntentInput extends Struct({
   vaultMapRoot: Field,
@@ -17,12 +18,8 @@ export class DepositIntentInput extends Struct({
   liquidationBonusRatio: UInt8,
 }) {}
 
-export class VaultKey extends Struct({
-  key: Field,
-}) {}
-
 export class DepositIntentOutput extends Struct({
-  vaultKey: VaultKey,
+  vaultKey: VaultAddress,
   vaultPack: Field,
 }) {}
 
@@ -62,13 +59,7 @@ export const DepositIntent = ZkProgram({
         isValidSignature.assertTrue('Invalid signature');
 
         // vault key (hiding public key)
-        const vaultKey: VaultKey = new VaultKey({
-          key: Poseidon.hash([
-            ...ownerPublicKey.toFields(),
-            type.value,
-            DepositIntentKey,
-          ]),
-        });
+        const vaultKey: VaultAddress = VaultAddress.fromPublicKey(ownerPublicKey, type);
 
         //Get the vault
         const vault = Vault({

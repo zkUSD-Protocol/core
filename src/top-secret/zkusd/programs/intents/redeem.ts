@@ -1,7 +1,5 @@
 import {
   Field,
-  Poseidon,
-  Provable,
   PublicKey,
   Signature,
   Struct,
@@ -21,6 +19,7 @@ import {
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../../proofs/oracle-price-aggregation/prove.js';
 import { Vault, VaultState, VaultUpdate } from '../../data/vault.js';
+import { VaultAddress } from './common.js';
 
 export class RedeemIntentInput extends Struct({
   intentVaultMapRoot: Field,
@@ -67,19 +66,16 @@ export const RedeemIntent = ZkProgram({
 
         const minaPrice = priceProof.publicOutput.minaPrice;
 
-        const vaultKey = Poseidon.hash([
-          ...ownerPublicKey.toFields(),
-          type.value,
-        ]);
+        const vaultKey = VaultAddress.fromPublicKey(ownerPublicKey, type);
 
         //Ensure the vault is in the map
-        intentVaultMap.assertIncluded(vaultKey);
+        intentVaultMap.assertIncluded(vaultKey.key);
 
         //Get the vault
         const vault = Vault({
           collateralRatio: publicInput.collateralRatio,
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
-        }).unpack(intentVaultMap.get(vaultKey));
+        }).unpack(intentVaultMap.get(vaultKey.key));
 
         // TODO compute signature fields
         const message: Field[] =  [];

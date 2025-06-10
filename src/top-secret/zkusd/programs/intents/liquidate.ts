@@ -1,6 +1,5 @@
 import {
   Field,
-  Poseidon,
   Provable,
   PublicKey,
   Signature,
@@ -21,6 +20,7 @@ import {
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { AggregateOraclePricesProof } from '../../../../proofs/oracle-price-aggregation/prove.js';
 import { Vault, VaultUpdate } from '../../data/vault.js';
+import { VaultAddress } from './common.js';
 
 export class LiquidateIntentInput extends Struct({
   intentZkUsdMapRoot: Field,
@@ -43,7 +43,7 @@ export class LiquidateIntentPrivateInput extends Struct({
   outputNote: Note,
   spendingSignature: Signature,
   spendingPublicKey: PublicKey,
-  vaultAddress: Field,
+  vaultAddress: VaultAddress,
 }) {}
 
 export const LiquidateIntent = ZkProgram({
@@ -77,13 +77,13 @@ export const LiquidateIntent = ZkProgram({
         const minaPrice = priceProof.publicOutput.minaPrice;
 
         //Ensure the vault is in the map
-        intentVaultMap.assertIncluded(vaultAddress);
+        intentVaultMap.assertIncluded(vaultAddress.key);
 
         //Get the vault
         const vault = Vault({
           collateralRatio: publicInput.collateralRatio,
           liquidationBonusRatio: publicInput.liquidationBonusRatio,
-        }).unpack(intentVaultMap.get(vaultAddress));
+        }).unpack(intentVaultMap.get(vaultAddress.key));
 
         spendingSignature.verify(spendingPublicKey, inputNotes.toFields());
 

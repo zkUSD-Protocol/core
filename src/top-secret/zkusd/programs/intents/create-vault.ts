@@ -9,6 +9,7 @@ import {
   ZkProgram,
 } from 'o1js';
 import { VaultMap } from '../../data/maps/vault-map.js';
+import { VaultAddress } from './common.js';
 
 /**
  * Generates both public and private inputs for CreateVaultIntent.
@@ -44,12 +45,9 @@ export class CreateVaultIntentInput extends Struct({
   vaultMapRoot: Field,
 }) {}
 
-export class VaultKey extends Struct({
-  key: Field,
-}) {}
 
 export class CreateVaultIntentOutput extends Struct({
-  vaultKey: VaultKey,
+  vaultKey: VaultAddress,
   vaultType: UInt8,
 }) {}
 
@@ -88,17 +86,11 @@ export const CreateVaultIntent = ZkProgram({
         ];
 
         // vault key (hiding public key)
-        const vaultKey: VaultKey = new VaultKey({
-          key: Poseidon.hash([
-            ...ownerPublicKey.toFields(),
-            type.value,
-            CreateVaultIntentKey,
-          ]),
-        });
+        const vaultKey: VaultAddress = VaultAddress.fromPublicKey(ownerPublicKey, type);
 
         // Validate the owner's signature
         const isValidSignature = ownerSignature.verify(ownerPublicKey, message);
-        if (!isValidSignature) throw new Error('Invalid signature');
+        isValidSignature.assertTrue('Invalid signature');
 
         return {
           publicOutput: new CreateVaultIntentOutput({

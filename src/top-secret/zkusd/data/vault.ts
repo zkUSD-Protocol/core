@@ -17,6 +17,7 @@ import {
   Poseidon,
 } from 'o1js';
 import { MinaPrice } from '../../../system/oracle.js';
+import { VaultAddress } from '../programs/intents/common.js';
 
 // Errors
 export const VaultErrors = {
@@ -48,7 +49,7 @@ export class VaultState extends Struct({
 }) {}
 
 export class VaultUpdate extends Struct({
-  vaultAddress: Field,
+  vaultAddress: VaultAddress,
   vaultState: VaultState,
 }) {}
 
