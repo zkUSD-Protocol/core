@@ -132,7 +132,7 @@ describe('validator simple intents on genesis state', () => {
       };
       sequencer.pushEvent(blockEndEvent);
 
-      await validator.processNextBlock();
+      await validator.processUntilBlockEnd();
 
       // resulting state roots
       const resultingStateRoots = (await dataAvailMock.getValidatorCandidateState()).state.roots();
@@ -164,25 +164,23 @@ describe('validator simple intents on genesis state', () => {
       dataAvailMock.acceptCandidate();
       sequencer.acceptCandidateAndFinalize();
       
-      // print processed events
-      console.log('processed events:', validator.processedEvents());
-      
       sequencer.pushEvent({
         kind: 'block-end',
         timestamp: Date.now(),
         intentsSHA256: 'intentsSHA256',
       });
       // process block
-      await validator.processNextBlock();
+      await validator.processUntilBlockEnd();
 
-      // print processed events
-      console.log('processed events:', validator.processedEvents());
-      
       const finalizedValidatorState = await validator.finalizedStateRoots();
       assert(stateRootsEqual(finalizedValidatorState, resultingStateRoots));
     });
 
-/*     it('should sync from da if different state was accepted', async () => {
+    it('should sync from da if different state was accepted', async () => {
+      
+      // finalize last block
+      dataAvailMock.acceptCandidate();
+      sequencer.acceptCandidateAndFinalize();
       
 
       // compute new state on a different state computer
@@ -200,17 +198,18 @@ describe('validator simple intents on genesis state', () => {
       await dataAvailMock.publishBlockUpdate(localStateProxy, candidateState);
       // accept candidate
       dataAvailMock.acceptCandidate();
-      // finalize block using sequencer block finalized event
-      //
-      // gt the finalized state commitment
       const finalizedState = dataAvailMock.cloneFinalizedState();
-      sequencer.pushEvent({
-        kind: 'block-finalized',
+      sequencer.commitToBlockState({
         finalizedStateMetadata: {
+          stateRoots: currentFinalizedState.state.roots(),
+          stateBlobHandle: currentFinalizedState.metadata.blockBlobId,
+        },
+        stateCandidateMetadata: {
           stateRoots: finalizedState.state.roots(),
           stateBlobHandle: finalizedState.metadata.blockBlobId,
         },
       });
+      sequencer.acceptCandidateAndFinalize();
 
       // for test signal the end of the next block
       sequencer.pushEvent({
@@ -219,17 +218,18 @@ describe('validator simple intents on genesis state', () => {
         intentsSHA256: 'intentsSHA256',
       });
       
-      await validator.processNextBlock();
+      await validator.processUntilBlockEnd();
+
 
       // check if the validator state was synced
       const validatorState = await validator.finalizedStateRoots();
       // check if sync flag set
+      assert(validator.syncedToBlockBlobId !== null);
       assert(validator.syncedToBlockBlobId === finalizedState.metadata.blockBlobId);
       assert(stateRootsEqual(validatorState, finalizedState.state.roots()));
       dataAvailMock.denyCandidate();
 
     });
- */
 /*     it('deposit happy path', async () => {
       // sanity to check if validator and da are in sync
       const validatorState = await validator.finalizedStateRoots();

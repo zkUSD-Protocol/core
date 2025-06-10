@@ -84,7 +84,7 @@ export class Validator {
     );
   }
 
-async processNextBlock(): Promise<void> {
+async processUntilBlockEnd(): Promise<void> {
   const eventQueue = await this._sequencer.getSequencerEventQueue();
   const bufferedIntents: IntentEvent[] = [];
   let blockStarted = false;
