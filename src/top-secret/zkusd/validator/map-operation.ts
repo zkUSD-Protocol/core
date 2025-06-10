@@ -13,6 +13,10 @@ export class IntentMapOperation {
     readonly value: Field
   ) {}
 
+  toString(): string {
+    return `IntentMapOperation { mapType: ${this.mapType}, type: ${this.type}, key: ${this.key.toString()}, value: ${this.value.toString()} }`;
+  }
+
   // provisional
   hash(): Field {
     return Poseidon.hash([

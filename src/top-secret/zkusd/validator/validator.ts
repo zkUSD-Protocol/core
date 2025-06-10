@@ -3,12 +3,14 @@ import {
   StateCommitment,
   IntentEvent,
   SequencerInterface,
+  SequencerEvent,
 } from '../interfaces/sequencer-interface.js';
 import { LocalStateProxy } from './local-block-state.js';
 import { ValidatorDAInterface } from '../interfaces/da-interface.js';
-import { StateRoots, stateRootsEqual } from './block-state.js';
+import { StateRoots, stateRootsEqual, stateRootsToString } from './block-state.js';
 import { OptimisticStateComputer } from './optimistic-state-computer.js';
 import { IntentProofHelper } from '../types/intent-proof.js';
+import assert from 'assert';
 
 export interface ValidatorRecovery {}
 
@@ -20,7 +22,7 @@ export class ProvisionalFailureManager implements ValidatorFailureManager {
   onError(error: unknown, recovery: ValidatorRecovery): Promise<void> {
     // just log the details nicely
     console.error(error); 
-    return Promise.resolve();
+    throw error;
   }
 }
 
@@ -31,6 +33,11 @@ export class Validator {
   private readonly _optimisticStateComputer: OptimisticStateComputer;
   private readonly _errorManager: ValidatorFailureManager;
   public syncedToBlockBlobId: string | null = null; // remove later
+  private _processedEvents: SequencerEvent[] = [];
+
+  public processedEvents(): SequencerEvent[] {
+    return this._processedEvents;
+  }
 
   private getRecoveryInterface(): ValidatorRecovery {
     return {};
@@ -56,6 +63,7 @@ export class Validator {
   }
 
   async init(){
+    console.log('Validator.init()')
     await this._optimisticStateComputer.setState(
       await this._finalizedStateProxy.cloneState()
     );
@@ -93,7 +101,9 @@ async processNextBlock(): Promise<void> {
             bufferedIntents.push(event);
           } else {
             // Process intents immediately after block-finalized
+            console.log('Processing intent')
             await this.processIntent(event);
+            this._processedEvents.push(event);
           }
           break;
 
@@ -102,18 +112,24 @@ async processNextBlock(): Promise<void> {
           blockStarted = true;
 
           // Process block-finalized first
+          console.log('Processing block-finalized')
           await this.processBlockFinalized(event);
+          this._processedEvents.push(event);
 
           // Now process all buffered intents
           for (const intent of bufferedIntents) {
+            console.log('Processing intent')
             await this.processIntent(intent);
+            this._processedEvents.push(intent);
           }
           bufferedIntents.length = 0; // clear the buffer
           break;
 
         case 'block-end':
           blockEnded = true;
+          console.log('Processing block-end')
           await this.processBlockEnd();
+          this._processedEvents.push(event);
           break;
 
         default:
@@ -131,11 +147,17 @@ async processNextBlock(): Promise<void> {
     const computedState =
       await this._optimisticStateComputer.getStateCandidate();
 
+    const finalizedStateRootsBeforePublishing = await this._finalizedStateProxy.stateRoots();
+
     // this state should be published to DA
     const stateStoreMetadata = await this._dataAvail.publishBlockUpdate(
       this._finalizedStateProxy,
       computedState
     );
+
+    const finalizedStateRootsAfterPublishing = await this._finalizedStateProxy.stateRoots();
+    assert(stateRootsEqual(finalizedStateRootsBeforePublishing, finalizedStateRootsAfterPublishing));
+
     // metadata of the finalized state
     const finalizedStateMetadata =
       await this._finalizedStateProxy.getStateCommitment();
@@ -200,6 +222,7 @@ async processNextBlock(): Promise<void> {
               blockFinalizedEvent.finalizedStateMetadata.stateBlobHandle,
           },
         });
+        await this._optimisticStateComputer.finalizeLiveState();
       }
     } catch (error) {
       await this._errorManager.onError(error, this.getRecoveryInterface());

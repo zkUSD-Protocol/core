@@ -1,4 +1,4 @@
-import { StateRoots, FullState, stateRootsEqual } from './block-state.js';
+import { StateRoots, FullState, stateRootsEqual, stateRootsToString } from './block-state.js';
 import { IntentMapOperation } from './map-operation.js';
 import {
   StateCommitment,
@@ -46,11 +46,13 @@ export class InMemoryStateProxy implements LocalStateProxy {
     initialState: FullState,
     initialStateStoreMetadata: StateStoreMetadata
   ) {
+    console.log('InMemoryStateProxy:initial state', stateRootsToString(initialState.roots()));
     this._state = initialState;
     this._stateStoreMetadata = initialStateStoreMetadata;
   }
 
   async cloneState(): Promise<FullState> {
+    console.log('InMemoryStateProxy: cloning state', stateRootsToString(this._state.roots()));
     return this._state.clone();
   }
 
@@ -73,6 +75,7 @@ export class InMemoryStateProxy implements LocalStateProxy {
     finalizedState: FullState;
     finalizedStateStoreMetadata: StateStoreMetadata;
   }): Promise<void> {
+    console.log('InMemoryStateProxy: setting state', stateRootsToString(args.finalizedState.roots()));
     this._state = args.finalizedState;
     this._stateStoreMetadata = args.finalizedStateStoreMetadata;
   }
@@ -85,6 +88,7 @@ export class InMemoryStateProxy implements LocalStateProxy {
     finalizedBlockOperations: IntentMapOperation[];
     finalizedStateStoreMetadata: StateStoreMetadata;
   }): Promise<void> {
+    console.log('InMemoryStateProxy: applying intent operations', args.finalizedBlockOperations.map(operation => operation.toString()));
     this._state.applyMapOperations(...args.finalizedBlockOperations);
     this._stateStoreMetadata = args.finalizedStateStoreMetadata;
   }

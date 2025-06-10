@@ -6,6 +6,7 @@ import {
   FullState,
   SystemParams,
   stateRootsEqual,
+  stateRootsToString,
 } from '../validator/block-state.js';
 import { ValidatorDAInterface } from '../interfaces/da-interface.js';
 import { LocalStateProxy } from '../validator/local-block-state.js';
@@ -157,11 +158,8 @@ export class DataAvailMock implements ValidatorDAInterface, UserDAInterface {
       throw new Error('Next state candidate already exists. Apply or remove.');
     }
 
-    console.log('finalizedStateRoots', this._finalizedState.state.roots());
-    console.log('nextBlockStateCandidateRoots', nextBlockStateCandidate.nextBlockStateRoots);
 
     const validatedOperations = nextBlockStateCandidate.intentOperations;
-    console.log('validatedOperations', validatedOperations);
 
     const candidateState = this._finalizedState.state.clone();
     candidateState.applyMapOperations(
@@ -179,6 +177,17 @@ export class DataAvailMock implements ValidatorDAInterface, UserDAInterface {
     };
     this._candidateStateOperations = validatedOperations;
 
+    const finalizedZkusdRoot = this._finalizedState.state.roots().zkUsdMapRoot;
+    const candidateZkusdRoot = candidateState.roots().zkUsdMapRoot;
+
+    const finalizedVaultRoot = this._finalizedState.state.roots().vaultMapRoot;
+    const candidateVaultRoot = candidateState.roots().vaultMapRoot;
+
+    // log root transitions finalized -> candidate
+    console.log('-- publishBlockUpdate:');
+    console.log(`zkusd root:\n${finalizedZkusdRoot} -> ${candidateZkusdRoot}`);
+    console.log(`vault root:\n${finalizedVaultRoot} -> ${candidateVaultRoot}`);
+    console.log('----------------------')
     return this._candidateState.metadata;
   }
 

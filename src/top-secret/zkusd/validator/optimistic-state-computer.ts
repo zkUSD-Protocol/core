@@ -16,6 +16,7 @@ export interface OptimisticStateComputer {
   }>;
   getStateCandidate(): Promise<NextStateCandidate>;
   step(intentProof: IntentProof): Promise<void>;
+  finalizeLiveState(): Promise<void>;
 }
 
 export class NonProvingStateComputer implements OptimisticStateComputer {
@@ -38,6 +39,13 @@ export class NonProvingStateComputer implements OptimisticStateComputer {
     // this._rollupProofState = state.toRollupProofState();
     this._newBlockOperations = [];
   }
+
+  async finalizeLiveState(): Promise<void> {
+    this._blockState = this._liveState;
+    this._newBlockOperations = [];
+  }
+
+
   async getState(): Promise<{
     previousBlockState: FullState;
     nextStateCandidate: FullState;

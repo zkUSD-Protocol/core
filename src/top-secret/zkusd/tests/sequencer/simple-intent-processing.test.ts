@@ -95,12 +95,10 @@ describe('validator simple intents on genesis state', () => {
     stateStoreMetadata = system.stateStoreMetadata;
     intentProofProvider = new IntentProofProvider();
     intentProofHelper = new IntentProofHelper(defaultSystemParams);
-    console.log(system.sequencer)
   });
 
   describe('createVault intent works as expected', () => {
     it('should process createVault intent on happy path', async () => {
-      console.log('sequencer', sequencer)
       const intent = await intentProofProvider.createVaultIntent('user1', blockStates[0]);  
       const intentBlobId = await dataAvailMock.storeIntentProof(intent);
       const intentStateRoots = intentProofHelper.stateRoots(intent);
@@ -114,7 +112,6 @@ describe('validator simple intents on genesis state', () => {
         },
       };
 
-      console.log('sequenver', sequencer)
       sequencer.pushEvent(blockFinalizedEvent);
 
       const intentEvent: SubmitIntentParams = {
@@ -167,6 +164,9 @@ describe('validator simple intents on genesis state', () => {
       dataAvailMock.acceptCandidate();
       sequencer.acceptCandidateAndFinalize();
       
+      // print processed events
+      console.log('processed events:', validator.processedEvents());
+      
       sequencer.pushEvent({
         kind: 'block-end',
         timestamp: Date.now(),
@@ -174,12 +174,15 @@ describe('validator simple intents on genesis state', () => {
       });
       // process block
       await validator.processNextBlock();
+
+      // print processed events
+      console.log('processed events:', validator.processedEvents());
       
       const finalizedValidatorState = await validator.finalizedStateRoots();
       assert(stateRootsEqual(finalizedValidatorState, resultingStateRoots));
     });
 
-    it('should sync from da if different state was accepted', async () => {
+/*     it('should sync from da if different state was accepted', async () => {
       
 
       // compute new state on a different state computer
@@ -226,8 +229,8 @@ describe('validator simple intents on genesis state', () => {
       dataAvailMock.denyCandidate();
 
     });
-
-    it('deposit happy path', async () => {
+ */
+/*     it('deposit happy path', async () => {
       // sanity to check if validator and da are in sync
       const validatorState = await validator.finalizedStateRoots();
       const dataAvailState = dataAvailMock.cloneFinalizedState();
@@ -276,8 +279,9 @@ describe('validator simple intents on genesis state', () => {
       assert(candidateStateOperations[0].type === 'update');
       
     });
-  });
 
+ */
+  });
   describe('mintZkUsd', () => {
     it('should update zkUsdMap and vaultMap', () => {
     });

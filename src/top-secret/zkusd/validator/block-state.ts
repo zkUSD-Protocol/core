@@ -19,6 +19,10 @@ export type StateRoots = {
   vaultMapRoot: Field;
 };
 
+export const stateRootsToString = (roots: StateRoots) => {
+  return `{ zkUsdMapRoot: ${roots.zkUsdMapRoot.toString()}, vaultMapRoot: ${roots.vaultMapRoot.toString()}}`;
+};
+
 export type StateLengths = {
   zkUsdMapLength: Field;
   vaultMapLength: Field;
