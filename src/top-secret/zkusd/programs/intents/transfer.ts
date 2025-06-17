@@ -67,7 +67,17 @@ export const TransferIntent = ZkProgram({
         for (let i = 0; i < MAX_INPUT_NOTE_COUNT; i++) {
           const inN = inputNotes.notes[i];
           const inNHash = inN.hash();
-          const inNNullifier = inN.nullifier(spendingSignature.r);
+          // TODO: can we have nullifiers that do not depend on spending signature?
+        //   const inNNullifier = inN.nullifier(spendingSignature.r);
+          // the note should have the same nullifier irrespectively of
+          // the method used.
+          // using hash can be justified, as nullifiers are only
+          // provided via controlled zkprograms
+          // so even if someone knew the decrypted note
+          // and wanted to maliciously burn it they can only do 
+          // so if they have been able to create proofs for the entire intent.
+          const inNNullifier = inN.nullifier(inN.hash());
+
 
           //We only want to make sure its part of the zkusd map if its not a dummy note
           const inNToCheck = Provable.if(inN.isDummy.not(), inNHash, Field(0));

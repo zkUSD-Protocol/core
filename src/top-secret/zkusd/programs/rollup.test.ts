@@ -33,6 +33,7 @@ import {
 import { Vault as VaultFactory } from '../data/vault.js';
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert';
+import { ContractMap } from '../data/maps/contract-map.js';
 
 /**
  * Test suite covering happy‑path behaviour of the ZkUsdRollup program for
@@ -77,7 +78,8 @@ describe('ZkUsdRollup – happy‑path integration tests', () => {
     // ── Bootstrap empty state ───────────────────────────────────────────────
     const vaultMap = new VaultMap();
     const zkUsdMap = new ZkUsdMap();
-    const initState = ZkUsdState.new({ vaultMap, zkUsdMap });
+    const contractMap = new ContractMap();
+    const initState = ZkUsdState.new({ vaultMap, zkUsdMap, contractMap });
 
     // ── Build & prove CreateVaultIntent ────────────────────────────────────
     const cvMessage: Field[] = [
@@ -141,6 +143,7 @@ describe('ZkUsdRollup – happy‑path integration tests', () => {
     // ── Seed state with an empty vault keyed by DepositIntentKey ────────────
     const vaultMap = new VaultMap();
     const zkUsdMap = new ZkUsdMap();
+    const contractMap = new ContractMap();
 
     const Vault = VaultFactory({ collateralRatio, liquidationBonusRatio });
     const emptyVault = Vault.new(type);
@@ -152,7 +155,7 @@ describe('ZkUsdRollup – happy‑path integration tests', () => {
     ]);
     vaultMap.set(depositVaultKey, emptyVault.pack());
 
-    const initState = ZkUsdState.new({ vaultMap, zkUsdMap });
+    const initState = ZkUsdState.new({ vaultMap, zkUsdMap, contractMap });
 
     // ── Build & prove DepositIntent ────────────────────────────────────────
     const depositAmount = UInt64.from(1_000n);

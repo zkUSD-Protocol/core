@@ -1,15 +1,17 @@
-import { Bool, Field, Struct, UInt32, UInt64, UInt8 } from 'o1js';
+import { Bool, Field, Struct, UInt64, UInt8 } from 'o1js';
 import { VaultMap } from './maps/vault-map.js';
 import { ZkUsdMap } from './maps/zkusd-map.js';
-import { Vault } from '../../../system/vault.js';
+import { ContractMap } from './maps/contract-map.js';
 
 /**
  * Represents the state of the ZkUSD system.
  * Contains the roots of the UTXO tree and nullifier map.
  */
 export class ZkUsdState extends Struct({
+  intentContractVaultMapRoot: Field,
   intentVaultMapRoot: Field,
   intentZkUsdMapRoot: Field,
+  liveContractMapRoot: Field,
   liveVaultMapRoot: Field,
   liveZkUsdMapRoot: Field,
   validPriceBlockCount: UInt8,
@@ -22,15 +24,19 @@ export class ZkUsdState extends Struct({
   static new({
     vaultMap,
     zkUsdMap,
+    contractMap,
   }: {
     vaultMap: VaultMap;
     zkUsdMap: ZkUsdMap;
+    contractMap: ContractMap;
   }): ZkUsdState {
     return new ZkUsdState({
       intentVaultMapRoot: vaultMap.root,
       intentZkUsdMapRoot: zkUsdMap.root,
+      intentContractVaultMapRoot: contractMap.root,
       liveVaultMapRoot: vaultMap.root,
       liveZkUsdMapRoot: zkUsdMap.root,
+      liveContractMapRoot: contractMap.root,
       validPriceBlockCount: UInt8.from(1),
       emergencyStop: Bool(false),
       collateralRatio: UInt8.from(150),

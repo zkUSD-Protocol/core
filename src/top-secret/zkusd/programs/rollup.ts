@@ -1,4 +1,4 @@
-import { Field, SelfProof, ZkProgram } from 'o1js';
+import { Bool, DynamicProof, FeatureFlags, Field, Provable, SelfProof, Struct, UInt64, UInt8, VerificationKey, ZkProgram } from 'o1js';
 import { ZkUsdState } from '../data/state.js';
 import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import {
@@ -10,12 +10,14 @@ import {
   MAX_OUTPUT_NOTE_COUNT,
   Note,
   Nullifier,
+  Nullifiers,
+  OutputNoteCommitments,
 } from '../data/note.js';
-import { Vault } from '../data/vault.js';
+import { Vault, VaultUpdate } from '../data/vault.js';
 import { MintIntentProof } from './intents/mint.js';
 import { VaultMap } from '../data/maps/vault-map.js';
 import { BurnIntentProof } from './intents/burn.js';
-import { RedeemIntentProof } from './intents/redeem.js';
+import { RedeemIntentPrivateInput, RedeemIntentProof } from './intents/redeem.js';
 import { LiquidateIntentProof } from './intents/liquidate.js';
 import {
   DepositIntent,
@@ -29,6 +31,11 @@ import {
   CreateVaultIntentInput,
   CreateVaultIntentProof,
 } from './intents/create-vault.js';
+import { VaultAddress } from './intents/common.js';
+import { VaultContractTreeWitness } from '../data/maps/vault-contract-tree.js';
+import { ContractMap } from '../data/maps/contract-map.js';
+import { AggregateOraclePricesProof } from '../../../proofs/oracle-price-aggregation/prove.js';
+import { ContractActionIntentInput, ContractActionIntentOutput, ContractActionIntentProof, ContractActionProof, ContractActionType, ContractRedeemIntentPrivateInput } from './intents/contract-action.js';
 
 //TODOS:
 // - Deposits / Withdrawals using an ioMap and oracle network (Eigan layer?)
@@ -38,12 +45,91 @@ import {
 // - How do we handle the updating of intent roots?
 // - How do we ensure the Note is encrypted properly and communicated out
 
+
+
 export const ZkUsdRollup = ZkProgram({
   name: 'ZkUsdRollup',
   publicInput: ZkUsdState,
   publicOutput: ZkUsdState,
   overrideWrapDomain: 2,
   methods: {
+    contractAction: {
+      privateInputs: [ContractActionIntentProof, VaultMap, ZkUsdMap, ContractMap],
+      async method(
+        publicInput: ZkUsdState,
+        contractActionIntentProof: ContractActionIntentProof,
+        vaultMap: VaultMap,
+        zkUsdMap: ZkUsdMap,
+        contractMap: ContractMap
+      ): Promise<{ publicOutput: ZkUsdState }> {
+        // Verify the intent proof
+        contractActionIntentProof.verify();
+
+        // Get the output from the intent proof
+        const { vaultUpdate, nullifiers, outputNoteCommitments } = contractActionIntentProof.publicOutput;
+
+        // Verify the intent input matches the rollup state
+        const { intentVaultMapRoot, intentContractVaultMapRoot, intentZkUsdMapRoot, collateralRatio, liquidationBonusRatio } =
+          contractActionIntentProof.publicInput;
+
+        intentVaultMapRoot.assertEquals(publicInput.intentVaultMapRoot);
+        intentContractVaultMapRoot.assertEquals(publicInput.intentContractVaultMapRoot);
+        intentZkUsdMapRoot.assertEquals(publicInput.intentZkUsdMapRoot);
+        collateralRatio.assertEquals(publicInput.collateralRatio);
+        liquidationBonusRatio.assertEquals(publicInput.liquidationBonusRatio);
+
+        // Verify the map roots match the live maps
+        vaultMap.root.assertEquals(publicInput.liveVaultMapRoot);
+        contractMap.root.assertEquals(publicInput.liveContractMapRoot);
+        zkUsdMap.root.assertEquals(publicInput.liveZkUsdMapRoot);
+
+        // update the vaultmap
+        const vaultPacked = Vault({
+          collateralRatio: publicInput.collateralRatio,
+          liquidationBonusRatio: publicInput.liquidationBonusRatio,
+        }).fromState(vaultUpdate.vaultState).pack();
+        // TODO won't it override another update within the same block?
+        vaultMap.set(vaultUpdate.vaultAddress.key, vaultPacked);
+
+        // update zkusd map
+        for (let i = 0; i < MAX_INPUT_NOTE_COUNT; i++) {
+          const nullifier = nullifiers.nullifiers[i];
+          zkUsdMap.assertNotIncluded(nullifier.nullifier);
+          zkUsdMap.setIf(
+            nullifier.isDummy.not(),
+            nullifier.nullifier,
+            Nullifier.included()
+          );
+        }
+
+        for (let i = 0; i < MAX_OUTPUT_NOTE_COUNT; i++) {
+          const outputNoteCommitment = outputNoteCommitments.commitments[i];
+          zkUsdMap.assertNotIncluded(outputNoteCommitment.commitment);
+          zkUsdMap.setIf(
+            outputNoteCommitment.isDummy.not(),
+            outputNoteCommitment.commitment,
+            Note.included()
+          );
+        }
+
+        return {
+          publicOutput: new ZkUsdState({
+            liveVaultMapRoot: vaultMap.root,
+            liveZkUsdMapRoot: zkUsdMap.root,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
+            collateralRatio: publicInput.collateralRatio,
+            liquidationBonusRatio: publicInput.liquidationBonusRatio,
+            vaultDebtCeiling: publicInput.vaultDebtCeiling,
+            oraclesHash: publicInput.oraclesHash,
+            validPriceBlockCount: publicInput.validPriceBlockCount,
+            emergencyStop: publicInput.emergencyStop,
+          }),
+        };
+      },
+    },
     createVault: {
       privateInputs: [CreateVaultIntentProof, VaultMap],
       async method(
@@ -80,8 +166,10 @@ export const ZkUsdRollup = ZkProgram({
           publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
             liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
             vaultDebtCeiling: publicInput.vaultDebtCeiling,
@@ -126,8 +214,10 @@ export const ZkUsdRollup = ZkProgram({
           publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
             liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
             vaultDebtCeiling: publicInput.vaultDebtCeiling,
@@ -184,8 +274,10 @@ export const ZkUsdRollup = ZkProgram({
           publicOutput: new ZkUsdState({
             liveZkUsdMapRoot: zkUsdMap.root,
             liveVaultMapRoot: vaultMap.root,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
             vaultDebtCeiling: publicInput.vaultDebtCeiling,
@@ -254,8 +346,10 @@ export const ZkUsdRollup = ZkProgram({
           publicOutput: new ZkUsdState({
             liveZkUsdMapRoot: zkUsdMap.root,
             liveVaultMapRoot: vaultMap.root,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
             vaultDebtCeiling: publicInput.vaultDebtCeiling,
@@ -301,8 +395,10 @@ export const ZkUsdRollup = ZkProgram({
           publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
             liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
             vaultDebtCeiling: publicInput.vaultDebtCeiling,
@@ -372,8 +468,10 @@ export const ZkUsdRollup = ZkProgram({
           publicOutput: new ZkUsdState({
             liveVaultMapRoot: vaultMap.root,
             liveZkUsdMapRoot: zkUsdMap.root,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
             vaultDebtCeiling: publicInput.vaultDebtCeiling,
@@ -422,7 +520,9 @@ export const ZkUsdRollup = ZkProgram({
         return {
           publicOutput: new ZkUsdState({
             liveZkUsdMapRoot: zkUsdMap.root,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             intentVaultMapRoot: publicInput.intentVaultMapRoot,
             collateralRatio: publicInput.collateralRatio,
             liquidationBonusRatio: publicInput.liquidationBonusRatio,
@@ -443,10 +543,12 @@ export const ZkUsdRollup = ZkProgram({
         //How do we handle this?
         return {
           publicOutput: new ZkUsdState({
-            intentZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
-            intentVaultMapRoot: publicInput.liveVaultMapRoot,
+            intentZkUsdMapRoot: publicInput.intentZkUsdMapRoot,
+            intentVaultMapRoot: publicInput.intentVaultMapRoot,
+            intentContractVaultMapRoot: publicInput.intentContractVaultMapRoot,
             liveZkUsdMapRoot: publicInput.liveZkUsdMapRoot,
             liveVaultMapRoot: publicInput.liveVaultMapRoot,
+            liveContractMapRoot: publicInput.liveContractMapRoot,
             validPriceBlockCount: publicInput.validPriceBlockCount,
             emergencyStop: publicInput.emergencyStop,
             collateralRatio: publicInput.collateralRatio,

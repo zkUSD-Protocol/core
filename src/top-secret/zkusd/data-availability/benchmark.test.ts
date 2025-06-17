@@ -8,6 +8,7 @@ import { ValidatorDAClient } from './clients/validator-client.js';
 import { FullState, SystemParams } from '../validator/block-state.js';
 import { InMemoryStateProxy } from '../validator/local-block-state.js';
 import { CheckpointBlobBuilder } from './services/checkpoint-blob-builder.js';
+import { ContractMap } from '../data/maps/contract-map.js';
 
 interface BenchmarkResult {
   recordCount: number;
@@ -100,6 +101,19 @@ class BenchmarkSuite {
     return map;
   }
 
+  createPopulatedContractMap(recordCount: number): ContractMap {
+    const map = new ContractMap();
+    const contractRecords = Math.min(recordCount / 10, 1000); // Contract map is the size of vault map
+
+    for (let i = 1; i <= contractRecords; i++) {
+      const key = Field(i);
+      const value = Field.random(); // Contract data is more complex
+      map.insert(key, value);
+    }
+
+    return map;
+  }
+
   /**
    * Measure serialization performance
    */
@@ -179,9 +193,10 @@ class BenchmarkSuite {
     // Restore maps from checkpoint
     const vaultMap = VaultMap.fromSerialized(checkpointData.vaultMapData);
     const zkUsdMap = ZkUsdMap.fromSerialized(checkpointData.zkUsdMapData);
+    const contractMap = ContractMap.fromSerialized(checkpointData.contractMapData);
 
     // Create full state
-    const restoredState = new FullState(this.systemParams, vaultMap, zkUsdMap);
+    const restoredState = new FullState(this.systemParams, vaultMap, zkUsdMap, contractMap);
 
     const end = performance.now();
 
@@ -345,7 +360,8 @@ class BenchmarkSuite {
     const { map: zkUsdMap } =
       this.createPopulatedZkUsdMapWithTiming(recordCount);
     const vaultMap = this.createPopulatedVaultMap(recordCount);
-    const state = new FullState(this.systemParams, vaultMap, zkUsdMap);
+    const contractMap = this.createPopulatedContractMap(recordCount);
+    const state = new FullState(this.systemParams, vaultMap, zkUsdMap, contractMap);
 
     // Measure serialization
     const serializationMetrics = this.measureSerialization(

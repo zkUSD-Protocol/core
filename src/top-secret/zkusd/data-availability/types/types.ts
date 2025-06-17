@@ -56,6 +56,7 @@ export interface CheckpointBlob extends Blob {
   // Maps data
   vaultMapData: SerializableMapData;
   zkUsdMapData: SerializableMapData;
+  contractMapData: SerializableMapData;
 
   // Checkpoint metadata
   block: number;

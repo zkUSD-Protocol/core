@@ -17,6 +17,7 @@ import { IntentMapOperation } from '../../validator/map-operation.js';
 import { VaultMap } from '../../data/maps/vault-map.js';
 import { ZkUsdMap } from '../../data/maps/zkusd-map.js';
 import { Bool, Field, UInt64, UInt8 } from 'o1js';
+import { ContractMap } from '../../data/maps/contract-map.js';
 
 export class StateSyncService {
   constructor(private storageProvider: StorageProvider) {}
@@ -325,12 +326,14 @@ export class StateSyncService {
     // Restore maps from serialized data
     const vaultMap = VaultMap.fromSerialized(checkpointData.vaultMapData);
     const zkUsdMap = ZkUsdMap.fromSerialized(checkpointData.zkUsdMapData);
+    const contractMap = ContractMap.fromSerialized(checkpointData.contractMapData);
 
     // Create FullState with default system params (would need to be stored/retrieved)
     return new FullState(
       this.getDefaultSystemParams(), // Would need proper system params
       vaultMap,
-      zkUsdMap
+      zkUsdMap,
+      contractMap
     );
   }
 

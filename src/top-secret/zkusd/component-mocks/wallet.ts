@@ -26,6 +26,11 @@ export interface Wallet {
     amount: UInt64;
     toPublicKey: PublicKey;
   }): { inputNotes: InputNotes; outputNotes: OutputNotes };
+  createOutputNotes(args: {
+    state: FullState;
+    amount: UInt64;
+    toPublicKey: PublicKey;
+  }): { inputNotes: InputNotes; outputNotes: OutputNotes };
 }
 
 export class InMemoryWallet implements Wallet {
@@ -34,6 +39,13 @@ export class InMemoryWallet implements Wallet {
 
   constructor(keyPair: KeyPair) {
     this._keyPair = keyPair;
+  }
+  createOutputNotes(args: {
+    state: FullState;
+    amount: UInt64;
+    toPublicKey: PublicKey;
+  }): { inputNotes: InputNotes; outputNotes: OutputNotes; } {
+    throw new Error("Method not implemented.");
   }
 
   keyPair(): KeyPair {

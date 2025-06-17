@@ -4,6 +4,7 @@ import { Field } from 'o1js';
 import { UInt64, Bool, UInt8 } from 'o1js';
 import { IntentMapOperation } from './map-operation.js';
 import { ZkUsdState } from '../data/state.js';
+import { ContractMap } from '../data/maps/contract-map.js';
 
 export type SystemParams = {
   validPriceBlockCount: UInt8;
@@ -65,21 +66,25 @@ export class FullState {
   systemParams: SystemParams;
   vaultMap: VaultMap;
   zkUsdMap: ZkUsdMap;
+  contractMap: ContractMap;
 
   constructor(
     systemParams: SystemParams,
     vaultMap: VaultMap,
-    zkUsdMap: ZkUsdMap
+    zkUsdMap: ZkUsdMap,
+    contractMap: ContractMap
   ) {
     this.systemParams = systemParams;
     this.vaultMap = vaultMap;
     this.zkUsdMap = zkUsdMap;
+    this.contractMap = contractMap;
   }
 
   static newGenesisState(systemParams: SystemParams): FullState {
     const vaultMap = new VaultMap();
     const zkUsdMap = new ZkUsdMap();
-    return new FullState(systemParams, vaultMap, zkUsdMap);
+    const contractMap = new ContractMap();
+    return new FullState(systemParams, vaultMap, zkUsdMap, contractMap);
   }
 
   roots(): StateRoots {
@@ -118,14 +123,17 @@ export class FullState {
     return new FullState(
       this.systemParams,
       this.vaultMap.clone() as VaultMap,
-      this.zkUsdMap.clone() as ZkUsdMap
+      this.zkUsdMap.clone() as ZkUsdMap,
+      this.contractMap.clone() as ContractMap
     );
   }
 
   toRollupProofState(): ZkUsdState {
     return new ZkUsdState({
+      intentContractVaultMapRoot: this.contractMap.root,
       intentVaultMapRoot: this.vaultMap.root,
       intentZkUsdMapRoot: this.zkUsdMap.root,
+      liveContractMapRoot: this.contractMap.root,
       liveVaultMapRoot: this.vaultMap.root,
       liveZkUsdMapRoot: this.zkUsdMap.root,
       validPriceBlockCount: this.systemParams.validPriceBlockCount,

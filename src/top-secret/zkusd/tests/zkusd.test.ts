@@ -30,11 +30,13 @@ import { ZkUsdState } from '../data/state.js';
 import { VaultMap } from '../data/maps/vault-map.js';
 import { ZkUsdMap } from '../data/maps/zkusd-map.js';
 import { AggregateOraclePrices } from '../../../proofs/oracle-price-aggregation/prove.js';
+import { ContractMap } from '../data/maps/contract-map.js';
 
 describe('ZkUsd Payment Address Test Suite', () => {
   let keys: Keys;
   let zkUsdMap: ZkUsdMap;
   let vaultMap: VaultMap;
+  let contractMap: ContractMap;
   let utxos: Note[] = [];
   let alice: Keys;
   let bob: Keys;
@@ -121,10 +123,12 @@ describe('ZkUsd Payment Address Test Suite', () => {
 
     zkUsdMap = new ZkUsdMap();
     vaultMap = new VaultMap();
+    contractMap = new ContractMap();
 
     state = ZkUsdState.new({
       vaultMap,
       zkUsdMap,
+      contractMap,
     });
   });
 
